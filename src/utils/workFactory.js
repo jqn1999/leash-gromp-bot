@@ -8,22 +8,28 @@ const mercenaryBuffFactory = require("../utils/mercenaryBuffFactory");
 const { WORK_SCENARIO_INDICES } = require("../utils/eventFactory");
 
 // Prospector's specialEncounterMultiplierBonus perk (see constants.js) widens SEVERAL
-// non-contiguous scenarios' own slice of work.js's cumulative roll table — Golden, Poison,
-// Large, Companion, Taro, Mimic, and Golden Yam, each independently, while every OTHER
-// scenario (Metal, Sweet, Ancient) and Regular's own fixed-at-1 catch-all stay untouched
+// non-contiguous scenarios' own slice of work.js's cumulative roll table — Poison, Large,
+// Companion, and Mimic, each independently, while every OTHER scenario (Metal, Sweet,
+// Ancient, Golden, Taro, Golden Yam) and Regular's own fixed-at-1 catch-all stay untouched
 // and absorb the difference by shrinking. Generalizes the exact mechanism the retired
 // Metal-only metalEncounterChanceFlat perk established (2026-08-23) — widen a scenario's
 // own raw slice width, then shift every LATER scenario's cumulative threshold up by the
 // same running total so each keeps its own width unchanged — just applied to several
 // scattered scenario types instead of one contiguous "Metal onward" run. Sweet Potato and
-// Metal Potato are deliberately excluded from the widened set: both grant a permanent,
-// uncapped-ish stat bonus (Sweet's flat +0.2 workMultiplierAmount 1/3 of the time, Metal's
-// own uncapped workMultiplierReward), and an EV check (2026-08-29, comparing this exact
-// redesign against Spudsprite over 1000 simulated /work calls, chain mechanic included)
-// found doubling Sweet Potato's encounter rate alone let a Rare-tier companion out-earn a
-// Legendary by ~25-30% — the same compounding-snowball shape a since-removed
-// isBoostedHit dampener in handleMetalPotato already had to fix once for Prospector/Metal
-// specifically (see systems/companions.md's Prospector section for that history).
+// Metal Potato are excluded from the widened set for the original 2026-08-29 reason: both
+// grant a permanent, uncapped-ish stat bonus (Sweet's flat +0.2 workMultiplierAmount 1/3
+// of the time, Metal's own uncapped workMultiplierReward), and an EV check (2026-08-29,
+// comparing this exact redesign against Spudsprite over 1000 simulated /work calls, chain
+// mechanic included) found doubling Sweet Potato's encounter rate alone let a Rare-tier
+// companion out-earn a Legendary by ~25-30% — the same compounding-snowball shape a
+// since-removed isBoostedHit dampener in handleMetalPotato already had to fix once for
+// Prospector/Metal specifically (see systems/companions.md's Prospector section for that
+// history). Golden Potato, Taro Trader, and Golden Yam were REMOVED from the widened set
+// (2026-09-23, direct instruction — a nerf) — those three are this game's highest-value
+// scavenge scenarios (the two starch-granting encounters plus the rare high-payout
+// currency drop), and Prospector was making them meaningfully more common than intended
+// for a Rare-tier companion. Poison/Large/Companion/Mimic stay widened since none of them
+// carry that same outsized-payout profile.
 //
 // Computes every scenario's new effective cumulative threshold in ONE pass over the whole
 // table (rather than incremental per-iteration bookkeeping in work.js's own roll loop), so
@@ -34,13 +40,10 @@ const { WORK_SCENARIO_INDICES } = require("../utils/eventFactory");
 // no such companion is equipped — a true no-op, not just "no scenario matches the
 // membership check below).
 const PROSPECTOR_DOUBLED_SCENARIOS = [
-    WORK_SCENARIO_INDICES.GOLDEN,
     WORK_SCENARIO_INDICES.POISON,
     WORK_SCENARIO_INDICES.LARGE,
     WORK_SCENARIO_INDICES.COMPANION,
-    WORK_SCENARIO_INDICES.TARO,
     WORK_SCENARIO_INDICES.MIMIC,
-    WORK_SCENARIO_INDICES.GOLDEN_YAM,
 ];
 
 function getEffectiveScenarioChances(scenarios, multiplierBonus) {
@@ -180,14 +183,27 @@ function getCurrentWeekTag(now = new Date()) {
 // to persist, and whether this exact hit just crossed the milestone threshold for the
 // first time this week (so the lifetime achievement counter only increments once per
 // qualifying week, not on every hit past the threshold).
-function computePoisonMitigation(poisonMitigation, now = new Date()) {
+//
+// hasProspector (2026-09-23, direct instruction — a nerf, "make the maximum penalty
+// reduction for mimic and poison when using prospector 60% instead of allowing 90%") caps
+// the milestone-tier reduction at MAX_REDUCTION instead of letting it jump to
+// MILESTONE_REDUCTION from hit 10 onward. Prospector already widens Poison's own encounter
+// odds (see PROSPECTOR_DOUBLED_SCENARIOS above), so a Prospector owner reaches the 10-hit
+// milestone in a given week far more easily than a player without it — without this cap,
+// Prospector would be quietly turning Poison Potato's own bad-luck-protection ceiling into
+// something it can reach at will, on top of an already-buffed hit rate. milestoneJustReached/
+// milestone20JustReached are deliberately UNAFFECTED — those still fire off the raw hit
+// count alone (the achievement is for surviving that many hits in a week, not for the
+// reward tier), only the `reduction` value itself is capped lower.
+function computePoisonMitigation(poisonMitigation, now = new Date(), hasProspector = false) {
     const weekTag = getCurrentWeekTag(now);
     const isFreshWeek = !poisonMitigation || poisonMitigation.weekTag !== weekTag;
     const priorHitsThisWeek = isFreshWeek ? 0 : (poisonMitigation.weeklyHitCount || 0);
     const hitNumberThisWeek = priorHitsThisWeek + 1;
 
+    const milestoneReduction = hasProspector ? PoisonMitigation.MAX_REDUCTION : PoisonMitigation.MILESTONE_REDUCTION;
     const reduction = hitNumberThisWeek >= PoisonMitigation.MILESTONE_HIT_THRESHOLD
-        ? PoisonMitigation.MILESTONE_REDUCTION
+        ? milestoneReduction
         : Math.min(PoisonMitigation.MAX_REDUCTION, priorHitsThisWeek * PoisonMitigation.REDUCTION_PER_HIT);
 
     return {
@@ -197,7 +213,8 @@ function computePoisonMitigation(poisonMitigation, now = new Date()) {
         // Second, achievement-only tier (2026-09-10) — same exact one-shot-crossing shape
         // as milestoneJustReached above, just at PoisonMitigation.SECOND_MILESTONE_HIT_
         // THRESHOLD (20) instead of 10. Doesn't affect `reduction` at all — that's already
-        // capped at MILESTONE_REDUCTION from hit 10 onward and stays there.
+        // capped at milestoneReduction (MILESTONE_REDUCTION, or MAX_REDUCTION for a
+        // Prospector owner) from hit 10 onward and stays there.
         milestone20JustReached: hitNumberThisWeek === PoisonMitigation.SECOND_MILESTONE_HIT_THRESHOLD
     };
 }
@@ -206,15 +223,17 @@ function computePoisonMitigation(poisonMitigation, now = new Date()) {
 // Potato's bank-percentage loss (2026-09-05, direct instruction — see MimicMitigation's
 // own comment in constants.js). Kept as its own copy rather than a shared helper for the
 // same "mirrored, not shared" reason isSundayEST's comment gives — these are tiny pure
-// functions, not worth a generic abstraction over two callers.
-function computeMimicMitigation(mimicMitigation, now = new Date()) {
+// functions, not worth a generic abstraction over two callers. hasProspector (2026-09-23)
+// mirrors computePoisonMitigation's own param — see that function's comment for why.
+function computeMimicMitigation(mimicMitigation, now = new Date(), hasProspector = false) {
     const weekTag = getCurrentWeekTag(now);
     const isFreshWeek = !mimicMitigation || mimicMitigation.weekTag !== weekTag;
     const priorHitsThisWeek = isFreshWeek ? 0 : (mimicMitigation.weeklyHitCount || 0);
     const hitNumberThisWeek = priorHitsThisWeek + 1;
 
+    const milestoneReduction = hasProspector ? MimicMitigation.MAX_REDUCTION : MimicMitigation.MILESTONE_REDUCTION;
     const reduction = hitNumberThisWeek >= MimicMitigation.MILESTONE_HIT_THRESHOLD
-        ? MimicMitigation.MILESTONE_REDUCTION
+        ? milestoneReduction
         : Math.min(MimicMitigation.MAX_REDUCTION, priorHitsThisWeek * MimicMitigation.REDUCTION_PER_HIT);
 
     return {
@@ -663,7 +682,15 @@ class WorkFactory {
         // written) even for Guinea Pig — see the comment above on why that matters — but
         // its `reduction` is deliberately NOT applied to Guinea Pig's own gain below (see
         // that branch's own comment for why).
-        const { reduction, nextPoisonMitigation, milestoneJustReached, milestone20JustReached } = computePoisonMitigation(userDetails.poisonMitigation);
+        //
+        // hasProspector (2026-09-23, direct instruction — a nerf) caps the milestone
+        // reduction at PoisonMitigation.MAX_REDUCTION (60%) instead of MILESTONE_REDUCTION
+        // (90%) for a Prospector owner specifically — see computePoisonMitigation's own
+        // comment for why. In practice this never overlaps with Guinea Pig's immune branch
+        // above (only one companion can be active at a time), so the two never fight over
+        // the same hit.
+        const hasProspector = companionFactory.getActivePerkValue(userDetails, "specialEncounterMultiplierBonus") > 0;
+        const { reduction, nextPoisonMitigation, milestoneJustReached, milestone20JustReached } = computePoisonMitigation(userDetails.poisonMitigation, undefined, hasProspector);
         const rawLoss = await calculateGainAmount(workGainAmount * 10, Work.MAX_POISON_POTATO, multiplier, effectiveMultiplier);
         const lockoutSeconds = Math.floor(Work.POISON_POTATO_TIMER_INCREASE_SECONDS * (1 - reduction));
 
@@ -750,7 +777,11 @@ class WorkFactory {
 
         const rawLoss = Math.round(userBankStored * Work.MIMIC_POTATO_BANK_PERCENT);
         const cappedLoss = Math.min(rawLoss, Work.MAX_MIMIC_POTATO_LOSS);
-        const { reduction, nextMimicMitigation, milestoneJustReached, milestone20JustReached } = computeMimicMitigation(userDetails.mimicMitigation);
+        // hasProspector (2026-09-23, direct instruction — a nerf) — see
+        // computePoisonMitigation's own comment for why a Prospector owner's milestone
+        // reduction is capped lower than everyone else's.
+        const hasProspector = companionFactory.getActivePerkValue(userDetails, "specialEncounterMultiplierBonus") > 0;
+        const { reduction, nextMimicMitigation, milestoneJustReached, milestone20JustReached } = computeMimicMitigation(userDetails.mimicMitigation, undefined, hasProspector);
         const potatoesLost = -Math.floor(cappedLoss * (1 - reduction));
 
         let workScenarioCounts = userDetails.workScenarioCounts;

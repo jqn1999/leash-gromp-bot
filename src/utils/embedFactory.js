@@ -170,7 +170,9 @@ const PERK_LABELS = {
     // and the isBoostedHit dampener they triggered in handleMetalPotato) were fully
     // removed alongside this redesign — see systems/companions.md's Prospector section
     // for that history if a future Metal-focused companion ever needs it re-added.
-    specialEncounterMultiplierBonus: value => `+${(value * 100).toFixed(0)}% chance to find Golden Potato, Poison Potato, Large Potato, Companion, Taro Trader, Mimic Potato & Golden Yam`,
+    // Golden Potato, Taro Trader, and Golden Yam dropped out of this list (2026-09-23
+    // nerf) — see workFactory.js's PROSPECTOR_DOUBLED_SCENARIOS for why.
+    specialEncounterMultiplierBonus: value => `+${(value * 100).toFixed(0)}% chance to find Poison Potato, Large Potato, Companion & Mimic Potato`,
     bountyRewardPercent: value => `+${(value * 100).toFixed(1)}% Bounty Reward`,
     rivalSuccessChanceFlat: value => `+${(value * 100).toFixed(1)}% Rival Confrontation Success Chance`,
     // Bastion, the Tower Warden (2026-09-13) — boosts Tower's own three value-scaled reward

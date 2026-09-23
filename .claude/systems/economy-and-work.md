@@ -117,7 +117,22 @@ of the loss). Two changes, both in `workFactory.js`:
    | 3rd | -30% |
    | 4th | -45% |
    | 5th–9th | -60% (capped) |
-   | 10th+ | -90% (milestone — see below) |
+   | 10th+ | -90% (milestone — see below; **-60% instead for a Prospector owner, see below**) |
+
+   **Prospector exception (2026-09-23, direct instruction — a nerf: "make the maximum penalty
+   reduction for mimic and poison when using prospector 60% instead of allowing 90%").** A player
+   with Prospector equipped never gets the 10th-hit milestone jump to `MILESTONE_REDUCTION` (90%) —
+   `reduction` stays capped at `MAX_REDUCTION` (60%) even past hit 10, for the rest of that week.
+   Reasoning: Prospector's own `specialEncounterMultiplierBonus` already widens Poison's encounter
+   odds (see the Companions section below), so a Prospector owner reaches the 10-hit weekly
+   milestone far more easily than anyone else — left uncapped, Prospector would be quietly turning
+   the milestone's own bad-luck-protection ceiling into something it could reach at will, stacked on
+   top of an already-buffed hit rate. The milestone *achievement* (`totalPoisonMilestonesReached`,
+   `milestoneJustReached`) still fires off the raw hit count regardless of Prospector — only the
+   `reduction` value itself is capped lower. `workFactory.computePoisonMitigation`'s new third
+   parameter, `hasProspector` (default `false`), carries this — `handlePoisonPotato` computes it via
+   `companionFactory.getActivePerkValue(userDetails, "specialEncounterMultiplierBonus") > 0` before
+   calling in.
 
    `workFactory.getCurrentWeekTag()` computes the current week lazily on every poison hit rather than
    depending on a cron to roll it over — self-contained from Quests'/Guild Contracts' own shared
@@ -410,6 +425,13 @@ standalone mirror of `computePoisonMitigation` (not a shared helper — same "mi
 convention `isMondayEST`'s own comment documents for these tiny per-mechanic pure functions), reading
 a new `mimicMitigation: { weekTag, weeklyHitCount }` user field (defaulted in
 `dynamoHandler.getDefaultUserFields`, same shape as `poisonMitigation`).
+
+**Prospector exception (2026-09-23) mirrors Poison's own, same-day** — see the Prospector
+exception writeup under Poison Potato mitigation above. `computeMimicMitigation` takes the
+identical `hasProspector` third parameter; `handleMimicPotato` caps a Prospector owner's
+`reduction` at `MAX_REDUCTION` (60%) instead of letting the 10th weekly hit jump to
+`MILESTONE_REDUCTION` (90%), for the same reason — Prospector already widens Mimic's own
+encounter odds, so it would otherwise reach this milestone far more easily than anyone else.
 
 Unlike Poison, Mimic has no cooldown lockout to mitigate — the reduction only ever softens the bank
 loss itself, applied *after* the `MAX_MIMIC_POTATO_LOSS` cap (the cap is "the worst a single hit can

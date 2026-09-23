@@ -1011,6 +1011,12 @@ const PoisonMitigation = {
     MAX_REDUCTION: 0.60,     // ...capped here from the 5th hit through the 9th
     // A player unlucky enough to get hit 10 times in one week gets a much bigger break
     // for the rest of that week, plus a one-time achievement — see totalPoisonMilestonesReached.
+    // NOT granted to a Prospector owner (2026-09-23, direct instruction — a nerf): Prospector
+    // already widens Poison's own encounter odds (see PROSPECTOR_DOUBLED_SCENARIOS in
+    // workFactory.js), so it reaches this 10-hit milestone far more easily than anyone else —
+    // workFactory.js's computePoisonMitigation caps a Prospector owner's reduction at
+    // MAX_REDUCTION (60%) instead, even past this threshold. The achievement itself still
+    // fires off the raw hit count either way — only the reward tier is capped lower.
     MILESTONE_HIT_THRESHOLD: 10,
     MILESTONE_REDUCTION: 0.90,
     // Second, achievement-only tier (2026-09-10, Poison/Mimic weekly-milestone achievement
@@ -1035,6 +1041,9 @@ const PoisonMitigation = {
 const MimicMitigation = {
     REDUCTION_PER_HIT: 0.15,
     MAX_REDUCTION: 0.60,
+    // MILESTONE_REDUCTION not granted to a Prospector owner (2026-09-23) — see
+    // PoisonMitigation's own MILESTONE_HIT_THRESHOLD comment for why (mirrored here per this
+    // file's usual "mirrored, not shared" convention for these two mitigation tracks).
     MILESTONE_HIT_THRESHOLD: 10,
     MILESTONE_REDUCTION: 0.90,
     // Second, achievement-only tier — same shape/purpose as PoisonMitigation's own
@@ -1496,7 +1505,7 @@ const Companions = [
         name: "Prospector",
         rarity: CompanionRarity.RARE,
         thumbnailUrl: "https://cdn.discordapp.com/attachments/533073599435636739/1543695898683375788/ODE0NTkyMC5qcGc.png?ex=6a95ce56&is=6a947cd6&hm=b5b18ec4b311ffb254df06b6f908f3e5aae497759f05791a03c6c8cd1c94a06f&",
-        description: "A grizzled prospector with an uncanny nose for where the good stuff is buried — sharply improves your odds of stumbling into Golden Potatoes, Large Potatoes, Poison Potatoes, wandering Companions, Taro Traders, Mimics, and Golden Yams alike, though all that extra digging leaves them a little too worn out for steady work.",
+        description: "A grizzled prospector with an uncanny nose for where the good stuff is buried — sharply improves your odds of stumbling into Large Potatoes, Poison Potatoes, wandering Companions, and Mimics, though all that extra digging leaves them a little too worn out for steady work.",
         scavengeFlavor: "Prospector staked out a promising patch of dirt and worked it methodically, panning and prying until something worthwhile finally came loose.",
         // Redesigned 2026-08-29, direct instruction — the original Metal-only kit
         // (metalSuccessChanceFlat/metalEncounterChanceFlat, fully retired — see
@@ -1512,25 +1521,32 @@ const Companions = [
         // leaving the higher special-hit rate fully felt.
         //
         // specialEncounterMultiplierBonus widens (value 0.75 = "+75% of own base width")
-        // Golden Potato, Poison Potato, Large Potato, Companion, Taro Trader, Mimic
-        // Potato, and Golden Yam — see workFactory.js's PROSPECTOR_DOUBLED_SCENARIOS for
-        // the exact mechanism (generalizes the retired Metal-only widening technique to
-        // several non-contiguous scenarios at once). Scales with companion level like
-        // every other perk (CompanionLeveling.PERK_BONUS_PER_LEVEL), capping at +108.75%
-        // (0.75 * 1.45x) at max level 10 — NOT a round +75%->+150%; the level-10
-        // multiplier itself is 1.45x, not 1.5x. Metal Potato, Sweet Potato, and Ancient
-        // Potato are deliberately EXCLUDED from the widened set — a full DOUBLING (value
-        // 1) of Sweet Potato was in an earlier draft of this redesign until a 1000-/work
-        // EV check (2026-08-29, comparing against Spudsprite, chain mechanic included)
-        // found it let this Rare out-earn a Legendary by ~25-30%, driven entirely by
-        // Sweet's flat +0.2 workMultiplierAmount grant (1/3 of its own rolls) compounding
-        // into every later roll for the rest of the account's life — the same snowball
-        // shape the original Metal-only kit already caused once. Metal itself was left
-        // out of the redesign from the start (its own uncapped workMultiplierReward
-        // carries the identical risk); Ancient was never proposed for inclusion. Every
-        // scenario actually included here pays out a bounded reward (potatoes, starches,
-        // or a companion pull) with no compounding stat grant, so widening them carries
-        // no equivalent snowball risk.
+        // Poison Potato, Large Potato, Companion, and Mimic Potato — see workFactory.js's
+        // PROSPECTOR_DOUBLED_SCENARIOS for the exact mechanism (generalizes the retired
+        // Metal-only widening technique to several non-contiguous scenarios at once).
+        // Scales with companion level like every other perk
+        // (CompanionLeveling.PERK_BONUS_PER_LEVEL), capping at +108.75% (0.75 * 1.45x) at
+        // max level 10 — NOT a round +75%->+150%; the level-10 multiplier itself is
+        // 1.45x, not 1.5x. Metal Potato, Sweet Potato, and Ancient Potato are deliberately
+        // EXCLUDED from the widened set — a full DOUBLING (value 1) of Sweet Potato was in
+        // an earlier draft of this redesign until a 1000-/work EV check (2026-08-29,
+        // comparing against Spudsprite, chain mechanic included) found it let this Rare
+        // out-earn a Legendary by ~25-30%, driven entirely by Sweet's flat +0.2
+        // workMultiplierAmount grant (1/3 of its own rolls) compounding into every later
+        // roll for the rest of the account's life — the same snowball shape the original
+        // Metal-only kit already caused once. Metal itself was left out of the redesign
+        // from the start (its own uncapped workMultiplierReward carries the identical
+        // risk); Ancient was never proposed for inclusion.
+        //
+        // Golden Potato, Taro Trader, and Golden Yam were ALSO REMOVED from the widened
+        // set (2026-09-23, direct instruction — a nerf) — unlike Sweet/Metal's snowball
+        // risk, these three aren't excluded for a compounding-stat reason; they're this
+        // game's highest one-shot-value scavenge scenarios (Taro/Golden Yam both grant
+        // starches, Golden Potato is the rare big currency spike), and Prospector was
+        // making all three meaningfully more common than intended for a Rare-tier
+        // companion. Poison/Large/Companion/Mimic all pay out a bounded, non-compounding
+        // reward (potatoes or a companion pull) without that same outsized-payout profile,
+        // so they stay widened.
         //
         // Value tuned down from an initial 1 (double) to 0.75 after the SAME EV check
         // (chain mechanic — work.js's cooldown-skip auto-chain, capped at

@@ -17096,3 +17096,124 @@ read-only reflections of shared user-record state that exist for other reasons: 
 `tower_champion` achievement definition (checked against `towerChampionCount`, which the bot alone
 ever increments) and `highestTowerFloor` in the personal-records display. Nothing there needs this
 change mirrored into it.
+
+## Prospector nerfed: Golden Potato, Taro Trader, and Golden Yam removed from its widened-odds set (2026-09-23, direct instruction: "Nerf prospector to not include golden yam or golden potato or taro trader")
+
+**What was asked.** Remove Golden Potato, Golden Yam, and Taro Trader from the set of `/work`
+scavenge scenarios Prospector's `specialEncounterMultiplierBonus` perk widens the odds of.
+
+**Root cause / what was found.** Prospector's 2026-08-29 redesign (see `systems/companions.md`'s
+own Prospector section for the full three-round EV history) widened seven scenarios at once: Golden
+Potato, Poison Potato, Large Potato, Companion, Taro Trader, Mimic Potato, and Golden Yam — each
+independently, at `value` fraction `0.75` (+75% of the scenario's own base width), via
+`workFactory.js`'s `getEffectiveScenarioChances`/`PROSPECTOR_DOUBLED_SCENARIOS`. Metal/Sweet/Ancient
+were already excluded from that set for a compounding-stat snowball reason (both grant a permanent,
+uncapped-ish stat bonus that would let repeated hits feed into every future roll). Golden Potato,
+Taro Trader, and Golden Yam carried no such snowball risk (bounded one-shot rewards, same as
+Poison/Large/Companion/Mimic), so they were never flagged by that original EV check — but they are
+this game's highest one-shot-value scavenge scenarios: Taro Trader and Golden Yam are the game's
+*only* two starch sources from `/work` at all, and Golden Potato is the rare big currency spike.
+Widening all three at once (on top of Poison/Large/Companion/Mimic) was making a Rare-tier
+companion, priced at an explicit -8% work-multiplier cost, meaningfully better at farming the
+game's scarcest currency and its biggest single-hit potato payout than that pricing was meant to
+allow for.
+
+**What changed.** `workFactory.js`'s `PROSPECTOR_DOUBLED_SCENARIOS` narrowed from seven entries to
+four: `POISON`, `LARGE`, `COMPANION`, `MIMIC` — `GOLDEN`, `TARO`, and `GOLDEN_YAM` removed. The
+perk's `value` (0.75) and its `workMultiplierPercent` cost (-8%) were left untouched; this is a
+pure scenario-membership change, not a new magnitude needing its own EV pass (unlike the original
+redesign, no fresh simulation was run for this — the change removes scenarios from an
+already-calibrated bonus rather than introducing a new value). `constants.js`'s Prospector
+`description` (player-facing companion info) and the `perks` block's own comment were updated to
+match — the description no longer mentions Golden Potatoes, Taro Traders, or Golden Yams.
+`embedFactory.js`'s `specialEncounterMultiplierBonus` perk-display label (shown wherever a
+companion's active perks are rendered, e.g. `/companions`) updated the same way, from listing all
+seven scenarios to listing only the four still widened.
+
+**Tests.** `workFactory.test.js`'s `getEffectiveScenarioChances` describe block updated: the
+"each doubled scenario's own slice widens" test now asserts against Poison/Large instead of
+Golden/Poison; a new test confirms Golden Potato, Taro Trader, and Golden Yam are no longer widened
+at all (their effective threshold shift is zero — Golden's own chance is unchanged since nothing
+before it in roll order still widens, and Taro/Golden Yam's own slice *width* — not their shifted
+threshold, which still moves from earlier scenarios' widening — stays exactly at base); the
+"untouched scenarios" test extended to cover Golden/Taro/Golden Yam alongside the pre-existing
+Metal/Sweet/Ancient coverage; the "accumulated shift never resets" test's running total recomputed
+for the four-scenario set. Full suite: **112 suites / 2062 tests, all passing** (no test count
+change — existing tests rewritten in place to match the new scenario membership, no new leaf tests
+needed since the "which scenarios are/aren't widened" coverage was already structured as
+per-scenario-set assertions rather than one test per scenario).
+
+**Docs.** `systems/companions.md`'s Prospector table row, the Perk Magnitude Range Guide row, and
+the "Prospector: retired Metal-only kit, then a full 2026-08-29 redesign" section all updated — the
+latter gained a new "Narrowed further 2026-09-23" paragraph explaining the nerf's rationale
+(distinct from the original redesign's snowball-risk exclusions), and a stale claim in the
+redesign's own EV-check writeup ("still ahead of Spudsprite on starches specifically, Taro
+Trader/Golden Yam are both in the widened set") was corrected in place to note that edge no longer
+holds post-nerf, per this repo's "fix stale docs next to the new truth" convention.
+
+**Cross-repo note.** Checked whether `financial-project` has any server-side Prospector perk
+implementation to mirror this into, the same way every other balance change this session has been
+verified rather than assumed against that repo. Unlike the Tower leaderboard change above,
+Prospector's kit IS fully ported there — `gromp-economy/handler.ts`'s `WORK_SCENARIO_ORDER`/
+`PROSPECTOR_WIDENED_SCENARIOS`/`getEffectiveScenarioChances` is a real reimplementation of this
+exact mechanism, actually consumed by that repo's own `/work` roll simulator (not just a read-only
+catalog reference). Ported the same narrowing into it on branch
+`claude/nerf-prospector-widened-scenarios` (`PROSPECTOR_WIDENED_SCENARIOS` 7 → 4 entries, same
+scenario removals, comment rewritten to match), pushed to `origin`, and logged as "Bot caught up
+#78" in that repo's own `NOTES_GROMP_WEB_INTEGRATION.md` — no PR opened yet (not requested).
+
+## Prospector follow-up: Poison/Mimic milestone reduction capped at 60% instead of 90% (2026-09-23, direct instruction: "Also make the maximum penalty reduction for mimic and poison when using prospector 60% instead of allowing 90%")
+
+**What was asked.** Same-day follow-up to the widened-odds nerf above. A player with Prospector
+equipped should never get Poison/Mimic's weekly 10-hit bad-luck-protection milestone jump to 90%
+reduction — capped at 60% (the same ceiling everyone else hits on the 5th–9th hit) instead.
+
+**Root cause / what was found.** The scenario-narrowing nerf above removed Golden Potato/Taro
+Trader/Golden Yam from Prospector's widened set, but deliberately left Poison and Mimic Potato
+widened (see that entry's own reasoning — they don't carry the same outsized-payout profile as the
+three removed scenarios). That leaves a related, un-addressed gap: `PoisonMitigation`/
+`MimicMitigation` (`constants.js`) escalate a repeat hit's loss/lockout reduction from 0% on the
+1st hit up to a 60%-capped plateau by the 5th–9th, then jump to a 90% reduction from the 10th hit
+onward for the rest of that week (`MILESTONE_HIT_THRESHOLD`/`MILESTONE_REDUCTION`). Because
+Prospector widens Poison/Mimic's own encounter odds (`PROSPECTOR_DOUBLED_SCENARIOS`), a Prospector
+owner reaches that 10-hit milestone in a given week substantially faster than a player without it
+— meaning Prospector wasn't just making Poison/Mimic land more often, it was also getting those
+extra hits into the cheap 90%-reduction zone sooner, stacking two separate advantages from the
+same perk on the exact scenarios that perk itself makes more common.
+
+**What changed.** `workFactory.js`'s `computePoisonMitigation`/`computeMimicMitigation` (pure
+functions) each gained a third parameter, `hasProspector = false`. When true, the milestone-tier
+reduction is `MAX_REDUCTION` (60%) instead of `MILESTONE_REDUCTION` (90%) — `Math.min`-capped the
+same way pre-milestone hits already are, just applied to the post-milestone branch too. Achievement
+flags (`milestoneJustReached`/`milestone20JustReached`, and the `totalPoisonMilestonesReached`/
+`totalMimicMilestonesReached` counters they drive) are deliberately UNCHANGED — a Prospector owner
+still gets credit for surviving 10/20 hits in a week, only the reward tier is capped lower.
+`handlePoisonPotato`/`handleMimicPotato` compute `hasProspector` via
+`companionFactory.getActivePerkValue(userDetails, "specialEncounterMultiplierBonus") > 0` right
+before calling in — the same perk-presence check `work.js` already uses to widen Prospector's own
+scenario odds, reused rather than duplicated. No `embedFactory.js` change was needed — the
+mitigation embed already renders `mitigationInfo.reduction` dynamically, so the cap is reflected
+automatically wherever it's already displayed.
+
+**Tests.** `workFactory.test.js` gained 7 new tests: 4 pure-function tests (2 each on
+`computePoisonMitigation`/`computeMimicMitigation` — the 10th hit caps at `MAX_REDUCTION` with
+`hasProspector`, and stays capped there past hit 25, never reaching `MILESTONE_REDUCTION`; plus a
+"no change before the milestone" sanity check on the Poison side) and 2 end-to-end tests (one each
+on `handlePoisonPotato`/`handleMimicPotato`, going through the real
+`companionFactory.getActivePerkValue` lookup with an actual Prospector-equipped fixture, not just
+the pure function in isolation) confirming the achievement still fires while the reduction itself
+caps lower. Full suite: **112 suites / 2070 tests, all passing** (net +7 new tests, 0 broken).
+
+**Docs.** `constants.js`'s `PoisonMitigation`/`MimicMitigation` comments and `workFactory.js`'s
+`computePoisonMitigation`/`computeMimicMitigation` comments updated to explain the Prospector
+exception. `systems/economy-and-work.md`'s "Poison Potato mitigation" table and its Mimic Potato
+mitigation paragraph both gained a Prospector-exception writeup. `systems/companions.md`'s
+Prospector section gained a "Same-day follow-up nerf" paragraph right after the widened-odds nerf
+entry, tying the two together.
+
+**Cross-repo note.** Checked `financial-project` the same way as the widened-odds nerf above —
+its `gromp-economy/handler.ts` has real reimplementations of both `computePoisonMitigation` and
+`computeMimicMitigation` (not read-only references), each actually consumed by that repo's own
+`/work` handler's poison/mimic branches. Ported the identical `hasProspector` parameter and both
+call sites into it on the same `claude/nerf-prospector-widened-scenarios` branch, pushed to
+`origin`, and logged as "Bot caught up #79" in `NOTES_GROMP_WEB_INTEGRATION.md`.
