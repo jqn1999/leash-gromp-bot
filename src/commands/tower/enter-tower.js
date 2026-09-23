@@ -67,33 +67,48 @@ async function processRewardPayouts(interaction, userId, rewards, username, user
         });
         return;
     }
-    let userMultiplier = userDetails.workMultiplierAmount;
-    let userPassiveAmount = userDetails.passiveAmount;
-    let userBankCapacity = userDetails.bankCapacity;
+    // Batched into ONE updateUserFields call (2026-09-23, root-caused from a player's
+    // base stats — raw minus sweetPotatoBuffs minus regradeAmount — silently drifting off
+    // a valid shop tier, breaking /buy's and /regrade's exact-match tier lookups). This
+    // used to be four SEPARATE, sequential, unconditional single-field updateUserDatabase
+    // calls (workMultiplierAmount, passiveAmount, bankCapacity, then sweetPotatoBuffs) plus
+    // two addUserDatabase calls for potatoes/totalEarnings — updateUserDatabase swallows
+    // any DynamoDB error via a bare .catch (just console.debug, never thrown, never
+    // checked by this caller), so if any ONE of those six calls failed transiently after
+    // an earlier one had already landed, the raw stat total and sweetPotatoBuffs
+    // permanently desynced — exactly the invariant every other reward handler in this
+    // codebase protects by batching SET+ADD into a single UpdateItem call (see
+    // handleMetalPotato/handleSweetPotato in workFactory.js, raidFactory.handleStatSplit,
+    // questFactory's weekly reward write). One atomic call removes the partial-failure
+    // window entirely — either the whole run's reward lands together, or none of it does.
     let sweetPotatoBuffs = userDetails.sweetPotatoBuffs;
+    const setFields = {};
+    const addFields = {};
 
     if (rewards[tC.PAYOUT.POTATOES]) {
-        await dynamoHandler.addUserDatabase(userId, "potatoes", rewards[tC.PAYOUT.POTATOES]);
-        await dynamoHandler.addUserDatabase(userId, "totalEarnings", rewards[tC.PAYOUT.POTATOES])
+        addFields.potatoes = rewards[tC.PAYOUT.POTATOES];
+        addFields.totalEarnings = rewards[tC.PAYOUT.POTATOES];
     }
     if (rewards[tC.PAYOUT.WORK_MULTIPLIER]) {
-        userMultiplier += rewards[tC.PAYOUT.WORK_MULTIPLIER]
+        setFields.workMultiplierAmount = userDetails.workMultiplierAmount + rewards[tC.PAYOUT.WORK_MULTIPLIER];
         sweetPotatoBuffs.workMultiplierAmount += rewards[tC.PAYOUT.WORK_MULTIPLIER];
-        await dynamoHandler.updateUserDatabase(userId, "workMultiplierAmount", userMultiplier);
     }
     if (rewards[tC.PAYOUT.PASSIVE_INCOME]) {
-        userPassiveAmount += rewards[tC.PAYOUT.PASSIVE_INCOME]
+        setFields.passiveAmount = userDetails.passiveAmount + rewards[tC.PAYOUT.PASSIVE_INCOME];
         sweetPotatoBuffs.passiveAmount += rewards[tC.PAYOUT.PASSIVE_INCOME];
-        await dynamoHandler.updateUserDatabase(userId, "passiveAmount", userPassiveAmount);
     }
     if (rewards[tC.PAYOUT.BANK_CAPACITY]) {
-        userBankCapacity += rewards[tC.PAYOUT.BANK_CAPACITY]
+        setFields.bankCapacity = userDetails.bankCapacity + rewards[tC.PAYOUT.BANK_CAPACITY];
         sweetPotatoBuffs.bankCapacity += rewards[tC.PAYOUT.BANK_CAPACITY];
-        await dynamoHandler.updateUserDatabase(userId, "bankCapacity", userBankCapacity);
     }
     if (rewards[tC.PAYOUT.WORK_MULTIPLIER] || rewards[tC.PAYOUT.PASSIVE_INCOME] || rewards[tC.PAYOUT.BANK_CAPACITY]) {
-        await dynamoHandler.updateUserDatabase(userId, "sweetPotatoBuffs", sweetPotatoBuffs);
+        setFields.sweetPotatoBuffs = sweetPotatoBuffs;
     }
+
+    if (Object.keys(setFields).length > 0 || Object.keys(addFields).length > 0) {
+        await dynamoHandler.updateUserFields(userId, setFields, addFields);
+    }
+
     return processTowerCompanionRewards(userId, userDetails, floor, elitesSurvivedCount, towerCompanionHits, wardUsed);
 }
 
