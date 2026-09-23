@@ -70,11 +70,12 @@ describe('getEffectiveScenarioChances', () => {
     });
 
     // Prospector's specialEncounterMultiplierBonus (2026-08-29 redesign, narrowed
-    // 2026-09-23 — direct instruction, a nerf) doubles (bonus=1) Poison, Large, Companion,
-    // and Mimic — each independently, while Metal/Sweet/Ancient stay untouched (original
-    // snowball-risk exclusion) and Golden/Taro/Golden Yam ALSO stay untouched now (removed
-    // as this game's highest one-shot-value scavenge scenarios). See workFactory.js's
-    // PROSPECTOR_DOUBLED_SCENARIOS for why.
+    // 2026-09-23 — direct instruction, a nerf, then Taro Trader added back the same day —
+    // direct instruction) doubles (bonus=1) Poison, Large, Companion, Taro, and Mimic —
+    // each independently, while Metal/Sweet/Ancient stay untouched (original snowball-risk
+    // exclusion) and Golden/Golden Yam stay untouched (removed as this game's highest
+    // one-shot-value scavenge scenarios). See workFactory.js's PROSPECTOR_DOUBLED_SCENARIOS
+    // for why.
     test('each doubled scenario\'s OWN slice widens to exactly double its base width', () => {
         const effective = getEffectiveScenarioChances(REAL_SCENARIOS, 1);
         // Poison: base width .01 (.011-.001) -> effective width .02 (chance .011 -> .021,
@@ -85,20 +86,33 @@ describe('getEffectiveScenarioChances', () => {
         expect(chanceFor(effective, WORK_SCENARIO_INDICES.LARGE)).toBeCloseTo(.051 + .01 + .04);
     });
 
-    test('Golden Potato, Taro Trader, and Golden Yam are no longer widened at all, even with a bonus active', () => {
+    // Taro Trader was removed from the widened set in the same 2026-09-23 nerf that removed
+    // Golden Potato/Golden Yam, then added back the same day (direct instruction) — Golden
+    // Potato and Golden Yam remain excluded (this game's highest one-shot-value scavenge
+    // scenarios), Taro Trader does not.
+    test('Taro Trader is widened again — its own slice doubles like Poison/Large/Companion/Mimic', () => {
+        const effective = getEffectiveScenarioChances(REAL_SCENARIOS, 1);
+        // Taro's own base width is .02 (.116-.096); shifted up by Poison+Large+Companion's
+        // own widening (.01+.04+.015=.065 accumulated by the time Taro is reached), then
+        // widened itself by another +.02.
+        const shiftThroughCompanion = .01 + .04 + .015;
+        expect(chanceFor(effective, WORK_SCENARIO_INDICES.TARO)).toBeCloseTo(.116 + shiftThroughCompanion + .02);
+        const taroWidth = chanceFor(effective, WORK_SCENARIO_INDICES.TARO) - chanceFor(effective, WORK_SCENARIO_INDICES.COMPANION);
+        expect(taroWidth).toBeCloseTo(.04); // double its own .02 base width
+    });
+
+    test('Golden Potato and Golden Yam are no longer widened at all, even with a bonus active', () => {
         const effective = getEffectiveScenarioChances(REAL_SCENARIOS, 1);
         // Golden is the very first scenario in roll order, so if it's genuinely untouched
         // its threshold must equal its own unwidened base chance exactly.
         expect(chanceFor(effective, WORK_SCENARIO_INDICES.GOLDEN)).toBeCloseTo(.001);
-        // Taro still shifts up by whatever widening came before it (Poison, Large,
-        // Companion), but its OWN width must stay unchanged.
-        const shiftThroughCompanion = .01 + .04 + .015; // poison+large+companion, each doubled
-        expect(chanceFor(effective, WORK_SCENARIO_INDICES.TARO)).toBeCloseTo(.116 + shiftThroughCompanion);
-        const taroWidth = chanceFor(effective, WORK_SCENARIO_INDICES.TARO) - chanceFor(effective, WORK_SCENARIO_INDICES.COMPANION);
-        expect(taroWidth).toBeCloseTo(.116 - .096); // raw base width, unshifted
+        // Golden Yam's own width must stay unchanged even though its threshold shifts up by
+        // everything widened before it (Poison/Large/Companion/Taro/Mimic).
+        const goldenYamWidth = chanceFor(effective, WORK_SCENARIO_INDICES.GOLDEN_YAM) - chanceFor(effective, WORK_SCENARIO_INDICES.MIMIC);
+        expect(goldenYamWidth).toBeCloseTo(.001); // raw base width, unshifted
     });
 
-    test('untouched scenarios (Metal, Sweet, Ancient, Golden, Taro, Golden Yam) still shift up by whatever widening came before them, but their OWN width stays unchanged', () => {
+    test('untouched scenarios (Metal, Sweet, Ancient, Golden, Golden Yam) still shift up by whatever widening came before them, but their OWN width stays unchanged', () => {
         const effective = getEffectiveScenarioChances(REAL_SCENARIOS, 1);
         // Accumulated shift through Large (Poison .01 + Large .04, each doubled = +.05
         // total shift by the time Metal is reached — Golden contributes nothing now).
@@ -120,9 +134,9 @@ describe('getEffectiveScenarioChances', () => {
     test('the accumulated shift never resets between doubled scenarios — it carries through untouched ones too', () => {
         const effective = getEffectiveScenarioChances(REAL_SCENARIOS, 1);
         // By Golden Yam (well after the last doubled scenario, Mimic), the shift includes
-        // only Poison+Large+Companion+Mimic (each doubled) — Metal/Sweet/Ancient/Golden/
-        // Taro's own widths are skipped but don't reset the running total.
-        const totalDoubledWidth = .01 + .04 + .015 + .01; // poison+large+companion+mimic
+        // Poison+Large+Companion+Taro+Mimic (each doubled) — Metal/Sweet/Ancient/Golden's
+        // own widths are skipped but don't reset the running total.
+        const totalDoubledWidth = .01 + .04 + .015 + .02 + .01; // poison+large+companion+taro+mimic
         expect(chanceFor(effective, WORK_SCENARIO_INDICES.GOLDEN_YAM)).toBeCloseTo(.1275 + totalDoubledWidth);
     });
 });
