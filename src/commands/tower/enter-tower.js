@@ -211,6 +211,10 @@ module.exports = {
                 userId,
                 username,
                 floor,
+                // Ranking tiebreaker chain (2026-09-23, direct instruction): floor, then
+                // elitesKilled, then potatoes — see towerLeaderboardFactory.js's
+                // sortTowerLeaderboardEntries for where that's actually applied.
+                elitesKilled: elitesSurvivedCount,
                 potatoes: rewards[tC.PAYOUT.POTATOES] || 0,
                 workMultiplier: rewards[tC.PAYOUT.WORK_MULTIPLIER] || 0,
                 passiveIncome: rewards[tC.PAYOUT.PASSIVE_INCOME] || 0,

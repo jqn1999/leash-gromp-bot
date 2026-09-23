@@ -80,6 +80,28 @@ describe('/leaderboard tower-leaderboard option', () => {
         expect(interaction.editReply).toHaveBeenCalledWith({ embeds: [embedFactoryInstance.createTowerLeaderboardEmbed.mock.results[0].value] });
     });
 
+    // Ranking order (2026-09-23, direct instruction): floor, then elitesKilled, then
+    // potatoes — reuses towerLeaderboardFactory.js's own sortTowerLeaderboardEntries (not
+    // mocked in this file), so this exercises the real shared comparator through the
+    // command, not a re-implementation of it.
+    test('breaks a floor tie by elitesKilled, then by potatoes', async () => {
+        const entries = [
+            { userId: 'a', username: 'A', floor: 20, elitesKilled: 1, potatoes: 999999 },
+            { userId: 'b', username: 'B', floor: 20, elitesKilled: 3, potatoes: 0 },
+            { userId: 'c', username: 'C', floor: 20, elitesKilled: 3, potatoes: 500 },
+        ];
+        dynamoHandler.getTowerLeaderboard.mockResolvedValue(entries);
+        const interaction = fakeInteraction('tower-leaderboard');
+
+        await callback({}, interaction);
+
+        expect(embedFactoryInstance.createTowerLeaderboardEmbed).toHaveBeenCalledWith([
+            entries[2], // C: floor 20, 3 kills, 500 potatoes
+            entries[1], // B: floor 20, 3 kills, 0 potatoes
+            entries[0], // A: floor 20, 1 kill
+        ]);
+    });
+
     test('does not mutate the array returned by getTowerLeaderboard', async () => {
         const entries = [
             { userId: 'a', displayName: 'A', floor: 3 },

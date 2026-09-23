@@ -5,6 +5,43 @@ function roundToIncrement(value, increment) {
     return Math.round(value / increment) * increment;
 }
 
+// Ranking order (2026-09-23, direct instruction): floor reached first, then elites killed,
+// then potatoes earned as the final tiebreaker — a deeper run always outranks a shallower
+// one regardless of the other two, and a tie on floor is broken by whoever killed more
+// Elites on the way, before potatoes ever come into it. Shared by both the in-progress
+// standings view (leaderboard.js's runTowerLeaderboard) and the actual payout ranking
+// below, so the two can never drift onto different orderings of the same data.
+//
+// Old-leaderboard compatibility (same-day follow-up, direct instruction: "if theres no
+// elites killed count for any user, we're still on the old tower leaderboard and to still
+// rank that one in order of floor and time it came in ... going forward it would work on
+// the new system") — this field ships mid-day, so a leaderboard that's already
+// accumulated entries from earlier today has zero of them carrying `elitesKilled` at all
+// (not 0 — genuinely `undefined`, never recorded). Treating that as "0 kills" and running
+// it through the new 3-key sort would silently rewrite today's still-in-progress ranking
+// using a tiebreaker nobody's entry actually has real data for. Instead: if NOT ONE entry
+// in this batch has `elitesKilled` recorded yet, fall back to the exact old comparator
+// (floor only) — `Array.prototype.sort` has been stable since ES2019, so ties on floor
+// naturally keep `entries`' own push order, which is chronological arrival order
+// (`recordTowerLeaderboardEntry` always appends), satisfying "time it came in" with no
+// extra bookkeeping. The moment even one entry has the field (the first entry recorded
+// after this shipped, same day or any later day), the whole batch switches to the new
+// floor -> elitesKilled -> potatoes chain — `|| 0` on the other (still-old) entries in that
+// mixed batch is a deliberate, temporary same-day-transition compromise, not a bug: every
+// leaderboard is wiped clean at the next daily reset anyway, so this mixed state can only
+// ever exist for the remainder of today.
+function sortTowerLeaderboardEntries(entries) {
+    const anyElitesKilledRecorded = entries.some(e => e.elitesKilled !== undefined);
+    if (!anyElitesKilledRecorded) {
+        return [...entries].sort((a, b) => b.floor - a.floor);
+    }
+    return [...entries].sort((a, b) =>
+        b.floor - a.floor
+        || (b.elitesKilled || 0) - (a.elitesKilled || 0)
+        || (b.potatoes || 0) - (a.potatoes || 0)
+    );
+}
+
 // A "prize" should never come out negative even if a run's net total for some reward
 // type ended up negative (e.g. an unlucky string of Encounter-floor penalties) — a
 // leaderboard bonus only ever adds.
@@ -27,7 +64,7 @@ class TowerLeaderboardFactory {
         const entries = await dynamoHandler.getTowerLeaderboard();
         if (entries.length === 0) return [];
 
-        const ranked = [...entries].sort((a, b) => b.floor - a.floor);
+        const ranked = sortTowerLeaderboardEntries(entries);
         const winners = ranked.slice(0, TowerLeaderboard.TIER_PERCENTAGES.length);
 
         const results = [];
@@ -77,6 +114,7 @@ class TowerLeaderboardFactory {
                 place: index + 1,
                 username: entry.username,
                 floor: entry.floor,
+                elitesKilled: entry.elitesKilled || 0,
                 bonus
             });
         }
@@ -87,5 +125,6 @@ class TowerLeaderboardFactory {
 }
 
 module.exports = {
-    TowerLeaderboardFactory
+    TowerLeaderboardFactory,
+    sortTowerLeaderboardEntries
 }

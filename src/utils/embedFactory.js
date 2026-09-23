@@ -4614,9 +4614,12 @@ class EmbedFactory {
             });
         } else {
             sortedEntries.slice(0, 5).forEach((entry, index) => {
+                // Elites Killed/Potatoes shown alongside Floor now that they're real
+                // ranking tiebreakers (2026-09-23) — visible even when they didn't decide
+                // this particular entry's rank, so ties further down the list are legible.
                 entryList.push({
                     name: `${rankLabel(index)} ${entry.username}`,
-                    value: `Floor ${entry.floor.toLocaleString()}`,
+                    value: `Floor ${entry.floor.toLocaleString()} • ${(entry.elitesKilled || 0).toLocaleString()} Elites Killed • ${(entry.potatoes || 0).toLocaleString()} potatoes`,
                     inline: false,
                 });
             });
@@ -4642,7 +4645,7 @@ class EmbedFactory {
             if (winner.bonus.passiveIncome > 0) bonusParts.push(`+${winner.bonus.passiveIncome.toLocaleString()} passive income`);
             if (winner.bonus.bankCapacity > 0) bonusParts.push(`+${winner.bonus.bankCapacity.toLocaleString()} bank capacity`);
             return {
-                name: `${medals[index] || ''} #${winner.place} ${winner.username} — Floor ${winner.floor.toLocaleString()}`,
+                name: `${medals[index] || ''} #${winner.place} ${winner.username} — Floor ${winner.floor.toLocaleString()} (${winner.elitesKilled.toLocaleString()} Elites Killed)`,
                 value: bonusParts.length > 0 ? bonusParts.join('\n') : "No bonus earned this run",
                 inline: false,
             };

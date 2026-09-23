@@ -1,6 +1,7 @@
 const { ApplicationCommandOptionType } = require("discord.js");
 const dynamoHandler = require("../../utils/dynamoHandler");
 const { EmbedFactory } = require("../../utils/embedFactory");
+const { sortTowerLeaderboardEntries } = require("../../utils/towerLeaderboardFactory");
 const embedFactory = new EmbedFactory();
 
 function findUserIndex(allUsers, userId) {
@@ -24,7 +25,10 @@ function findUserIndex(allUsers, userId) {
 // choice added, not a new consolidation mechanism.
 async function runTowerLeaderboard(interaction) {
     const entries = await dynamoHandler.getTowerLeaderboard();
-    const sorted = [...entries].sort((a, b) => b.floor - a.floor);
+    // Ranking order: floor, then elitesKilled, then potatoes — see
+    // towerLeaderboardFactory.js's sortTowerLeaderboardEntries, shared with the actual
+    // payout ranking so this preview can't drift onto a different ordering.
+    const sorted = sortTowerLeaderboardEntries(entries);
     const embed = embedFactory.createTowerLeaderboardEmbed(sorted);
     interaction.editReply({ embeds: [embed] });
 }

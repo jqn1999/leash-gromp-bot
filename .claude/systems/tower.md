@@ -156,6 +156,28 @@ when `!died`. A run that reaches floor 39 and then loses an Elite doesn't rank a
 it went deeper than someone's careful floor-25 survival — dying forfeits leaderboard eligibility
 entirely, which is the intended incentive (survive deliberately, don't just brute-force floors).
 
+**Ranking order** (2026-09-23, direct instruction): floor reached first, then `elitesKilled`
+(`this.elitesSurvivedCount` from `towerFactory.js`, incremented once per Elite fight actually won —
+see "Tower Pet" below), then potatoes earned as the final tiebreaker. `towerLeaderboardFactory.js`'s
+`sortTowerLeaderboardEntries` is the single shared comparator — both the in-progress standings view
+(`/leaderboard tower-leaderboard`) and the actual payout ranking (`payoutWinners`) call it, so the
+two can never drift onto different orderings of the same data. A deeper run always outranks a
+shallower one regardless of the other two keys; a tie on floor is broken by kills, then by potatoes.
+
+**Old-leaderboard compatibility, same day this shipped.** `elitesKilled` is a brand-new field on
+each `recordTowerLeaderboardEntry` call — a leaderboard that already accumulated entries earlier
+today (before this deployed) has entries with NO `elitesKilled` at all, not `0`. Running that mixed
+data through the new 3-key sort would fabricate a tiebreaker nobody's older entry actually earned.
+`sortTowerLeaderboardEntries` checks first: if **not one entry** in the current batch has
+`elitesKilled` recorded, it falls back to the exact old comparator (floor only) — `Array.sort` has
+been stable since ES2019, so a floor tie naturally keeps `entries`' own push order, which is
+chronological arrival order, satisfying "rank by floor and time it came in" for a still-in-progress
+old-format leaderboard with zero extra bookkeeping. The moment even one entry in the batch has
+`elitesKilled` (the first entry recorded after this shipped, same day or any later day), the whole
+batch switches to the new chain, treating any still-missing entries as 0 kills — a deliberate,
+temporary same-day-transition compromise, not a bug, since every leaderboard is wiped clean at the
+next daily reset regardless.
+
 **Two separate payouts, two different times.** The run's own reward (`processRewardPayouts` in
 `enter-tower.js`) is credited immediately when the run ends, exactly as before this feature existed.
 The *leaderboard* bonus is a second, later payout — the day's survived entries (stored in the stats
@@ -204,8 +226,9 @@ other non-`/work`-triggered achievement.
 
 **`/leaderboard tower-leaderboard`** (folded into `/leaderboard` 2026-09-20, previously its own
 top-level `/tower-leaderboard` command — see roadmap.md's command-cap headroom entry) shows the
-current day's in-progress standings (top 5, survived entries only, sorted by floor) at any time —
-separate from the payout announcement, which only fires once, at the reset.
+current day's in-progress standings (top 5, survived entries only, ranked per "Ranking order"
+above) at any time — separate from the payout announcement, which only fires once, at the reset.
+Each entry line shows Floor, Elites Killed, and potatoes earned, not just floor.
 
 ---
 
