@@ -737,6 +737,23 @@ simulation was run for this pass (unlike the three-round check above) — the ch
 scenario-count reduction (7 → 4) on an already-tuned bonus value, not a new value needing its own
 calibration.
 
+**Same-day follow-up nerf (2026-09-23, direct instruction: "make the maximum penalty reduction for
+mimic and poison when using prospector 60% instead of allowing 90%")** — closes a related gap the
+narrowing above didn't touch. Prospector still widens Poison and Mimic's own encounter odds (both
+stayed in the widened set), which means a Prospector owner reaches Poison/Mimic's weekly 10-hit
+bad-luck-protection milestone (see `economy-and-work.md`'s "Poison Potato mitigation" section) far
+more easily than anyone else — and that milestone, once reached, jumps the loss/lockout reduction
+from a 60% cap all the way to 90% for the rest of the week. Left alone, Prospector would be
+quietly turning that milestone ceiling into something it could reach at will, on top of an
+already-buffed hit rate. `workFactory.computePoisonMitigation`/`computeMimicMitigation` both gained
+a `hasProspector` parameter (default `false`) that caps `reduction` at `MAX_REDUCTION` (60%)
+instead of `MILESTONE_REDUCTION` (90%) once true, wired up in `handlePoisonPotato`/
+`handleMimicPotato` via `companionFactory.getActivePerkValue(userDetails,
+"specialEncounterMultiplierBonus") > 0`. The milestone *achievement* itself
+(`totalPoisonMilestonesReached`/`totalMimicMilestonesReached`, and their 20-hit second tiers) still
+fires off the raw hit count regardless of Prospector — this only caps the reward tier, not whether
+the achievement triggers.
+
 ### Yamimic, the Thousand-Faced (Heirloom, 2026-09-06, direct instruction)
 
 A yam that's spent so long around Mimic Potatoes it picked up the habit — it doesn't have a shape

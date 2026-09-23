@@ -183,14 +183,27 @@ function getCurrentWeekTag(now = new Date()) {
 // to persist, and whether this exact hit just crossed the milestone threshold for the
 // first time this week (so the lifetime achievement counter only increments once per
 // qualifying week, not on every hit past the threshold).
-function computePoisonMitigation(poisonMitigation, now = new Date()) {
+//
+// hasProspector (2026-09-23, direct instruction — a nerf, "make the maximum penalty
+// reduction for mimic and poison when using prospector 60% instead of allowing 90%") caps
+// the milestone-tier reduction at MAX_REDUCTION instead of letting it jump to
+// MILESTONE_REDUCTION from hit 10 onward. Prospector already widens Poison's own encounter
+// odds (see PROSPECTOR_DOUBLED_SCENARIOS above), so a Prospector owner reaches the 10-hit
+// milestone in a given week far more easily than a player without it — without this cap,
+// Prospector would be quietly turning Poison Potato's own bad-luck-protection ceiling into
+// something it can reach at will, on top of an already-buffed hit rate. milestoneJustReached/
+// milestone20JustReached are deliberately UNAFFECTED — those still fire off the raw hit
+// count alone (the achievement is for surviving that many hits in a week, not for the
+// reward tier), only the `reduction` value itself is capped lower.
+function computePoisonMitigation(poisonMitigation, now = new Date(), hasProspector = false) {
     const weekTag = getCurrentWeekTag(now);
     const isFreshWeek = !poisonMitigation || poisonMitigation.weekTag !== weekTag;
     const priorHitsThisWeek = isFreshWeek ? 0 : (poisonMitigation.weeklyHitCount || 0);
     const hitNumberThisWeek = priorHitsThisWeek + 1;
 
+    const milestoneReduction = hasProspector ? PoisonMitigation.MAX_REDUCTION : PoisonMitigation.MILESTONE_REDUCTION;
     const reduction = hitNumberThisWeek >= PoisonMitigation.MILESTONE_HIT_THRESHOLD
-        ? PoisonMitigation.MILESTONE_REDUCTION
+        ? milestoneReduction
         : Math.min(PoisonMitigation.MAX_REDUCTION, priorHitsThisWeek * PoisonMitigation.REDUCTION_PER_HIT);
 
     return {
@@ -200,7 +213,8 @@ function computePoisonMitigation(poisonMitigation, now = new Date()) {
         // Second, achievement-only tier (2026-09-10) — same exact one-shot-crossing shape
         // as milestoneJustReached above, just at PoisonMitigation.SECOND_MILESTONE_HIT_
         // THRESHOLD (20) instead of 10. Doesn't affect `reduction` at all — that's already
-        // capped at MILESTONE_REDUCTION from hit 10 onward and stays there.
+        // capped at milestoneReduction (MILESTONE_REDUCTION, or MAX_REDUCTION for a
+        // Prospector owner) from hit 10 onward and stays there.
         milestone20JustReached: hitNumberThisWeek === PoisonMitigation.SECOND_MILESTONE_HIT_THRESHOLD
     };
 }
@@ -209,15 +223,17 @@ function computePoisonMitigation(poisonMitigation, now = new Date()) {
 // Potato's bank-percentage loss (2026-09-05, direct instruction — see MimicMitigation's
 // own comment in constants.js). Kept as its own copy rather than a shared helper for the
 // same "mirrored, not shared" reason isSundayEST's comment gives — these are tiny pure
-// functions, not worth a generic abstraction over two callers.
-function computeMimicMitigation(mimicMitigation, now = new Date()) {
+// functions, not worth a generic abstraction over two callers. hasProspector (2026-09-23)
+// mirrors computePoisonMitigation's own param — see that function's comment for why.
+function computeMimicMitigation(mimicMitigation, now = new Date(), hasProspector = false) {
     const weekTag = getCurrentWeekTag(now);
     const isFreshWeek = !mimicMitigation || mimicMitigation.weekTag !== weekTag;
     const priorHitsThisWeek = isFreshWeek ? 0 : (mimicMitigation.weeklyHitCount || 0);
     const hitNumberThisWeek = priorHitsThisWeek + 1;
 
+    const milestoneReduction = hasProspector ? MimicMitigation.MAX_REDUCTION : MimicMitigation.MILESTONE_REDUCTION;
     const reduction = hitNumberThisWeek >= MimicMitigation.MILESTONE_HIT_THRESHOLD
-        ? MimicMitigation.MILESTONE_REDUCTION
+        ? milestoneReduction
         : Math.min(MimicMitigation.MAX_REDUCTION, priorHitsThisWeek * MimicMitigation.REDUCTION_PER_HIT);
 
     return {
@@ -666,7 +682,15 @@ class WorkFactory {
         // written) even for Guinea Pig — see the comment above on why that matters — but
         // its `reduction` is deliberately NOT applied to Guinea Pig's own gain below (see
         // that branch's own comment for why).
-        const { reduction, nextPoisonMitigation, milestoneJustReached, milestone20JustReached } = computePoisonMitigation(userDetails.poisonMitigation);
+        //
+        // hasProspector (2026-09-23, direct instruction — a nerf) caps the milestone
+        // reduction at PoisonMitigation.MAX_REDUCTION (60%) instead of MILESTONE_REDUCTION
+        // (90%) for a Prospector owner specifically — see computePoisonMitigation's own
+        // comment for why. In practice this never overlaps with Guinea Pig's immune branch
+        // above (only one companion can be active at a time), so the two never fight over
+        // the same hit.
+        const hasProspector = companionFactory.getActivePerkValue(userDetails, "specialEncounterMultiplierBonus") > 0;
+        const { reduction, nextPoisonMitigation, milestoneJustReached, milestone20JustReached } = computePoisonMitigation(userDetails.poisonMitigation, undefined, hasProspector);
         const rawLoss = await calculateGainAmount(workGainAmount * 10, Work.MAX_POISON_POTATO, multiplier, effectiveMultiplier);
         const lockoutSeconds = Math.floor(Work.POISON_POTATO_TIMER_INCREASE_SECONDS * (1 - reduction));
 
@@ -753,7 +777,11 @@ class WorkFactory {
 
         const rawLoss = Math.round(userBankStored * Work.MIMIC_POTATO_BANK_PERCENT);
         const cappedLoss = Math.min(rawLoss, Work.MAX_MIMIC_POTATO_LOSS);
-        const { reduction, nextMimicMitigation, milestoneJustReached, milestone20JustReached } = computeMimicMitigation(userDetails.mimicMitigation);
+        // hasProspector (2026-09-23, direct instruction — a nerf) — see
+        // computePoisonMitigation's own comment for why a Prospector owner's milestone
+        // reduction is capped lower than everyone else's.
+        const hasProspector = companionFactory.getActivePerkValue(userDetails, "specialEncounterMultiplierBonus") > 0;
+        const { reduction, nextMimicMitigation, milestoneJustReached, milestone20JustReached } = computeMimicMitigation(userDetails.mimicMitigation, undefined, hasProspector);
         const potatoesLost = -Math.floor(cappedLoss * (1 - reduction));
 
         let workScenarioCounts = userDetails.workScenarioCounts;
