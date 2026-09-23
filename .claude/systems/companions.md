@@ -516,7 +516,7 @@ a Legendary-or-better find rather than something you can roll on your very first
 | Barn Owl | Rare | `robChanceFlat` +10% |
 | Mole | Rare | `starchSellBonusPercent` +9% |
 | Firefly | Rare | `workMultiplierPercent` +9% |
-| Prospector | Rare | `specialEncounterMultiplierBonus` +0.75 (+75% of Golden/Poison/Large/Companion/Taro/Mimic/Golden Yam's own encounter chance — Metal/Sweet/Ancient excluded, see below) + `workMultiplierPercent` -8% (the cost) |
+| Prospector | Rare | `specialEncounterMultiplierBonus` +0.75 (+75% of Poison/Large/Companion/Mimic's own encounter chance — Metal/Sweet/Ancient/Golden/Taro/Golden Yam excluded, see below) + `workMultiplierPercent` -8% (the cost) |
 | Spudsprite | Legendary | `workCooldownSkipChance` 15% + `workMultiplierPercent` +8% |
 | Rootcarver, the Cellar Keeper | Legendary | `starchSellBonusPercent` +12% + `passiveIncomePercent` +8% |
 | Elder Rootbeard | Mythic | `regradeChanceBoostPercent` +50% (multiplicative — boosts the regrade tier's own chance, e.g. 50% -> 75%) + `passiveIncomePercent` +10% + `robChanceFlat` +15% + `starchSellBonusPercent` +15% |
@@ -572,7 +572,7 @@ Per-perk-type progression (blank = no companion currently grants that perk at th
 | Regrade Success | — | — | — | 3% flat (Elder Rootbeard) |
 | Rebirth Bonus | — | — | — | 20% (Mochi) |
 | Poison Immunity | Guinea Pig only | — | — | — |
-| Special Encounter Chance (7 scenarios) | — | +75% (Prospector) | — | — |
+| Special Encounter Chance (4 scenarios) | — | +75% (Prospector) | — | — |
 
 Passive Income is the one perk type two companions share *within the same rarity tier* (both
 Mythics, different magnitudes) — see the 2026-08-22 Mythic rebalance below for why. The Work
@@ -664,10 +664,11 @@ perks: [
 **`specialEncounterMultiplierBonus` generalizes the exact same widening mechanism** Metal's own
 retired perk established — `workFactory.getEffectiveScenarioChances` (plural now; takes the whole
 scenario list and computes every effective threshold in one pass, rather than one scenario at a
-time) widens Golden Potato, Poison Potato, Large Potato, Companion, Taro Trader, Mimic Potato, and
-Golden Yam — each scenario's own raw slice width is added again at `value` fraction (0.75 = +75% of
-its own width), every scenario after it in roll order shifts up by the same running total so each
-keeps its own width, and Regular (the fixed-at-1 catch-all) absorbs the total difference by
+time) widens Poison Potato, Large Potato, Companion, and Mimic Potato (as of the 2026-09-23 nerf
+below — originally also Golden Potato, Taro Trader, and Golden Yam, see that section for why those
+three were pulled) — each scenario's own raw slice width is added again at `value` fraction (0.75 =
++75% of its own width), every scenario after it in roll order shifts up by the same running total so
+each keeps its own width, and Regular (the fixed-at-1 catch-all) absorbs the total difference by
 shrinking. `work.js`'s `performWork` computes this fresh per request (still never mutating the
 shared `workScenarios` array — the same race-safety reasoning that shaped the original Metal-only
 version). Scales with companion level like every other perk
@@ -718,8 +719,23 @@ check, not a permanent regression" treatment as the original Metal analysis):
    safe but maybe underselling the buff) **before settling on 0.75** as the shipped value: ~1000
    real commands, 300-trial average — new Prospector ≈1.17x baseline potato total, Spudsprite
    ≈1.27x, landing Prospector comfortably (~10-15%) behind a Legendary while still meaningfully ahead
-   of no companion at all, and still ahead of Spudsprite on starches specifically (Taro
-   Trader/Golden Yam are both in the widened set).
+   of no companion at all, and, **at the time**, still ahead of Spudsprite on starches specifically
+   (Taro Trader/Golden Yam were both in the widened set) — this starch edge no longer holds after
+   the 2026-09-23 nerf below, since those two scenarios were pulled out of the widened set entirely.
+
+**Narrowed further 2026-09-23, direct instruction (a nerf)** — Golden Potato, Taro Trader, and
+Golden Yam were removed from the widened set, leaving only Poison Potato, Large Potato, Companion,
+and Mimic Potato. Unlike Sweet/Metal's exclusion (a compounding-stat snowball risk), these three
+were pulled for a different reason: they're this game's highest one-shot-value scavenge
+scenarios — Taro Trader and Golden Yam are the game's only two starch sources from `/work`, and
+Golden Potato is the rare big currency spike — so widening all three at once was making Prospector
+meaningfully better at farming the game's scarcest currency (starches) and its biggest one-off
+potato payout than a Rare-tier companion with an explicit work-multiplier cost was meant to be. The
+`value` (0.75) and the `workMultiplierPercent` cost (-8%) were left untouched — only the scenario
+membership list (`PROSPECTOR_DOUBLED_SCENARIOS` in `workFactory.js`) changed. No fresh EV
+simulation was run for this pass (unlike the three-round check above) — the change is a pure
+scenario-count reduction (7 → 4) on an already-tuned bonus value, not a new value needing its own
+calibration.
 
 ### Yamimic, the Thousand-Faced (Heirloom, 2026-09-06, direct instruction)
 

@@ -8,22 +8,28 @@ const mercenaryBuffFactory = require("../utils/mercenaryBuffFactory");
 const { WORK_SCENARIO_INDICES } = require("../utils/eventFactory");
 
 // Prospector's specialEncounterMultiplierBonus perk (see constants.js) widens SEVERAL
-// non-contiguous scenarios' own slice of work.js's cumulative roll table — Golden, Poison,
-// Large, Companion, Taro, Mimic, and Golden Yam, each independently, while every OTHER
-// scenario (Metal, Sweet, Ancient) and Regular's own fixed-at-1 catch-all stay untouched
+// non-contiguous scenarios' own slice of work.js's cumulative roll table — Poison, Large,
+// Companion, and Mimic, each independently, while every OTHER scenario (Metal, Sweet,
+// Ancient, Golden, Taro, Golden Yam) and Regular's own fixed-at-1 catch-all stay untouched
 // and absorb the difference by shrinking. Generalizes the exact mechanism the retired
 // Metal-only metalEncounterChanceFlat perk established (2026-08-23) — widen a scenario's
 // own raw slice width, then shift every LATER scenario's cumulative threshold up by the
 // same running total so each keeps its own width unchanged — just applied to several
 // scattered scenario types instead of one contiguous "Metal onward" run. Sweet Potato and
-// Metal Potato are deliberately excluded from the widened set: both grant a permanent,
-// uncapped-ish stat bonus (Sweet's flat +0.2 workMultiplierAmount 1/3 of the time, Metal's
-// own uncapped workMultiplierReward), and an EV check (2026-08-29, comparing this exact
-// redesign against Spudsprite over 1000 simulated /work calls, chain mechanic included)
-// found doubling Sweet Potato's encounter rate alone let a Rare-tier companion out-earn a
-// Legendary by ~25-30% — the same compounding-snowball shape a since-removed
-// isBoostedHit dampener in handleMetalPotato already had to fix once for Prospector/Metal
-// specifically (see systems/companions.md's Prospector section for that history).
+// Metal Potato are excluded from the widened set for the original 2026-08-29 reason: both
+// grant a permanent, uncapped-ish stat bonus (Sweet's flat +0.2 workMultiplierAmount 1/3
+// of the time, Metal's own uncapped workMultiplierReward), and an EV check (2026-08-29,
+// comparing this exact redesign against Spudsprite over 1000 simulated /work calls, chain
+// mechanic included) found doubling Sweet Potato's encounter rate alone let a Rare-tier
+// companion out-earn a Legendary by ~25-30% — the same compounding-snowball shape a
+// since-removed isBoostedHit dampener in handleMetalPotato already had to fix once for
+// Prospector/Metal specifically (see systems/companions.md's Prospector section for that
+// history). Golden Potato, Taro Trader, and Golden Yam were REMOVED from the widened set
+// (2026-09-23, direct instruction — a nerf) — those three are this game's highest-value
+// scavenge scenarios (the two starch-granting encounters plus the rare high-payout
+// currency drop), and Prospector was making them meaningfully more common than intended
+// for a Rare-tier companion. Poison/Large/Companion/Mimic stay widened since none of them
+// carry that same outsized-payout profile.
 //
 // Computes every scenario's new effective cumulative threshold in ONE pass over the whole
 // table (rather than incremental per-iteration bookkeeping in work.js's own roll loop), so
@@ -34,13 +40,10 @@ const { WORK_SCENARIO_INDICES } = require("../utils/eventFactory");
 // no such companion is equipped — a true no-op, not just "no scenario matches the
 // membership check below).
 const PROSPECTOR_DOUBLED_SCENARIOS = [
-    WORK_SCENARIO_INDICES.GOLDEN,
     WORK_SCENARIO_INDICES.POISON,
     WORK_SCENARIO_INDICES.LARGE,
     WORK_SCENARIO_INDICES.COMPANION,
-    WORK_SCENARIO_INDICES.TARO,
     WORK_SCENARIO_INDICES.MIMIC,
-    WORK_SCENARIO_INDICES.GOLDEN_YAM,
 ];
 
 function getEffectiveScenarioChances(scenarios, multiplierBonus) {
