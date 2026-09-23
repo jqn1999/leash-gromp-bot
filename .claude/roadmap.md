@@ -17285,3 +17285,35 @@ for one account, not a repeatable mechanism worth building tooling around.
 **Cross-repo note.** `financial-project` has no Tower gameplay port at all (no `/enter-tower`
 equivalent, no `towerFactory`, no reward-crediting logic — same finding as this session's earlier
 Tower leaderboard entry). Nothing to port.
+
+## Tower reward failure now tells the player to notify an admin (same-day follow-up, direct instruction: "can you make it include a msg to the player if it fails so they can notify an admin")
+
+**What was asked.** Same-day follow-up to the batched-write fix above — if the reward write still
+fails outright (rather than partially desyncing, which the batching fix already closed), the player
+should be told so they can flag it to an admin, instead of seeing a normal results embed with no
+idea their reward silently didn't save.
+
+**What changed.** `processRewardPayouts` now captures `dynamoHandler.updateUserFields`'s return
+value — it resolves to `undefined` on a real DynamoDB failure (same swallow-the-error shape
+`updateUserDatabase` always had, per the root-cause entry above) rather than throwing. On a falsy
+result, the player gets the same admin-notification message the pre-existing "userDetails came back
+empty" branch already sent (a copy-pasteable JSON block: userId, username, floor, died, and the
+exact reward amounts) — both call sites now share one `sendRewardFailureNotice` helper instead of
+duplicating that message. A failed write also skips `processTowerCompanionRewards` (companion
+leveling/Bastion drop) — no reason to credit companion progress against a stat credit that never
+landed.
+
+**Tests.** `enter-tower.test.js` gained a 4th test in the batched-write describe block: a mocked
+`updateUserFields` failure (`mockResolvedValue(undefined)`) produces a `followUp` with a
+"database error"/admin-notification message, a parseable JSON block matching the run's exact
+numbers, and confirms `processTowerCompanionRewards`'s `companions` write never fires. Writing this
+test surfaced a real gap the batching fix's own tests had accidentally introduced: jest's automock
+resolves `updateUserFields` to `undefined` unconfigured, which — now that a falsy return means
+"failed" — made every OTHER test in both `enter-tower.test.js` and `enterTowerBastion.test.js` look
+like a failed write and short-circuit before reaching the code being tested. Fixed by adding a
+default-success `dynamoHandler.updateUserFields.mockResolvedValue(...)` to both files' `beforeEach`
+blocks. Full suite: **112 suites / 2074 tests, all passing** (net +1 new test — the two `beforeEach`
+additions are setup fixes for tests that already existed, not new coverage).
+
+**Docs.** `systems/tower.md`'s root-cause section gained a "Same-day follow-up" subsection covering
+this addition and the shared-helper refactor.

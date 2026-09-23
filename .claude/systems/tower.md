@@ -2610,6 +2610,31 @@ reward-crediting branches at all (every mocked `startRun` return used all-zero r
 a real, previously-uncovered gap, not just a refactor of already-tested behavior. Full suite: **112
 suites / 2073 tests, all passing**.
 
+**Same-day follow-up, direct instruction ("can you make it include a msg to the player if it fails
+so they can notify an admin")** — batching into one call closes the partial-desync window (no more
+mid-sequence failure leaving some fields updated and others not), but the single remaining call can
+still fail outright (a throttle, a timeout — the same routine DynamoDB failure modes that caused this
+whole investigation), and `updateUserFields` swallows that failure internally exactly like
+`updateUserDatabase` did (resolves to `undefined` on error rather than throwing). Without a check,
+the player would see the run's results embed as normal and have no way to know their reward never
+saved. `processRewardPayouts` now captures `updateUserFields`'s return value and, if falsy, sends the
+player the same admin-notification message the pre-existing "userDetails came back empty" branch
+above it already used — refactored both call sites to share one `sendRewardFailureNotice` helper
+(userId/username/floor/died/rewards → a copy-pasteable JSON block) rather than duplicating that
+message a second time. On a failed write, `processTowerCompanionRewards` (leveling/Bastion drop) is
+skipped too — no point crediting companion progress against a stat credit that didn't land.
+
+**Tests**: `enter-tower.test.js` gained a 4th test in the batched-write describe block — a failed
+`updateUserFields` call (mocked to resolve `undefined`) produces a `followUp` containing "database
+error"/an admin instruction, a parseable JSON block with the exact reward numbers, and confirms
+`processTowerCompanionRewards`'s own `companions` write never fires. This required adding a
+default-success `dynamoHandler.updateUserFields.mockResolvedValue(...)` to this file's own
+`beforeEach` (jest's automock otherwise resolves `undefined` unconfigured, which would have made
+*every* pre-existing test look like a failed write and short-circuit early) — the same default was
+added to `enterTowerBastion.test.js`'s `beforeEach`, whose 3 companion-leveling/drop/ward tests hit
+the identical false-failure short-circuit until fixed. Full suite: **112 suites / 2074 tests, all
+passing** (net +1 new test; the two `beforeEach` additions are setup fixes, not new coverage).
+
 **Not fixed by this pass** (out of scope, flagged for awareness): the specific player's account
 still needs a manual one-off correction — realigning her base to the nearest clean shop tier per
 track and folding the small residue into `sweetPotatoBuffs` so she doesn't lose the value, just

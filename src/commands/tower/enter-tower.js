@@ -38,6 +38,32 @@ async function processTowerCompanionRewards(userId, userDetails, floor, elitesSu
     return bastionAward;
 }
 
+// Shared by both reward-crediting failure paths below (the initial userDetails read
+// coming back empty, and the batched stat/potato updateUserFields write itself failing) —
+// same recovery UX either way, since in both cases the run's reward wasn't actually saved
+// and there's no reliable server-side record for an admin to look up on their own. Hands
+// the player a copy-pasteable JSON block with the exact numbers so nothing has to be
+// reconstructed from memory.
+async function sendRewardFailureNotice(interaction, userDisplayName, userId, username, floor, died, rewards) {
+    const failureReport = {
+        userId,
+        username,
+        floor,
+        died,
+        rewards: {
+            potatoes: rewards[tC.PAYOUT.POTATOES] || 0,
+            workMultiplier: rewards[tC.PAYOUT.WORK_MULTIPLIER] || 0,
+            passiveIncome: rewards[tC.PAYOUT.PASSIVE_INCOME] || 0,
+            bankCapacity: rewards[tC.PAYOUT.BANK_CAPACITY] || 0
+        },
+        timestamp: new Date().toISOString()
+    };
+    await interaction.followUp({
+        content: `${userDisplayName}, your tower run's rewards could not be saved due to a database error. Send this to an admin so they can manually credit you:\n\`\`\`json\n${JSON.stringify(failureReport, null, 2)}\n\`\`\``,
+        ephemeral: true
+    });
+}
+
 async function processRewardPayouts(interaction, userId, rewards, username, userDisplayName, floor, died, elitesSurvivedCount, towerCompanionHits, wardUsed) {
     const userDetails = await dynamoHandler.findUser(userId, username);
     if (!userDetails) {
@@ -45,26 +71,7 @@ async function processRewardPayouts(interaction, userId, rewards, username, user
         // followUp below in the callback) — this is a genuine DB error on crediting
         // the reward, not a "no reward earned" case, so the player needs to know their
         // run's reward didn't actually get saved rather than assuming it silently did.
-        // Since nothing was written, an admin has nothing to look up either — hand the
-        // player the exact numbers as a copy-pasteable block so they can be credited
-        // manually instead of the run just being lost.
-        const failureReport = {
-            userId,
-            username,
-            floor,
-            died,
-            rewards: {
-                potatoes: rewards[tC.PAYOUT.POTATOES] || 0,
-                workMultiplier: rewards[tC.PAYOUT.WORK_MULTIPLIER] || 0,
-                passiveIncome: rewards[tC.PAYOUT.PASSIVE_INCOME] || 0,
-                bankCapacity: rewards[tC.PAYOUT.BANK_CAPACITY] || 0
-            },
-            timestamp: new Date().toISOString()
-        };
-        await interaction.followUp({
-            content: `${userDisplayName}, your tower run's rewards could not be saved due to a database error. Send this to an admin so they can manually credit you:\n\`\`\`json\n${JSON.stringify(failureReport, null, 2)}\n\`\`\``,
-            ephemeral: true
-        });
+        await sendRewardFailureNotice(interaction, userDisplayName, userId, username, floor, died, rewards);
         return;
     }
     // Batched into ONE updateUserFields call (2026-09-23, root-caused from a player's
@@ -106,7 +113,18 @@ async function processRewardPayouts(interaction, userId, rewards, username, user
     }
 
     if (Object.keys(setFields).length > 0 || Object.keys(addFields).length > 0) {
-        await dynamoHandler.updateUserFields(userId, setFields, addFields);
+        // dynamoHandler.updateUserFields swallows any DynamoDB error internally (a bare
+        // .catch that only console.debugs it) and resolves to undefined on failure — this
+        // is the ONE check that actually surfaces that failure to the player, so a run's
+        // reward silently failing to save doesn't look identical to it succeeding. Skips
+        // processTowerCompanionRewards below on failure too, same as the userDetails-missing
+        // branch above — no point rolling companion leveling/drops against a stat credit
+        // that didn't land.
+        const writeResult = await dynamoHandler.updateUserFields(userId, setFields, addFields);
+        if (!writeResult) {
+            await sendRewardFailureNotice(interaction, userDisplayName, userId, username, floor, died, rewards);
+            return;
+        }
     }
 
     return processTowerCompanionRewards(userId, userDetails, floor, elitesSurvivedCount, towerCompanionHits, wardUsed);

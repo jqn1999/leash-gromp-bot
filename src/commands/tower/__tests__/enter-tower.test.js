@@ -47,6 +47,11 @@ beforeEach(() => {
     towerFactory.mockImplementation(() => ({
         startRun: jest.fn().mockResolvedValue([[0, 0, 0, 0], 1, false]),
     }));
+    // Defaults to a truthy (successful) write — dynamoHandler.updateUserFields resolves to
+    // undefined on a real DynamoDB failure (see enter-tower.js's own comment on this), and
+    // jest's automock would otherwise return undefined unconfigured, making every test look
+    // like a failed write. Individual tests override this to simulate an actual failure.
+    dynamoHandler.updateUserFields.mockResolvedValue({ Attributes: {} });
 });
 
 test('a player below ENTRY_GATE_MULTI on raw workMultiplierAmount alone is barred', () => {
@@ -209,5 +214,41 @@ describe('processRewardPayouts stat crediting (batched write)', () => {
         await callback({}, interaction);
 
         expect(dynamoHandler.updateUserFields).not.toHaveBeenCalled();
+    });
+
+    // Direct instruction (2026-09-23, same-day follow-up to the batching fix above): "can
+    // you make it include a msg to the player if it fails so they can notify an admin" —
+    // batching into one call closes the partial-desync window, but a single DynamoDB write
+    // can still fail outright (throttle, timeout, etc.), and updateUserFields swallows that
+    // failure internally (resolves to undefined rather than throwing). Without this check
+    // the player would see the run's results embed and have no idea the reward never saved.
+    test('a failed updateUserFields write tells the player to notify an admin, with the exact reward numbers, and skips companion rewards', async () => {
+        dynamoHandler.findUser.mockResolvedValue(baseUser({ workMultiplierAmount: tC.ENTRY_GATE_MULTI }));
+        dynamoHandler.updateUserFields.mockResolvedValue(undefined);
+        towerFactory.mockImplementation(() => ({
+            startRun: jest.fn().mockResolvedValue([[5000, 0.2, 0, 0], 10, false]),
+        }));
+        const interaction = fakeInteraction();
+
+        await callback({}, interaction);
+
+        const failureCall = interaction.followUp.mock.calls.find(([opts]) => opts.content?.includes('database error'));
+        expect(failureCall).toBeTruthy();
+        const [{ content, ephemeral }] = failureCall;
+        expect(content).toContain('User');
+        expect(content).toContain('admin');
+        expect(ephemeral).toBe(true);
+        const reportMatch = content.match(/```json\n([\s\S]+?)\n```/);
+        expect(reportMatch).toBeTruthy();
+        const report = JSON.parse(reportMatch[1]);
+        expect(report).toEqual(expect.objectContaining({
+            userId: 'user-1',
+            floor: 10,
+            died: false,
+            rewards: { potatoes: 5000, workMultiplier: 0.2, passiveIncome: 0, bankCapacity: 0 },
+        }));
+
+        // The stat credit didn't land — no point also touching companion leveling/drops.
+        expect(dynamoHandler.updateUserDatabase).not.toHaveBeenCalledWith('user-1', 'companions', expect.anything());
     });
 });

@@ -56,6 +56,12 @@ beforeEach(() => {
     towerFactory.mockImplementation(() => ({
         startRun: jest.fn().mockResolvedValue([[0, 0, 0, 0], 1, false, 0, 0, false]),
     }));
+    // Defaults to a truthy (successful) write — enter-tower.js's processRewardPayouts now
+    // checks updateUserFields' own return value to detect a failed save (see its own
+    // comment), and jest's automock would otherwise resolve undefined unconfigured, making
+    // every test here look like a failed write and short-circuit before
+    // processTowerCompanionRewards ever runs. See enter-tower.test.js's identical setup.
+    dynamoHandler.updateUserFields.mockResolvedValue({ Attributes: {} });
 });
 
 test("a Bastion-equipped user's level-1 towerRewardBonus (0.10) and available ward are resolved and passed into towerFactory's constructor", async () => {
