@@ -17317,3 +17317,35 @@ additions are setup fixes for tests that already existed, not new coverage).
 
 **Docs.** `systems/tower.md`'s root-cause section gained a "Same-day follow-up" subsection covering
 this addition and the shared-helper refactor.
+
+## Prospector: Taro Trader added back to the widened-odds set (direct instruction: "Add taro trader back")
+
+**What was asked.** Restore Taro Trader to the set of `/work` scenarios Prospector's
+`specialEncounterMultiplierBonus` perk widens — a follow-up to this same session's earlier
+2026-09-23 nerf, which had removed Golden Potato, Taro Trader, and Golden Yam together.
+
+**What changed.** `workFactory.js`'s `PROSPECTOR_DOUBLED_SCENARIOS` gained
+`WORK_SCENARIO_INDICES.TARO` back, growing from 4 entries to 5: Poison Potato, Large Potato,
+Companion, Taro Trader, Mimic Potato. Golden Potato and Golden Yam remain excluded — only Taro
+Trader was restored. The perk's `value` (0.75) and `workMultiplierPercent` cost (-8%) stayed
+untouched, same as the original narrowing — this is a pure scenario-membership edit, not a new
+magnitude. `constants.js`'s Prospector `description` and the `perks` block's own comment, and
+`embedFactory.js`'s `specialEncounterMultiplierBonus` display label, were all updated to list Taro
+Trader again.
+
+**Tests.** `workFactory.test.js`'s `getEffectiveScenarioChances` describe block updated: a new test
+confirms Taro Trader's own slice doubles again like Poison/Large/Companion/Mimic; the "no longer
+widened" test was narrowed to just Golden Potato and Golden Yam (Taro Trader removed from that
+list, since it's widened again); the "untouched scenarios" test's title dropped Taro; the
+"accumulated shift never resets" test's running total recomputed to include Taro's own widening.
+Full suite: **112 suites / 2075 tests, all passing** (net +1 new test).
+
+**Docs.** `systems/companions.md`'s Prospector table row, the Perk Magnitude Range Guide row (4 → 5
+scenarios), and the Prospector history section all updated — the "Narrowed further" paragraph
+rewritten to cover the full nerf-then-partial-restore timeline in one place, and the EV-check
+writeup's "starch edge no longer holds" note corrected to reflect that Taro Trader's contribution to
+that edge is back (Golden Yam's is not, since it stayed excluded).
+
+**Cross-repo note.** `financial-project`'s `gromp-economy/handler.ts` has a real reimplementation of
+this same widened-scenario set (confirmed earlier this session when the original nerf was ported) —
+ported the identical restoration into it (see that repo's own log for the matching entry).

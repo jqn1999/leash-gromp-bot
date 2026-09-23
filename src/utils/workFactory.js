@@ -9,8 +9,8 @@ const { WORK_SCENARIO_INDICES } = require("../utils/eventFactory");
 
 // Prospector's specialEncounterMultiplierBonus perk (see constants.js) widens SEVERAL
 // non-contiguous scenarios' own slice of work.js's cumulative roll table — Poison, Large,
-// Companion, and Mimic, each independently, while every OTHER scenario (Metal, Sweet,
-// Ancient, Golden, Taro, Golden Yam) and Regular's own fixed-at-1 catch-all stay untouched
+// Companion, Mimic, and Taro Trader, each independently, while every OTHER scenario (Metal,
+// Sweet, Ancient, Golden, Golden Yam) and Regular's own fixed-at-1 catch-all stay untouched
 // and absorb the difference by shrinking. Generalizes the exact mechanism the retired
 // Metal-only metalEncounterChanceFlat perk established (2026-08-23) — widen a scenario's
 // own raw slice width, then shift every LATER scenario's cumulative threshold up by the
@@ -25,11 +25,11 @@ const { WORK_SCENARIO_INDICES } = require("../utils/eventFactory");
 // since-removed isBoostedHit dampener in handleMetalPotato already had to fix once for
 // Prospector/Metal specifically (see systems/companions.md's Prospector section for that
 // history). Golden Potato, Taro Trader, and Golden Yam were REMOVED from the widened set
-// (2026-09-23, direct instruction — a nerf) — those three are this game's highest-value
-// scavenge scenarios (the two starch-granting encounters plus the rare high-payout
-// currency drop), and Prospector was making them meaningfully more common than intended
-// for a Rare-tier companion. Poison/Large/Companion/Mimic stay widened since none of them
-// carry that same outsized-payout profile.
+// (2026-09-23, direct instruction — a nerf) for a different reason — those three are this
+// game's highest-value scavenge scenarios (the two starch-granting encounters plus the rare
+// high-payout currency drop) — then Taro Trader was ADDED BACK the same day (direct
+// instruction), leaving only Golden Potato and Golden Yam excluded on that basis. Poison/
+// Large/Companion/Mimic/Taro stay widened.
 //
 // Computes every scenario's new effective cumulative threshold in ONE pass over the whole
 // table (rather than incremental per-iteration bookkeeping in work.js's own roll loop), so
@@ -43,6 +43,7 @@ const PROSPECTOR_DOUBLED_SCENARIOS = [
     WORK_SCENARIO_INDICES.POISON,
     WORK_SCENARIO_INDICES.LARGE,
     WORK_SCENARIO_INDICES.COMPANION,
+    WORK_SCENARIO_INDICES.TARO,
     WORK_SCENARIO_INDICES.MIMIC,
 ];
 
