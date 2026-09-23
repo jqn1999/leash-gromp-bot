@@ -117,3 +117,25 @@ test('a run that throws mid-climb restores canEnterTower and tells the player, i
     expect(dynamoHandler.updateIfNewRecord).not.toHaveBeenCalled();
     expect(dynamoHandler.recordTowerLeaderboardEntry).not.toHaveBeenCalled();
 });
+
+// Ranking tiebreaker source (2026-09-23, direct instruction — see
+// towerLeaderboardFactory.test.js's sortTowerLeaderboardEntries suite for how this actually
+// gets used at ranking time). Confirms enter-tower.js reads elitesSurvivedCount off
+// startRun()'s own return tuple (index 3) and passes it straight through as `elitesKilled`
+// on a survived run.
+test('a survived run records elitesKilled on the leaderboard entry, sourced from startRun\'s elitesSurvivedCount', async () => {
+    dynamoHandler.findUser.mockResolvedValue(baseUser({ workMultiplierAmount: tC.ENTRY_GATE_MULTI, rebirthCount: 0 }));
+    towerFactory.mockImplementation(() => ({
+        // [run, floor, died, elitesSurvivedCount, towerCompanionHits, wardUsed]
+        startRun: jest.fn().mockResolvedValue([[5000, 0, 0, 0], 42, false, 3, 0, false]),
+    }));
+    const interaction = fakeInteraction();
+
+    await callback({}, interaction);
+
+    expect(dynamoHandler.recordTowerLeaderboardEntry).toHaveBeenCalledWith(expect.objectContaining({
+        floor: 42,
+        elitesKilled: 3,
+        potatoes: 5000,
+    }));
+});

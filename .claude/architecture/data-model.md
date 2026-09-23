@@ -281,9 +281,11 @@ whatever fields that subsystem needs. Known docs in use:
   [systems/economy-and-work.md](../systems/economy-and-work.md#catch-up-bonus).
 - `work` — `workCount`, `totalPayout` (server-wide `/work` counters, distinct from any single
   user's own `workCount`).
-- `tower_leaderboard` — `entries: []`, one `{userId, username, floor, potatoes, workMultiplier,
-  passiveIncome, bankCapacity}` per survived Tater Tower run today, cleared after the daily payout.
-  See [systems/tower.md](../systems/tower.md#daily-leaderboard).
+- `tower_leaderboard` — `entries: []`, one `{userId, username, floor, elitesKilled, potatoes,
+  workMultiplier, passiveIncome, bankCapacity}` per survived Tater Tower run today, cleared after
+  the daily payout. `elitesKilled` (2026-09-23) may be absent on entries recorded before that field
+  shipped — see [systems/tower.md](../systems/tower.md#daily-leaderboard) for the ranking order and
+  its old-leaderboard fallback.
 - `active_quests` — `dailyQuestIds`, `dailyRotationDate`, `weeklyQuestIds`, `weeklyRotationDate`.
   The currently-live quest set, shared server-wide (same quests for everyone) — see
   [systems/quests.md](../systems/quests.md).

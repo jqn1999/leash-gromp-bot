@@ -1,7 +1,7 @@
 jest.mock('../dynamoHandler');
 
 const dynamoHandler = require('../dynamoHandler');
-const { TowerLeaderboardFactory } = require('../towerLeaderboardFactory');
+const { TowerLeaderboardFactory, sortTowerLeaderboardEntries } = require('../towerLeaderboardFactory');
 const { TowerLeaderboard } = require('../constants');
 
 const factory = new TowerLeaderboardFactory();
@@ -114,4 +114,66 @@ test('always clears the leaderboard after payout, win or not', async () => {
     dynamoHandler.findUser.mockResolvedValue(user());
     await factory.payoutWinners();
     expect(dynamoHandler.clearTowerLeaderboard).toHaveBeenCalledTimes(1);
+});
+
+// Ranking order (2026-09-23, direct instruction): floor, then elitesKilled, then potatoes.
+// Shared by the in-progress standings view and the actual payout ranking — tested directly
+// here rather than only indirectly through payoutWinners, since it's exported specifically
+// so leaderboard.js can reuse the exact same ordering.
+describe('sortTowerLeaderboardEntries', () => {
+    test('ranks by floor first, regardless of elitesKilled/potatoes', () => {
+        const entries = [
+            entry({ userId: 'shallow', floor: 5, elitesKilled: 10, potatoes: 999999 }),
+            entry({ userId: 'deep', floor: 50, elitesKilled: 0, potatoes: 0 }),
+        ];
+        const sorted = sortTowerLeaderboardEntries(entries);
+        expect(sorted.map(e => e.userId)).toEqual(['deep', 'shallow']);
+    });
+
+    test('breaks a floor tie by elitesKilled once at least one entry has it recorded', () => {
+        const entries = [
+            entry({ userId: 'fewerKills', floor: 20, elitesKilled: 1, potatoes: 999999 }),
+            entry({ userId: 'moreKills', floor: 20, elitesKilled: 3, potatoes: 0 }),
+        ];
+        const sorted = sortTowerLeaderboardEntries(entries);
+        expect(sorted.map(e => e.userId)).toEqual(['moreKills', 'fewerKills']);
+    });
+
+    test('breaks an elitesKilled tie by potatoes as the final tiebreaker', () => {
+        const entries = [
+            entry({ userId: 'fewerPotatoes', floor: 20, elitesKilled: 2, potatoes: 100 }),
+            entry({ userId: 'morePotatoes', floor: 20, elitesKilled: 2, potatoes: 500 }),
+        ];
+        const sorted = sortTowerLeaderboardEntries(entries);
+        expect(sorted.map(e => e.userId)).toEqual(['morePotatoes', 'fewerPotatoes']);
+    });
+
+    // Old-leaderboard compatibility (same-day follow-up, direct instruction: "if theres no
+    // elites killed count for any user, we're still on the old tower leaderboard and to
+    // still rank that one in order of floor and time it came in"). Simulates a leaderboard
+    // that accumulated entries before this feature shipped today — none of them carry
+    // `elitesKilled` at all (not 0, genuinely absent).
+    test('falls back to floor-only ranking (old behavior) when NOT ONE entry has elitesKilled recorded', () => {
+        // entry()'s own base object never sets elitesKilled unless explicitly overridden —
+        // neither of these two carries it, matching a real pre-this-feature leaderboard.
+        const entries = [
+            entry({ userId: 'earlierArrival', floor: 20, potatoes: 999999 }),
+            entry({ userId: 'laterArrival', floor: 20, potatoes: 0 }),
+        ];
+        const sorted = sortTowerLeaderboardEntries(entries);
+        // Same floor, no elitesKilled anywhere in the batch — potatoes must NOT be
+        // consulted; original (arrival) order wins the tie, exactly like the pre-existing
+        // floor-only sort already did.
+        expect(sorted.map(e => e.userId)).toEqual(['earlierArrival', 'laterArrival']);
+    });
+
+    test('switches to the new elitesKilled/potatoes chain the moment even one entry in the batch has it recorded (same-day transition)', () => {
+        const oldEntry = entry({ userId: 'recordedBeforeShip', floor: 20, potatoes: 999999 }); // no elitesKilled — recorded before this shipped
+        const newEntry = entry({ userId: 'recordedAfterShip', floor: 20, elitesKilled: 1, potatoes: 0 });
+        const sorted = sortTowerLeaderboardEntries([oldEntry, newEntry]);
+        // The new entry's real elitesKilled (1) beats the old entry's treated-as-0 fallback,
+        // even though the old entry has vastly more potatoes — elitesKilled outranks
+        // potatoes in the chain once it's actually in play for this batch.
+        expect(sorted.map(e => e.userId)).toEqual(['recordedAfterShip', 'recordedBeforeShip']);
+    });
 });

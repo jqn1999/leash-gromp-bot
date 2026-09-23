@@ -17031,3 +17031,68 @@ bonus breakdown (fetched once on first expand, cached client-side, kept OUT of `
 since that function is echoed from ~15 different mutation responses and this needs its own async
 guild-doc/world-buff fetch that only the dedicated stat view actually needs). See that repo's own
 `NOTES_GROMP_WEB_INTEGRATION.md` for the full port writeup.
+
+## Tower leaderboard: track Elites killed + potatoes earned, new ranking chain floor -> elitesKilled -> potatoes (2026-09-23, direct instruction)
+
+**What was asked.** "Update tower leaderboard to keep track of elites killed and potatoes earned.
+The new leaderboard ranking is based on floors reached, then highest elites killed, then highest
+potatoes earned as the last tiebreaker." Same-day follow-up, direct instruction: "if theres no
+elites killed count for any user, we're still on the old tower leaderboard and to still rank that
+one in order of floor and time it came in ... going forward it would work on the new system" — a
+backward-compatibility requirement for the leaderboard that's already accumulated entries earlier
+today, before this shipped.
+
+**What shipped.**
+- `enter-tower.js`'s `recordTowerLeaderboardEntry` call gained `elitesKilled: elitesSurvivedCount`
+  — the same counter `towerFactory.js`'s `execElite` already increments on every Elite fight
+  actually won, already threaded into scope at this call site via `processRewardPayouts`'s own
+  parameter, no new plumbing needed to source it. `potatoes` was already recorded (the run's own
+  `PAYOUT.POTATOES` total) — no new field needed for that half of the ask.
+- New shared comparator `sortTowerLeaderboardEntries` in `towerLeaderboardFactory.js`, exported and
+  used by both `payoutWinners` (replacing its old `sort((a,b) => b.floor - a.floor)`) and
+  `leaderboard.js`'s `runTowerLeaderboard` (the in-progress standings view, same old single-key
+  sort before this) — one comparator, so the live standings and the actual payout ranking can never
+  disagree about who's really in first.
+- **Old-leaderboard fallback**, added same-day per the follow-up instruction: `sortTowerLeaderboardEntries`
+  checks `entries.some(e => e.elitesKilled !== undefined)` first. If NOT ONE entry in the batch has
+  it recorded (a leaderboard that's been accumulating since before this shipped today), it falls
+  back to the exact old floor-only comparator — `Array.prototype.sort` has been stable since
+  ES2019, so a floor tie naturally keeps `entries`' own array order, which is chronological arrival
+  order (`recordTowerLeaderboardEntry` always appends), satisfying "rank by floor and time it came
+  in" with zero extra bookkeeping — no timestamp field needed. The moment even one entry in the
+  batch has `elitesKilled` (the first one recorded after this shipped), the whole batch switches to
+  the new floor -> elitesKilled -> potatoes chain, treating any still-missing entries in that mixed
+  batch as 0 kills — accepted as a temporary same-day-transition state only, since every
+  leaderboard is wiped clean at the next daily reset regardless of when during the day it was
+  touched.
+- `embedFactory.js`: `createTowerLeaderboardEmbed` (live standings) now shows
+  `Floor X • Y Elites Killed • Z potatoes` per entry instead of just floor, so a tie further down
+  the displayed top-5 is legible even when it isn't decided by floor alone.
+  `createTowerLeaderboardResultsEmbed` (daily payout announcement) gained `elitesKilled` in each
+  winner's title line for the same transparency reason.
+
+**Tests.** `towerLeaderboardFactory.test.js` gained a `sortTowerLeaderboardEntries` describe block
+(5 new tests): floor always wins regardless of the other two keys, elitesKilled breaks a floor tie,
+potatoes breaks an elitesKilled tie, the old-leaderboard fallback (zero entries with the field ->
+floor-only, potatoes never consulted, arrival order preserved), and the same-day-transition case
+(one new-format entry beats an old-format entry's real high potato count, since elitesKilled
+outranks potatoes once it's in play for that batch at all). `leaderboard.test.js` gained an
+end-to-end test through the real (unmocked) `sortTowerLeaderboardEntries` import, confirming the
+command itself produces the right order. `enter-tower.test.js` gained a test confirming
+`elitesSurvivedCount` from `startRun()`'s own return tuple flows through to `elitesKilled` on the
+recorded entry. Full suite: **112 suites / 2062 tests, all passing** (net +7 new tests, 0 broken —
+every pre-existing test's `entry()`/mock fixtures never set `elitesKilled`, so they all exercise the
+old-leaderboard fallback path automatically and needed no changes).
+
+**Docs.** `systems/tower.md`'s "Daily leaderboard" section gained a "Ranking order" paragraph and
+an "Old-leaderboard compatibility" paragraph describing the fallback mechanism and why it's
+temporary-by-design; the `/leaderboard tower-leaderboard` description updated to mention the new
+per-entry display. `architecture/data-model.md`'s `tower_leaderboard` schema entry updated to list
+`elitesKilled` and note it may be absent on entries recorded before this shipped.
+
+**Cross-repo note.** `financial-project` has no Tower gameplay port at all — no `/enter-tower`
+equivalent, no `towerFactory`, no leaderboard writes. Its only Tower-adjacent references are
+read-only reflections of shared user-record state that exist for other reasons: the
+`tower_champion` achievement definition (checked against `towerChampionCount`, which the bot alone
+ever increments) and `highestTowerFloor` in the personal-records display. Nothing there needs this
+change mirrored into it.
