@@ -17429,3 +17429,34 @@ still holds for an independent reason that was never about the 90% jump.
 **Cross-repo note.** `financial-project`'s `gromp-economy/handler.ts` has real reimplementations of
 both `computePoisonMitigation`/`computeMimicMitigation` (confirmed when the Prospector-specific
 version was ported yesterday) — needs the identical simplification ported into it.
+
+## Live incident: `/admin`'s full-wipe option description broke the ENTIRE command's registration (player-reported: "There was an error registering command \"admin\": DiscordAPIError[50035]... description[BASE_TYPE_BAD_LENGTH]")
+
+**What happened.** The `full-wipe` option added to `/admin reset-tower` earlier this session shipped
+with a 121-character `description` — Discord's real per-option cap is 100 characters, and Discord
+rejects the whole command definition on any one bad field, not just the offending option/subcommand.
+`01registerCommands.js`'s existing per-command try/catch (added for an earlier, unrelated incident)
+correctly limited the blast radius to just the `admin` command rather than crashing the whole
+startup registration loop, but that still meant every `/admin` subcommand — give, stats,
+trigger-event, trigger-world-boss, set-activity-channel, everything — was unusable until fixed, not
+just `reset-tower`.
+
+**Root cause.** A straightforward oversight — the description was written for clarity without
+checking it against Discord's actual application-command-option length limit, and nothing in this
+codebase's test suite validated command definitions against that limit before now.
+
+**Fix.** Shortened the description from 121 to 85 characters: "Also revert the potatoes/stats their
+Tower run earned today, not just unlock re-entry" (same meaning, tighter wording).
+
+**Prevention — the real fix.** Added a new test to `getLocalCommands.test.js` (already the file that
+requires every real command file to catch the 100-command-cap class of incident before it reaches
+production — same precedent, extended) that recursively validates every command's, and every nested
+subcommand/subcommand-group option's, `name` (1-32 chars) and `description` (1-100 chars) against
+Discord's real limits. The bug here was two `options` levels deep (`admin` > `reset-tower` >
+`full-wipe`), so the recursion specifically has to walk nested `options` arrays, not just check each
+top-level command. Verified the new test actually fails against the original 121-char string before
+confirming it passes with the fix — a real regression guard, not just a shape check. Full suite:
+**112 suites / 2076 tests, all passing** (net +1 new test).
+
+**Docs.** `systems/tower.md`'s `full-wipe option` subsection gained a "Live incident, fixed same
+day" paragraph documenting the failure mode, the fix, and the new guard.
