@@ -670,7 +670,8 @@ function getDefaultUserFields(userId, username) {
         // one time per qualifying week weeklyHitCount first reaches
         // PoisonMitigation/MimicMitigation.SECOND_MILESTONE_HIT_THRESHOLD (20). Purely a
         // second counter/achievement layered on top — neither changes the underlying
-        // reduction math, which stays capped at MILESTONE_REDUCTION from hit 10 onward.
+        // reduction math, which caps at MAX_REDUCTION for every hit regardless of milestone
+        // (the former 90% milestone reduction was removed entirely, 2026-09-24).
         totalPoisonMilestones20Reached: 0,
         totalMimicMilestones20Reached: 0,
         // Companion Shop (systems/companions.md#companion-shop) — a personal, rotating NPC

@@ -116,23 +116,23 @@ of the loss). Two changes, both in `workFactory.js`:
    | 2nd | -15% |
    | 3rd | -30% |
    | 4th | -45% |
-   | 5th–9th | -60% (capped) |
-   | 10th+ | -90% (milestone — see below; **-60% instead for a Prospector owner, see below**) |
+   | 5th onward | -60% (capped — no exceptions, see below) |
 
-   **Prospector exception (2026-09-23, direct instruction — a nerf: "make the maximum penalty
-   reduction for mimic and poison when using prospector 60% instead of allowing 90%").** A player
-   with Prospector equipped never gets the 10th-hit milestone jump to `MILESTONE_REDUCTION` (90%) —
-   `reduction` stays capped at `MAX_REDUCTION` (60%) even past hit 10, for the rest of that week.
-   Reasoning: Prospector's own `specialEncounterMultiplierBonus` already widens Poison's encounter
-   odds (see the Companions section below), so a Prospector owner reaches the 10-hit weekly
-   milestone far more easily than anyone else — left uncapped, Prospector would be quietly turning
-   the milestone's own bad-luck-protection ceiling into something it could reach at will, stacked on
-   top of an already-buffed hit rate. The milestone *achievement* (`totalPoisonMilestonesReached`,
-   `milestoneJustReached`) still fires off the raw hit count regardless of Prospector — only the
-   `reduction` value itself is capped lower. `workFactory.computePoisonMitigation`'s new third
-   parameter, `hasProspector` (default `false`), carries this — `handlePoisonPotato` computes it via
-   `companionFactory.getActivePerkValue(userDetails, "specialEncounterMultiplierBonus") > 0` before
-   calling in.
+   **A 10th-hit milestone used to jump this to -90%** for the rest of the week — first capped back to
+   60% for a Prospector owner specifically (2026-09-23, direct instruction — a nerf: "make the
+   maximum penalty reduction for mimic and poison when using prospector 60% instead of allowing
+   90%"; reasoning: Prospector's own `specialEncounterMultiplierBonus` already widens Poison's
+   encounter odds, so a Prospector owner reached the 10-hit weekly milestone far more easily than
+   anyone else, and 90% on top of that was more than intended), **then removed entirely for every
+   player the very next day (2026-09-24, direct instruction: "make everyone's max mimic and poison
+   reduction 60%. no more 90% maxed reduction")**. `reduction` now caps at `MAX_REDUCTION` (60%)
+   unconditionally — crossing the 10-hit threshold no longer changes it at all, for anyone.
+   `workFactory.computePoisonMitigation`'s brief `hasProspector` parameter (added for the
+   Prospector-only version) was removed again the next day along with `MILESTONE_REDUCTION` itself —
+   there's nothing left for it to differentiate once every player behaves the same way. The milestone
+   *achievement* (`totalPoisonMilestonesReached`, `milestoneJustReached`) is UNCHANGED throughout all
+   of this — it still fires off the raw hit count alone, now purely a lifetime-progress trigger with
+   no effect on `reduction` for any player.
 
    `workFactory.getCurrentWeekTag()` computes the current week lazily on every poison hit rather than
    depending on a cron to roll it over — self-contained from Quests'/Guild Contracts' own shared
@@ -418,20 +418,21 @@ was the requested fix rather than adding a new mitigation mechanic.
 penalty decay up to a max of -90% penalty similar to poison", corrected to Mimic Potato). Mirrors
 `PoisonMitigation`'s exact escalating-then-capped shape as its own `MimicMitigation` constant
 (`constants.js`) — same numbers, since Mimic shares Poison's 1% rarity tier and the request asked
-for parity: 0% on the 1st hit this week, -15%/-30%/-45% on the 2nd–4th, capped at -60% through the
-9th, then a milestone jump to -90% on the 10th+ hit, resetting every Monday
-(`workFactory.getCurrentWeekTag`). `workFactory.computeMimicMitigation(mimicMitigation, now)` is a
+for parity: 0% on the 1st hit this week, -15%/-30%/-45% on the 2nd–4th, capped at -60% from the 5th
+hit onward — originally a milestone jump to -90% kicked in on the 10th+ hit, removed entirely
+2026-09-24 (see below) — resetting every Monday (`workFactory.getCurrentWeekTag`).
+`workFactory.computeMimicMitigation(mimicMitigation, now)` is a
 standalone mirror of `computePoisonMitigation` (not a shared helper — same "mirrored, not shared"
 convention `isMondayEST`'s own comment documents for these tiny per-mechanic pure functions), reading
 a new `mimicMitigation: { weekTag, weeklyHitCount }` user field (defaulted in
 `dynamoHandler.getDefaultUserFields`, same shape as `poisonMitigation`).
 
-**Prospector exception (2026-09-23) mirrors Poison's own, same-day** — see the Prospector
-exception writeup under Poison Potato mitigation above. `computeMimicMitigation` takes the
-identical `hasProspector` third parameter; `handleMimicPotato` caps a Prospector owner's
-`reduction` at `MAX_REDUCTION` (60%) instead of letting the 10th weekly hit jump to
-`MILESTONE_REDUCTION` (90%), for the same reason — Prospector already widens Mimic's own
-encounter odds, so it would otherwise reach this milestone far more easily than anyone else.
+**Prospector exception (2026-09-23), superseded universally the next day (2026-09-24)** — see the
+full writeup under Poison Potato mitigation above; `computeMimicMitigation` mirrored
+`computePoisonMitigation`'s own `hasProspector` parameter, then had it (and `MILESTONE_REDUCTION`
+itself) removed again the very next day once the 90% milestone reduction was dropped for every
+player, not just Prospector owners. `reduction` now caps at `MAX_REDUCTION` (60%) unconditionally,
+same as Poison.
 
 Unlike Poison, Mimic has no cooldown lockout to mitigate — the reduction only ever softens the bank
 loss itself, applied *after* the `MAX_MIMIC_POTATO_LOSS` cap (the cap is "the worst a single hit can
@@ -453,9 +454,10 @@ second, harder tier (20 hits/week) was added for BOTH Poison and Mimic at the sa
 - `MimicMitigation`/`PoisonMitigation` each gained `SECOND_MILESTONE_HIT_THRESHOLD: 20`.
   `computeMimicMitigation`/`computePoisonMitigation` now also return `milestone20JustReached` — the
   exact same one-shot-crossing check `milestoneJustReached` already used, just at 20 instead of 10.
-  This does **not** change `reduction`'s value at all — it's already capped at
-  `MILESTONE_REDUCTION` from hit 10 onward and stays there through 20 and beyond; it's purely a
-  second lifetime counter + achievement layered on top.
+  This does **not** change `reduction`'s value at all — `reduction` caps at `MAX_REDUCTION` for
+  every hit regardless of milestone (the former 90% milestone reduction at hit 10 was removed
+  entirely 2026-09-24 — see above); it's purely a second lifetime counter + achievement layered
+  on top, same as it always was.
 - New lifetime user fields (defaulted to 0 in `getDefaultUserFields`, healed lazily like every
   other field): `totalMimicMilestonesReached` (the Mimic parallel to the pre-existing
   `totalPoisonMilestonesReached`), `totalPoisonMilestones20Reached`, `totalMimicMilestones20Reached`.

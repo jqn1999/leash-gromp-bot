@@ -608,12 +608,13 @@ eating a mitigated hit raw, especially for max-level companions and heavy player
   - **Why raw loss, not mitigated loss**: an earlier same-day version of this rework built the
     rebate off the mitigated loss, which fought itself — mitigation's reduction shrinks every
     successive hit exactly opposite the direction a "gets better the more you're poisoned" perk
-    needs, and the milestone's own reduction jump to 90% would have caused the payout to suddenly
-    *crash* right at hit 10 even with escalation maxed there, the one moment this perk should feel
-    best. Reading off the raw loss instead keeps the payout growing (at least non-decreasing)
+    needs. Reading off the raw loss instead keeps the payout growing (at least non-decreasing)
     through the whole week — this was a direct fix for the account holder's own complaint that
     the mitigated-loss version made each successive poison *less* beneficial with the pet
-    equipped.
+    equipped. (At the time, this also dodged a payout *crash* right at hit 10, when the
+    milestone's own reduction still jumped to 90% there — that jump was removed for everyone
+    2026-09-24, but raw loss remains the right base regardless, for the shrinking-reduction
+    reason above.)
 
 **2026-08-25: the offsetting yield tax was removed entirely**, by direct instruction ("Remove
 gain penalty from poison pet"). From 2026-08-22 through 2026-08-25, Guinea Pig had briefly been
@@ -742,21 +743,28 @@ scenario-membership edits on an already-tuned bonus value, not a new value needi
 calibration.
 
 **Same-day follow-up nerf (2026-09-23, direct instruction: "make the maximum penalty reduction for
-mimic and poison when using prospector 60% instead of allowing 90%")** — closes a related gap the
-narrowing above didn't touch. Prospector still widens Poison and Mimic's own encounter odds (both
-stayed in the widened set), which means a Prospector owner reaches Poison/Mimic's weekly 10-hit
-bad-luck-protection milestone (see `economy-and-work.md`'s "Poison Potato mitigation" section) far
-more easily than anyone else — and that milestone, once reached, jumps the loss/lockout reduction
-from a 60% cap all the way to 90% for the rest of the week. Left alone, Prospector would be
-quietly turning that milestone ceiling into something it could reach at will, on top of an
-already-buffed hit rate. `workFactory.computePoisonMitigation`/`computeMimicMitigation` both gained
-a `hasProspector` parameter (default `false`) that caps `reduction` at `MAX_REDUCTION` (60%)
-instead of `MILESTONE_REDUCTION` (90%) once true, wired up in `handlePoisonPotato`/
-`handleMimicPotato` via `companionFactory.getActivePerkValue(userDetails,
-"specialEncounterMultiplierBonus") > 0`. The milestone *achievement* itself
-(`totalPoisonMilestonesReached`/`totalMimicMilestonesReached`, and their 20-hit second tiers) still
-fires off the raw hit count regardless of Prospector — this only caps the reward tier, not whether
-the achievement triggers.
+mimic and poison when using prospector 60% instead of allowing 90%"), superseded the very next day**
+— closed a related gap the narrowing above didn't touch. Prospector still widens Poison and Mimic's
+own encounter odds (both stayed in the widened set), which means a Prospector owner reaches
+Poison/Mimic's weekly 10-hit bad-luck-protection milestone (see `economy-and-work.md`'s "Poison
+Potato mitigation" section) far more easily than anyone else — and that milestone, once reached,
+used to jump the loss/lockout reduction from a 60% cap all the way to 90% for the rest of the week.
+`workFactory.computePoisonMitigation`/`computeMimicMitigation` gained a `hasProspector` parameter
+that capped `reduction` at `MAX_REDUCTION` (60%) instead of `MILESTONE_REDUCTION` (90%) for a
+Prospector owner specifically, wired up via `companionFactory.getActivePerkValue(userDetails,
+"specialEncounterMultiplierBonus") > 0`.
+
+**Superseded 2026-09-24, direct instruction ("make everyone's max mimic and poison reduction 60%.
+no more 90% maxed reduction")** — the Prospector-only cap above was generalized into the universal
+behavior: the 90% milestone reduction is gone for EVERY player now, not just capped lower for
+Prospector owners. `hasProspector` was removed from both functions entirely (it has nothing left to
+differentiate — every player now gets exactly what a Prospector owner got the day before), and
+`MILESTONE_REDUCTION` itself was deleted from `PoisonMitigation`/`MimicMitigation` in `constants.js`
+— `reduction` is simply `Math.min(MAX_REDUCTION, priorHits * REDUCTION_PER_HIT)` for every hit, no
+special branch for crossing the 10-hit threshold. `MILESTONE_HIT_THRESHOLD`/
+`SECOND_MILESTONE_HIT_THRESHOLD` remain — they still drive `totalPoisonMilestonesReached`/
+`totalMimicMilestonesReached` (and their 20-hit second tiers) as pure lifetime achievement triggers,
+now with zero effect on `reduction` for any player, Prospector-equipped or not.
 
 ### Yamimic, the Thousand-Faced (Heirloom, 2026-09-06, direct instruction)
 

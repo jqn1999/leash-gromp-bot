@@ -114,8 +114,9 @@ const Achievements = [
     // toxic_tolerance above (Mimic previously had the same 10-hits-in-a-week weekly
     // mitigation milestone with no achievement behind it), plus a second, harder tier for
     // each of the two — 20 hits in one week, one step past the existing 10-hit milestone.
-    // Neither new tier changes PoisonMitigation/MimicMitigation's actual reduction math
-    // (still capped at MILESTONE_REDUCTION from hit 10 onward) — see
+    // Neither new tier changes PoisonMitigation/MimicMitigation's actual reduction math —
+    // `reduction` caps at MAX_REDUCTION for every hit regardless of milestone (the 90%
+    // MILESTONE_REDUCTION jump at hit 10 was removed for everyone, 2026-09-24) — see
     // PoisonMitigation/MimicMitigation.SECOND_MILESTONE_HIT_THRESHOLD.
     { id: "mimics_favorite_mark", name: "The Mimic's Favorite Mark", description: "Get hit by Mimic Potato 10 times in a single week", statPath: "totalMimicMilestonesReached", threshold: 1 },
     { id: "immune_to_venom", name: "Immune to Venom", description: "Get hit by Poison Potato 20 times in a single week", statPath: "totalPoisonMilestones20Reached", threshold: 1 },
@@ -1008,23 +1009,23 @@ const CompanionFusion = {
 // potato loss and the lockout duration identically.
 const PoisonMitigation = {
     REDUCTION_PER_HIT: 0.15, // 2nd hit -15%, 3rd -30%, 4th -45%...
-    MAX_REDUCTION: 0.60,     // ...capped here from the 5th hit through the 9th
-    // A player unlucky enough to get hit 10 times in one week gets a much bigger break
-    // for the rest of that week, plus a one-time achievement — see totalPoisonMilestonesReached.
-    // NOT granted to a Prospector owner (2026-09-23, direct instruction — a nerf): Prospector
-    // already widens Poison's own encounter odds (see PROSPECTOR_DOUBLED_SCENARIOS in
-    // workFactory.js), so it reaches this 10-hit milestone far more easily than anyone else —
-    // workFactory.js's computePoisonMitigation caps a Prospector owner's reduction at
-    // MAX_REDUCTION (60%) instead, even past this threshold. The achievement itself still
-    // fires off the raw hit count either way — only the reward tier is capped lower.
+    MAX_REDUCTION: 0.60,     // ...capped here from the 5th hit onward, no exceptions
+    // A player unlucky enough to get hit 10 times in one week earns a one-time achievement
+    // (totalPoisonMilestonesReached) — this used to also unlock a much bigger reduction
+    // (MILESTONE_REDUCTION, 90%) for the rest of the week, first capped to MAX_REDUCTION for
+    // a Prospector owner specifically (2026-09-23, since Prospector's own widened Poison
+    // odds let it reach this milestone far more easily than anyone else), then removed
+    // ENTIRELY for every player the very next day (2026-09-24, direct instruction: "make
+    // everyone's max mimic and poison reduction 60%. no more 90% maxed reduction") —
+    // `reduction` now caps at MAX_REDUCTION unconditionally, milestone crossed or not. This
+    // threshold is now purely an achievement trigger, with zero effect on `reduction` itself.
     MILESTONE_HIT_THRESHOLD: 10,
-    MILESTONE_REDUCTION: 0.90,
     // Second, achievement-only tier (2026-09-10, Poison/Mimic weekly-milestone achievement
-    // pass) — does NOT change `reduction`'s value at all (it's already capped at
-    // MILESTONE_REDUCTION from hit 10 onward and stays there); this just gives a second
-    // lifetime counter/achievement (totalPoisonMilestones20Reached) one step up from the
-    // existing 10-hit milestone, for a player unlucky enough to get hit 20 times in one
-    // week. See workFactory.js's computePoisonMitigation.
+    // pass) — a second lifetime counter/achievement (totalPoisonMilestones20Reached) one
+    // step up from the 10-hit milestone above, for a player unlucky enough to get hit 20
+    // times in one week. Never affected `reduction` at all, even before the 10-hit
+    // milestone's own reduction bump was removed for everyone. See workFactory.js's
+    // computePoisonMitigation.
     SECOND_MILESTONE_HIT_THRESHOLD: 20
 }
 
@@ -1041,11 +1042,12 @@ const PoisonMitigation = {
 const MimicMitigation = {
     REDUCTION_PER_HIT: 0.15,
     MAX_REDUCTION: 0.60,
-    // MILESTONE_REDUCTION not granted to a Prospector owner (2026-09-23) — see
-    // PoisonMitigation's own MILESTONE_HIT_THRESHOLD comment for why (mirrored here per this
-    // file's usual "mirrored, not shared" convention for these two mitigation tracks).
+    // The 90% milestone reduction (formerly MILESTONE_REDUCTION) was removed entirely for
+    // everyone (2026-09-24) — see PoisonMitigation's own MILESTONE_HIT_THRESHOLD comment for
+    // the full history (mirrored here per this file's usual "mirrored, not shared"
+    // convention for these two mitigation tracks). This threshold is now purely an
+    // achievement trigger.
     MILESTONE_HIT_THRESHOLD: 10,
-    MILESTONE_REDUCTION: 0.90,
     // Second, achievement-only tier — same shape/purpose as PoisonMitigation's own
     // SECOND_MILESTONE_HIT_THRESHOLD above, mirrored rather than shared per this file's
     // usual "mirrored, not shared" convention for these two mitigation tracks.
