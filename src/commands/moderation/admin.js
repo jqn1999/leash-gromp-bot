@@ -108,12 +108,62 @@ async function runResetTower(client, interaction) {
         return;
     }
 
+    // full-wipe (2026-09-24, direct instruction) — beyond just unlocking re-entry, also
+    // reverts the potatoes/stats their run actually credited today, sourced from their own
+    // entry in today's tower_leaderboard batch (enter-tower.js's processRewardPayouts writes
+    // the exact same amounts there as it credits to the player, so it's a reliable source for
+    // "what did this run actually grant"). A died run never gets a leaderboard entry at all
+    // (see enter-tower.js — only a survived run is recorded), so there's nothing here to find
+    // or revert for that case; it still already banked whatever it earned along the way, same
+    // as any survived run, but that's outside what a leaderboard-entry-based reversal can see.
+    let wipeMessage = '';
+    if (interaction.options.getBoolean('full-wipe') === true) {
+        const entry = await dynamoHandler.removeTowerLeaderboardEntry(targetUserId);
+        if (!entry) {
+            wipeMessage = ` No Tower leaderboard entry found for them today — either they haven't survived a run today, or their run ended in death (deaths never get a leaderboard entry), so there was nothing to revert.`;
+        } else {
+            // Re-fetch immediately before writing — the targetUserDetails read above could
+            // already be stale by the time this command actually commits, same "moved since
+            // read" discipline /rebirth's own confirmation step follows.
+            const freshUserDetails = await dynamoHandler.findUser(targetUserId, targetUsername);
+            if (!freshUserDetails) {
+                interaction.editReply(`${targetUserDisplayName} could not be re-checked to revert their Tower stats — the leaderboard entry was already removed, but nothing else was reverted. Please try again or credit them manually with this entry: \`\`\`json\n${JSON.stringify(entry, null, 2)}\n\`\`\``);
+                return;
+            }
+
+            // Reverses exactly what processRewardPayouts credited: atomic ADD of the negative
+            // delta for the four raw numeric stats (race-safe regardless of anything else that
+            // touched them meanwhile), and a plain re-fetch-then-SET for sweetPotatoBuffs (a
+            // nested object, not a flat numeric attribute DynamoDB can ADD into directly) —
+            // batched into ONE updateUserFields call, same atomicity principle as the Tower
+            // reward-credit fix this mirrors, just for the reversal direction instead.
+            const sweetPotatoBuffs = freshUserDetails.sweetPotatoBuffs;
+            sweetPotatoBuffs.workMultiplierAmount -= entry.workMultiplier || 0;
+            sweetPotatoBuffs.passiveAmount -= entry.passiveIncome || 0;
+            sweetPotatoBuffs.bankCapacity -= entry.bankCapacity || 0;
+
+            await dynamoHandler.updateUserFields(targetUserId, { sweetPotatoBuffs }, {
+                potatoes: -(entry.potatoes || 0),
+                totalEarnings: -(entry.potatoes || 0),
+                workMultiplierAmount: -(entry.workMultiplier || 0),
+                passiveAmount: -(entry.passiveIncome || 0),
+                bankCapacity: -(entry.bankCapacity || 0),
+            });
+
+            wipeMessage = ` Reverted their floor ${entry.floor} run: ${(entry.potatoes || 0).toLocaleString()} potatoes, `
+                + `${(entry.workMultiplier || 0).toFixed(2)}x work multiplier, ${(entry.passiveIncome || 0).toLocaleString()} passive income, `
+                + `and ${(entry.bankCapacity || 0).toLocaleString()} bank capacity all rolled back, and their leaderboard entry removed. `
+                + `Companion leveling/Bastion drops and the highestTowerFloor record from that run are NOT reverted — those aren't potatoes/stat gains and need a separate manual correction if this run also needs undoing there.`;
+        }
+    }
+
     const alreadyCouldEnter = targetUserDetails.canEnterTower === true;
     await dynamoHandler.updateUserDatabase(targetUserId, "canEnterTower", true);
 
-    interaction.editReply(alreadyCouldEnter
+    interaction.editReply((alreadyCouldEnter
         ? `${targetUserDisplayName} could already run /enter-tower — nothing was stuck, but their entry is confirmed available.`
-        : `${targetUserDisplayName}'s Tower entry has been reset — they can run /enter-tower again right away.`);
+        : `${targetUserDisplayName}'s Tower entry has been reset — they can run /enter-tower again right away.`)
+        + wipeMessage);
 }
 
 async function runStats(client, interaction) {
@@ -580,6 +630,12 @@ module.exports = {
                     description: 'Which player to reset',
                     required: true,
                     type: ApplicationCommandOptionType.Mentionable,
+                },
+                {
+                    name: 'full-wipe',
+                    description: "Also revert the potatoes/stats they gained from today's Tower run (per their leaderboard entry), not just unlock re-entry",
+                    required: false,
+                    type: ApplicationCommandOptionType.Boolean,
                 }
             ],
         },

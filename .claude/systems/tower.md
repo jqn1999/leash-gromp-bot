@@ -1649,6 +1649,62 @@ command turned up an obvious defect: every `awaitMessageComponent` collector alr
 implicated in one reported incident, Malevolent Pineapple, is well-formed). It only guarantees a
 stuck player always has a fast path back in, regardless of cause.
 
+#### `full-wipe` option (2026-09-24, direct instruction: "make the admin reset tower command have
+an option to do a full wipe of a player's tower run for the day. Looks at the values stored in
+leaderboard and reverts their potatoes/stats gained for that day")
+
+Unlike the base command (which only ever restores `canEnterTower`, since a crash never leaves any
+progress persisted to roll back), this covers the OTHER support scenario: a run that completed
+normally — survived, no crash — but needs undoing anyway (a genuine "we agree this shouldn't have
+counted" case, e.g. a bugged reward, an exploited edge case, or the player themselves asking to redo
+a bad run). A new `full-wipe: true` boolean option on `/admin reset-tower`.
+
+**Source of truth for "what did this run actually grant": the player's own entry in today's
+`tower_leaderboard` batch** — `enter-tower.js`'s `processRewardPayouts` writes the exact same
+`potatoes`/`workMultiplier`/`passiveIncome`/`bankCapacity` amounts there as it credits to the player
+(see this file's "Daily leaderboard" section), so it's a reliable, already-persisted record of one
+specific run's reward without needing to guess or ask the player. A player only ever has at most one
+entry per day (`canEnterTower` gates re-entry to once daily), so "their entry" is unambiguous — no
+date/run-id disambiguation needed.
+
+**New `dynamoHandler.removeTowerLeaderboardEntry(userId)`** — a self-contained read-filter-write
+(mirroring `recordTowerLeaderboardEntry`/`clearTowerLeaderboard`'s own shape), removing exactly that
+one player's entry from today's batch and returning it (or `null` if they had none). A died run never
+gets a leaderboard entry at all (only a survived run is recorded — see "Daily leaderboard" above), so
+`full-wipe` has nothing to find or revert for that case; `admin.js` reports this plainly rather than
+silently doing nothing.
+
+**Reverting the actual credit** — batched into ONE `dynamoHandler.updateUserFields` call (the same
+atomicity principle the Tower reward-credit fix above this section applies, just for the reversal
+direction): the four raw numeric stats (`potatoes`, `totalEarnings`, `workMultiplierAmount`,
+`passiveAmount`, `bankCapacity`) go through as atomic ADDs of the negative delta — race-safe
+regardless of anything else that's touched them since, since ADD is commutative and doesn't depend on
+reading a fresh snapshot first. `sweetPotatoBuffs` (a nested object, not a flat numeric attribute
+DynamoDB can ADD into directly) is handled the only way this codebase ever handles it: a fresh
+re-fetch of the player immediately before committing (same "moved since read" discipline `/rebirth`'s
+own confirmation step follows), decrement the three sub-fields in memory, `SET` the whole object back.
+
+**Deliberately NOT reverted**: companion leveling/Bastion drops from that run
+(`processTowerCompanionRewards`), and the `highestTowerFloor` personal record / `towerChampionCount`
+achievement progress. None of these are "potatoes/stats," the literal scope of the request, and each
+would need its own, much riskier undo logic (a companion level-down could interact badly with fusion/
+ascension progress already spent since; a lifetime record has no "previous value" to restore to
+without a separate audit trail). `admin.js`'s own confirmation message says so explicitly so an admin
+doing a full-wipe for, e.g., a Tower Champion win doesn't assume the wipe was total.
+
+**Tests** — `admin.test.js` gained a `full-wipe option` describe block (4 tests: no entry found still
+unlocks re-entry with a clear "nothing to revert" message; a real entry reverts the exact amounts and
+removes it; a stat-less entry, e.g. potatoes only, reverts cleanly with no NaN in the `sweetPotatoBuffs`
+correction; the option being omitted never touches the leaderboard or calls `updateUserFields` at
+all). `dynamoHandler.test.js` gained a `removeTowerLeaderboardEntry` describe block (3 tests) covering
+the function directly against a mocked `docClient` — removes the right entry and rewrites the array
+without it, returns `null` without writing when the player has no entry, and returns `null` without
+writing when the leaderboard doc doesn't exist yet (a fresh day, no runs recorded). Full suite: **112
+suites / 2082 tests, all passing** (net +7 new tests, 0 broken).
+
+`financial-project` has no Tower gameplay port at all (confirmed multiple times earlier this
+session) — nothing to port, and no equivalent admin surface exists there regardless.
+
 #### Auto-recovery (2026-09-11, follow-up — same day)
 
 The admin command above is a manual mitigation; it still required someone to notice a player was

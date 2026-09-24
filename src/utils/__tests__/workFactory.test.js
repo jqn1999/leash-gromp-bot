@@ -211,40 +211,46 @@ describe('computePoisonMitigation', () => {
         });
     });
 
-    test('the 10th hit this week jumps to MILESTONE_REDUCTION and flags milestoneJustReached', () => {
+    // The 90% MILESTONE_REDUCTION jump at hit 10 was removed for everyone (2026-09-24,
+    // direct instruction: "make everyone's max mimic and poison reduction 60%. no more 90%
+    // maxed reduction") — the 10th hit (and every hit after it) now stays at the exact same
+    // MAX_REDUCTION cap the 5th-9th hits already used, with no special-case jump. The
+    // milestone still flags its own achievement off the raw hit count, just with zero effect
+    // on `reduction` anymore.
+    test('the 10th hit this week stays at MAX_REDUCTION (no more milestone jump) but still flags milestoneJustReached', () => {
         const { reduction, milestoneJustReached, nextPoisonMitigation } = computePoisonMitigation(
             { weekTag: getCurrentWeekTag(now), weeklyHitCount: 9 }, now
         );
-        expect(reduction).toBe(PoisonMitigation.MILESTONE_REDUCTION);
+        expect(reduction).toBe(PoisonMitigation.MAX_REDUCTION);
         expect(milestoneJustReached).toBe(true);
         expect(nextPoisonMitigation.weeklyHitCount).toBe(10);
     });
 
-    test('hits past the 10th stay at the milestone reduction without re-flagging milestoneJustReached', () => {
+    test('hits well past the 10th stay at MAX_REDUCTION without re-flagging milestoneJustReached', () => {
         const { reduction, milestoneJustReached } = computePoisonMitigation(
             { weekTag: getCurrentWeekTag(now), weeklyHitCount: 15 }, now
         );
-        expect(reduction).toBe(PoisonMitigation.MILESTONE_REDUCTION);
+        expect(reduction).toBe(PoisonMitigation.MAX_REDUCTION);
         expect(milestoneJustReached).toBe(false);
     });
 
-    // Second, achievement-only tier (2026-09-10) — doesn't change `reduction` at all, it's
-    // already capped at MILESTONE_REDUCTION from hit 10 onward and stays there through 20.
-    test('the 20th hit this week flags milestone20JustReached without changing reduction', () => {
+    // Second, achievement-only tier (2026-09-10) — never changed `reduction` at all, even
+    // before the 10-hit milestone's own reduction bump was removed for everyone.
+    test('the 20th hit this week flags milestone20JustReached, reduction still at MAX_REDUCTION', () => {
         const { reduction, milestoneJustReached, milestone20JustReached, nextPoisonMitigation } = computePoisonMitigation(
             { weekTag: getCurrentWeekTag(now), weeklyHitCount: 19 }, now
         );
-        expect(reduction).toBe(PoisonMitigation.MILESTONE_REDUCTION);
+        expect(reduction).toBe(PoisonMitigation.MAX_REDUCTION);
         expect(milestoneJustReached).toBe(false);
         expect(milestone20JustReached).toBe(true);
         expect(nextPoisonMitigation.weeklyHitCount).toBe(20);
     });
 
-    test('hits past the 20th stay at the milestone reduction without re-flagging milestone20JustReached', () => {
+    test('hits past the 20th stay at MAX_REDUCTION without re-flagging milestone20JustReached', () => {
         const { reduction, milestone20JustReached } = computePoisonMitigation(
             { weekTag: getCurrentWeekTag(now), weeklyHitCount: 25 }, now
         );
-        expect(reduction).toBe(PoisonMitigation.MILESTONE_REDUCTION);
+        expect(reduction).toBe(PoisonMitigation.MAX_REDUCTION);
         expect(milestone20JustReached).toBe(false);
     });
 
@@ -254,31 +260,6 @@ describe('computePoisonMitigation', () => {
         );
         expect(reduction).toBe(0);
         expect(nextPoisonMitigation.weeklyHitCount).toBe(1);
-    });
-
-    // hasProspector (2026-09-23, direct instruction — a nerf: "make the maximum penalty
-    // reduction for mimic and poison when using prospector 60% instead of allowing 90%").
-    test('with hasProspector, the 10th hit caps reduction at MAX_REDUCTION instead of jumping to MILESTONE_REDUCTION', () => {
-        const { reduction, milestoneJustReached } = computePoisonMitigation(
-            { weekTag: getCurrentWeekTag(now), weeklyHitCount: 9 }, now, true
-        );
-        expect(reduction).toBe(PoisonMitigation.MAX_REDUCTION);
-        // The achievement still fires off the raw hit count alone — only the reward tier
-        // (reduction) is capped lower for a Prospector owner.
-        expect(milestoneJustReached).toBe(true);
-    });
-
-    test('with hasProspector, hits well past the 10th stay capped at MAX_REDUCTION, never MILESTONE_REDUCTION', () => {
-        const { reduction } = computePoisonMitigation(
-            { weekTag: getCurrentWeekTag(now), weeklyHitCount: 25 }, now, true
-        );
-        expect(reduction).toBe(PoisonMitigation.MAX_REDUCTION);
-    });
-
-    test('hasProspector does not change anything before the milestone — same escalating reduction either way', () => {
-        const withoutProspector = computePoisonMitigation({ weekTag: getCurrentWeekTag(now), weeklyHitCount: 3 }, now, false);
-        const withProspector = computePoisonMitigation({ weekTag: getCurrentWeekTag(now), weeklyHitCount: 3 }, now, true);
-        expect(withProspector.reduction).toBeCloseTo(withoutProspector.reduction);
     });
 });
 
@@ -297,50 +278,35 @@ describe('computeMimicMitigation', () => {
         expect(milestone20JustReached).toBe(false);
     });
 
-    test('the 10th hit this week jumps to MILESTONE_REDUCTION and flags milestoneJustReached', () => {
+    // The 90% milestone reduction was removed for everyone (2026-09-24) — mirrors
+    // computePoisonMitigation's own describe block above.
+    test('the 10th hit this week stays at MAX_REDUCTION (no more milestone jump) but still flags milestoneJustReached', () => {
         const { reduction, milestoneJustReached, milestone20JustReached, nextMimicMitigation } = computeMimicMitigation(
             { weekTag: getCurrentWeekTag(now), weeklyHitCount: 9 }, now
         );
-        expect(reduction).toBe(MimicMitigation.MILESTONE_REDUCTION);
+        expect(reduction).toBe(MimicMitigation.MAX_REDUCTION);
         expect(milestoneJustReached).toBe(true);
         expect(milestone20JustReached).toBe(false);
         expect(nextMimicMitigation.weeklyHitCount).toBe(10);
     });
 
-    test('the 20th hit this week flags milestone20JustReached without changing reduction', () => {
+    test('the 20th hit this week flags milestone20JustReached, reduction still at MAX_REDUCTION', () => {
         const { reduction, milestoneJustReached, milestone20JustReached, nextMimicMitigation } = computeMimicMitigation(
             { weekTag: getCurrentWeekTag(now), weeklyHitCount: 19 }, now
         );
-        expect(reduction).toBe(MimicMitigation.MILESTONE_REDUCTION);
+        expect(reduction).toBe(MimicMitigation.MAX_REDUCTION);
         expect(milestoneJustReached).toBe(false);
         expect(milestone20JustReached).toBe(true);
         expect(nextMimicMitigation.weeklyHitCount).toBe(20);
     });
 
-    test('hits past the 20th stay at the milestone reduction without re-flagging either milestone', () => {
+    test('hits past the 20th stay at MAX_REDUCTION without re-flagging either milestone', () => {
         const { reduction, milestoneJustReached, milestone20JustReached } = computeMimicMitigation(
             { weekTag: getCurrentWeekTag(now), weeklyHitCount: 25 }, now
         );
-        expect(reduction).toBe(MimicMitigation.MILESTONE_REDUCTION);
+        expect(reduction).toBe(MimicMitigation.MAX_REDUCTION);
         expect(milestoneJustReached).toBe(false);
         expect(milestone20JustReached).toBe(false);
-    });
-
-    // hasProspector (2026-09-23, direct instruction — a nerf) — mirrors
-    // computePoisonMitigation's own hasProspector coverage above.
-    test('with hasProspector, the 10th hit caps reduction at MAX_REDUCTION instead of jumping to MILESTONE_REDUCTION', () => {
-        const { reduction, milestoneJustReached } = computeMimicMitigation(
-            { weekTag: getCurrentWeekTag(now), weeklyHitCount: 9 }, now, true
-        );
-        expect(reduction).toBe(MimicMitigation.MAX_REDUCTION);
-        expect(milestoneJustReached).toBe(true);
-    });
-
-    test('with hasProspector, hits well past the 10th stay capped at MAX_REDUCTION, never MILESTONE_REDUCTION', () => {
-        const { reduction } = computeMimicMitigation(
-            { weekTag: getCurrentWeekTag(now), weeklyHitCount: 25 }, now, true
-        );
-        expect(reduction).toBe(MimicMitigation.MAX_REDUCTION);
     });
 });
 
@@ -452,7 +418,10 @@ describe('handlePoisonPotato', () => {
         expect(dynamoHandler.calculateWorkTimerValue).toHaveBeenCalledWith(userDetails, Work.POISON_POTATO_TIMER_INCREASE_SECONDS, false);
     });
 
-    test('the 10th hit this week applies the milestone reduction and bumps totalPoisonMilestonesReached', async () => {
+    // The 90% milestone reduction was removed for everyone (2026-09-24) — the 10th hit now
+    // caps at the same MAX_REDUCTION every hit from the 5th onward already used, though the
+    // achievement (totalPoisonMilestonesReached) still fires off the raw hit count.
+    test('the 10th hit this week stays at MAX_REDUCTION (no milestone jump) and bumps totalPoisonMilestonesReached', async () => {
         const userDetails = baseUser({
             poisonMitigation: { weekTag: getCurrentWeekTag(), weeklyHitCount: 9 },
             totalPoisonMilestonesReached: 0
@@ -460,29 +429,6 @@ describe('handlePoisonPotato', () => {
         const result = await workFactory.handlePoisonPotato(userDetails, 1000, 1);
         const [, setFields] = dynamoHandler.updateUserFields.mock.calls[0];
         expect(setFields.poisonMitigation.weeklyHitCount).toBe(10);
-        expect(setFields.totalPoisonMilestonesReached).toBe(1);
-        expect(dynamoHandler.calculateWorkTimerValue).toHaveBeenCalledWith(
-            userDetails,
-            Math.floor(Work.POISON_POTATO_TIMER_INCREASE_SECONDS * (1 - PoisonMitigation.MILESTONE_REDUCTION)),
-            false
-        );
-        expect(result.mitigationInfo.milestoneJustReached).toBe(true);
-    });
-
-    // hasProspector (2026-09-23, direct instruction — a nerf: "make the maximum penalty
-    // reduction for mimic and poison when using prospector 60% instead of allowing 90%").
-    // End-to-end through the real companionFactory.getActivePerkValue lookup, not just the
-    // pure computePoisonMitigation unit above — confirms handlePoisonPotato actually wires
-    // the equipped-companion check through.
-    test('the 10th hit this week caps at MAX_REDUCTION instead of MILESTONE_REDUCTION when Prospector is equipped', async () => {
-        const userDetails = baseUser({
-            poisonMitigation: { weekTag: getCurrentWeekTag(), weeklyHitCount: 9 },
-            totalPoisonMilestonesReached: 0,
-            companions: { owned: [{ instanceId: 'prospector-a', id: 'prospector', workCount: 0 }], active: 'prospector-a' },
-        });
-        const result = await workFactory.handlePoisonPotato(userDetails, 1000, 1);
-        const [, setFields] = dynamoHandler.updateUserFields.mock.calls[0];
-        // The achievement still fires — only the reward tier is capped lower.
         expect(setFields.totalPoisonMilestonesReached).toBe(1);
         expect(dynamoHandler.calculateWorkTimerValue).toHaveBeenCalledWith(
             userDetails,
@@ -1439,7 +1385,10 @@ describe('handleMimicPotato weekly mitigation', () => {
         expect(potatoesLost).toBe(-Math.floor(Work.MAX_MIMIC_POTATO_LOSS * (1 - expectedReduction)));
     });
 
-    test('the 10th hit this week applies the milestone reduction, flags milestoneJustReached, and bumps totalMimicMilestonesReached', async () => {
+    // The 90% milestone reduction was removed for everyone (2026-09-24) — the 10th hit now
+    // caps at the same MAX_REDUCTION every hit from the 5th onward already used, though the
+    // achievement (totalMimicMilestonesReached) still fires off the raw hit count.
+    test('the 10th hit this week stays at MAX_REDUCTION (no milestone jump), flags milestoneJustReached, and bumps totalMimicMilestonesReached', async () => {
         const userDetails = baseUser({
             bankStored: 100000000000,
             mimicMitigation: { weekTag: getCurrentWeekTag(), weeklyHitCount: 9 },
@@ -1448,27 +1397,7 @@ describe('handleMimicPotato weekly mitigation', () => {
 
         const { potatoesLost, mitigationInfo } = await workFactory.handleMimicPotato(userDetails);
 
-        expect(mitigationInfo.reduction).toBe(MimicMitigation.MILESTONE_REDUCTION);
-        expect(mitigationInfo.milestoneJustReached).toBe(true);
-        expect(potatoesLost).toBe(-Math.floor(Work.MAX_MIMIC_POTATO_LOSS * (1 - MimicMitigation.MILESTONE_REDUCTION)));
-        const [, setFields] = dynamoHandler.updateUserFields.mock.calls[0];
-        expect(setFields.totalMimicMilestonesReached).toBe(1);
-    });
-
-    // hasProspector (2026-09-23, direct instruction — a nerf) — mirrors handlePoisonPotato's
-    // own end-to-end hasProspector coverage above.
-    test('the 10th hit this week caps at MAX_REDUCTION instead of MILESTONE_REDUCTION when Prospector is equipped', async () => {
-        const userDetails = baseUser({
-            bankStored: 100000000000,
-            mimicMitigation: { weekTag: getCurrentWeekTag(), weeklyHitCount: 9 },
-            totalMimicMilestonesReached: 0,
-            companions: { owned: [{ instanceId: 'prospector-a', id: 'prospector', workCount: 0 }], active: 'prospector-a' },
-        });
-
-        const { potatoesLost, mitigationInfo } = await workFactory.handleMimicPotato(userDetails);
-
         expect(mitigationInfo.reduction).toBe(MimicMitigation.MAX_REDUCTION);
-        // The achievement still fires — only the reward tier is capped lower.
         expect(mitigationInfo.milestoneJustReached).toBe(true);
         expect(potatoesLost).toBe(-Math.floor(Work.MAX_MIMIC_POTATO_LOSS * (1 - MimicMitigation.MAX_REDUCTION)));
         const [, setFields] = dynamoHandler.updateUserFields.mock.calls[0];

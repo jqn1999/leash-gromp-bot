@@ -17349,3 +17349,83 @@ that edge is back (Golden Yam's is not, since it stayed excluded).
 **Cross-repo note.** `financial-project`'s `gromp-economy/handler.ts` has a real reimplementation of
 this same widened-scenario set (confirmed earlier this session when the original nerf was ported) —
 ported the identical restoration into it (see that repo's own log for the matching entry).
+
+## `/admin reset-tower` gained a `full-wipe` option (direct instruction: "make the admin reset tower command have an option to do a full wipe of a player's tower run for the day. Looks at the values stored in leaderboard and reverts their potatoes/stats gained for that day")
+
+**What was asked.** The existing `/admin reset-tower` only ever restores `canEnterTower` (a
+crash-recovery backstop — a crashed run never persists anything to roll back, see this same doc's
+earlier entry). A new option needed to cover the other support case: a run that completed normally
+but needs undoing anyway — revert the potatoes/stats it actually credited, sourced from the
+player's own entry in today's Tower leaderboard.
+
+**What changed.** Added a `full-wipe: true` boolean option to `/admin reset-tower`. New
+`dynamoHandler.removeTowerLeaderboardEntry(userId)` — a self-contained read-filter-write (same shape
+as `recordTowerLeaderboardEntry`/`clearTowerLeaderboard`) that removes exactly one player's entry
+from today's batch and returns it, or `null` if they have none (a died run never gets a leaderboard
+entry at all, so there's genuinely nothing to find/revert for that case). `admin.js`'s
+`runResetTower` then reverses the exact credit in ONE `updateUserFields` call: the four raw numeric
+stats (potatoes, totalEarnings, workMultiplierAmount, passiveAmount, bankCapacity) as atomic ADDs of
+the negative delta (race-safe regardless of concurrent activity), and `sweetPotatoBuffs` via a fresh
+re-fetch-decrement-SET (the same "moved since read" discipline `/rebirth`'s own confirm step
+follows, since it's a nested object DynamoDB can't ADD into directly). Deliberately does NOT touch
+companion leveling/Bastion drops or the `highestTowerFloor`/`towerChampionCount` records — the
+literal scope was "potatoes/stats," and those wouldn't have safe, unambiguous undo logic. The
+admin-facing confirmation message says so explicitly.
+
+**Tests.** `admin.test.js` gained a `full-wipe option` describe block (4 tests): no entry found
+still unlocks re-entry with a clear message; a real entry reverts the exact amounts and removes it;
+a stat-less entry (potatoes only) reverts cleanly with no NaN in the `sweetPotatoBuffs` correction;
+omitting the option never touches the leaderboard or calls `updateUserFields`. `dynamoHandler.test.js`
+gained a `removeTowerLeaderboardEntry` describe block (3 tests) against a mocked `docClient` —
+removes the right entry and rewrites the array, returns `null` without writing when the player has
+no entry, and returns `null` without writing when the leaderboard doc doesn't exist yet. Full suite:
+**112 suites / 2082 tests, all passing** (net +7 new tests, 0 broken).
+
+**Docs.** `systems/tower.md`'s `/admin reset-tower` section gained a `full-wipe option` subsection
+with the full design and the deliberately-excluded scope.
+
+**Cross-repo note.** `financial-project` has no Tower gameplay port at all (confirmed multiple times
+earlier this session) — no admin surface to mirror this into either way.
+
+## Poison/Mimic weekly milestone reduction removed entirely — everyone caps at 60%, no more 90% (direct instruction: "also make everyone's max mimic and poison reduction 60%. no more 90% maxed reduction")
+
+**What was asked.** Same-day follow-up to the Prospector-specific mitigation cap above. Generalize
+that cap into universal behavior — no player, Prospector-equipped or not, should ever get more than
+a 60% reduction on a repeat Poison/Mimic hit in a week.
+
+**What changed.** The 90% `MILESTONE_REDUCTION` jump at the 10th weekly hit is gone for everyone.
+`workFactory.js`'s `computePoisonMitigation`/`computeMimicMitigation` simplified back down to a
+single `Math.min(MAX_REDUCTION, priorHits * REDUCTION_PER_HIT)` for `reduction`, with no
+hit-count-threshold branch at all — since the cap value no longer differs before vs. after the
+milestone, the branch had nothing left to do. The `hasProspector` parameter added the day before
+(and its `companionFactory.getActivePerkValue` call site in `handlePoisonPotato`/
+`handleMimicPotato`) was removed entirely — every player now gets what only a Prospector owner got
+yesterday, so there's nothing left for it to differentiate. `constants.js`'s `PoisonMitigation`/
+`MimicMitigation` lost `MILESTONE_REDUCTION` outright (genuinely dead — no code path could reach it
+anymore). `MILESTONE_HIT_THRESHOLD`/`SECOND_MILESTONE_HIT_THRESHOLD` are untouched — they still
+drive `totalPoisonMilestonesReached`/`totalMimicMilestonesReached` (and their 20-hit second tiers)
+purely as lifetime achievement triggers, now with zero effect on `reduction` for any player, matching
+what they already did for a Prospector owner as of yesterday.
+
+**Tests.** `workFactory.test.js`'s `computePoisonMitigation`/`computeMimicMitigation` describe blocks
+rewritten: the "10th hit jumps to MILESTONE_REDUCTION" tests now assert the 10th hit (and every hit
+after it) stays at `MAX_REDUCTION`, with the achievement flag still firing; the `hasProspector`-specific
+tests from yesterday's entry were deleted outright (nothing left to differentiate). Same rewrite for
+the `handlePoisonPotato`/`handleMimicPotato` end-to-end tests, including deleting the two
+Prospector-equipped tests that specifically demonstrated the now-removed distinction. Full suite:
+**112 suites / 2075 tests, all passing** (net -7 vs. yesterday's count, all deliberate removals of
+tests whose entire premise no longer exists — no coverage gap, since "does Prospector still get
+60%" is now just "does everyone get 60%," already covered by the base milestone tests).
+
+**Docs.** `systems/economy-and-work.md`'s Poison/Mimic mitigation sections rewritten to drop the
+Prospector-exception framing and describe the universal 60% cap directly, with the two-step history
+(Prospector-only cap, then generalized the next day) kept as context rather than erased.
+`systems/companions.md`'s Prospector history section gained a "Superseded 2026-09-24" paragraph
+explaining the generalization, and its Guinea Pig section's own "why raw loss, not mitigated loss"
+explanation (which cited the old 90% jump as part of its reasoning) was updated to frame that
+specific reason as historical, since the design itself (build off raw loss, not mitigated loss)
+still holds for an independent reason that was never about the 90% jump.
+
+**Cross-repo note.** `financial-project`'s `gromp-economy/handler.ts` has real reimplementations of
+both `computePoisonMitigation`/`computeMimicMitigation` (confirmed when the Prospector-specific
+version was ported yesterday) — needs the identical simplification ported into it.

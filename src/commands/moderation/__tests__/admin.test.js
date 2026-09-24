@@ -30,13 +30,14 @@ beforeEach(() => {
 // partway through — see admin.js's runResetTower comment and enter-tower.js).
 // ---------------------------------------------------------------------------------------
 describe('/admin reset-tower', () => {
-    function fakeInteraction(playerId) {
+    function fakeInteraction(playerId, fullWipe = false) {
         return {
             deferReply: jest.fn().mockResolvedValue(),
             editReply: jest.fn().mockResolvedValue(),
             user: { id: 'admin-1', username: 'Admin', displayName: 'Admin' },
             options: {
                 get: (name) => (name === 'player' && playerId !== undefined ? { value: playerId } : undefined),
+                getBoolean: (name) => (name === 'full-wipe' ? fullWipe : null),
             },
             guild: {
                 members: {
@@ -98,6 +99,82 @@ describe('/admin reset-tower', () => {
         // stale read as proof nothing needs writing.
         expect(dynamoHandler.updateUserDatabase).toHaveBeenCalledWith('target-1', 'canEnterTower', true);
         expect(interaction.editReply).toHaveBeenCalledWith(expect.stringMatching(/nothing was stuck/i));
+    });
+
+    // full-wipe (2026-09-24, direct instruction) — beyond just unlocking re-entry, also
+    // reverts the potatoes/stats a survived Tower run credited today, sourced from that
+    // player's own entry in today's tower_leaderboard batch.
+    describe('full-wipe option', () => {
+        test('reports nothing to revert when the player has no leaderboard entry today, but still unlocks re-entry', async () => {
+            const interaction = fakeInteraction('target-1', true);
+            interaction.guild.members.fetch.mockResolvedValue(memberFixture());
+            dynamoHandler.findUser.mockResolvedValue({
+                userId: 'target-1', username: 'targetplayer', canEnterTower: false,
+                sweetPotatoBuffs: { workMultiplierAmount: 0, passiveAmount: 0, bankCapacity: 0 },
+            });
+            dynamoHandler.removeTowerLeaderboardEntry.mockResolvedValue(null);
+
+            await resetTowerCallback({}, interaction);
+
+            expect(dynamoHandler.removeTowerLeaderboardEntry).toHaveBeenCalledWith('target-1');
+            expect(dynamoHandler.updateUserFields).not.toHaveBeenCalled();
+            expect(interaction.editReply).toHaveBeenCalledWith(expect.stringMatching(/nothing to revert/i));
+            expect(dynamoHandler.updateUserDatabase).toHaveBeenCalledWith('target-1', 'canEnterTower', true);
+        });
+
+        test('reverts the exact potatoes/stats a leaderboard entry credited and removes the entry', async () => {
+            const interaction = fakeInteraction('target-1', true);
+            interaction.guild.members.fetch.mockResolvedValue(memberFixture());
+            dynamoHandler.findUser.mockResolvedValue({
+                userId: 'target-1', username: 'targetplayer', canEnterTower: false,
+                sweetPotatoBuffs: { workMultiplierAmount: 5, passiveAmount: 100000, bankCapacity: 200000 },
+            });
+            dynamoHandler.removeTowerLeaderboardEntry.mockResolvedValue({
+                userId: 'target-1', username: 'targetplayer', floor: 30, elitesKilled: 2,
+                potatoes: 50000, workMultiplier: 0.2, passiveIncome: 20000, bankCapacity: 30000,
+            });
+
+            await resetTowerCallback({}, interaction);
+
+            expect(dynamoHandler.removeTowerLeaderboardEntry).toHaveBeenCalledWith('target-1');
+            expect(dynamoHandler.updateUserFields).toHaveBeenCalledWith('target-1',
+                { sweetPotatoBuffs: { workMultiplierAmount: 4.8, passiveAmount: 80000, bankCapacity: 170000 } },
+                { potatoes: -50000, totalEarnings: -50000, workMultiplierAmount: -0.2, passiveAmount: -20000, bankCapacity: -30000 }
+            );
+            expect(interaction.editReply).toHaveBeenCalledWith(expect.stringMatching(/floor 30.*50,000 potatoes/is));
+            expect(dynamoHandler.updateUserDatabase).toHaveBeenCalledWith('target-1', 'canEnterTower', true);
+        });
+
+        test('a stat-less entry (e.g. only potatoes earned) reverts cleanly without NaN in the sweetPotatoBuffs correction', async () => {
+            const interaction = fakeInteraction('target-1', true);
+            interaction.guild.members.fetch.mockResolvedValue(memberFixture());
+            dynamoHandler.findUser.mockResolvedValue({
+                userId: 'target-1', username: 'targetplayer', canEnterTower: false,
+                sweetPotatoBuffs: { workMultiplierAmount: 1, passiveAmount: 2, bankCapacity: 3 },
+            });
+            dynamoHandler.removeTowerLeaderboardEntry.mockResolvedValue({
+                userId: 'target-1', username: 'targetplayer', floor: 10, elitesKilled: 0,
+                potatoes: 5000, workMultiplier: 0, passiveIncome: 0, bankCapacity: 0,
+            });
+
+            await resetTowerCallback({}, interaction);
+
+            expect(dynamoHandler.updateUserFields).toHaveBeenCalledWith('target-1',
+                { sweetPotatoBuffs: { workMultiplierAmount: 1, passiveAmount: 2, bankCapacity: 3 } },
+                { potatoes: -5000, totalEarnings: -5000, workMultiplierAmount: -0, passiveAmount: -0, bankCapacity: -0 }
+            );
+        });
+
+        test('does not attempt a wipe at all when full-wipe is omitted (default false)', async () => {
+            const interaction = fakeInteraction('target-1');
+            interaction.guild.members.fetch.mockResolvedValue(memberFixture());
+            dynamoHandler.findUser.mockResolvedValue({ userId: 'target-1', username: 'targetplayer', canEnterTower: false });
+
+            await resetTowerCallback({}, interaction);
+
+            expect(dynamoHandler.removeTowerLeaderboardEntry).not.toHaveBeenCalled();
+            expect(dynamoHandler.updateUserFields).not.toHaveBeenCalled();
+        });
     });
 });
 
