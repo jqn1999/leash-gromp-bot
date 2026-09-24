@@ -873,6 +873,47 @@ describe('resolveScavengeReward', () => {
     });
 });
 
+// Regression coverage (2026-09-24, direct instruction: "make it so that each successive tier
+// should on average be consistently higher than the previous", scoped to Legendary/Mythic/
+// Heirloom) — the raw per-scavenge STARCH_RANGE average was already strictly increasing tier
+// over tier (40 < 100 < 200/now 240), so that alone was never the actual gap; the real
+// invariant worth protecting is the per-HOUR rate (average / DURATION_SECONDS), since that's
+// what determines whether a longer time commitment genuinely pays off. Heirloom's old value
+// (a flat double of Mythic, same as its duration doubling) landed it at the EXACT SAME
+// per-hour rate as Mythic — this test exists so a future STARCH_RANGE or DURATION_SECONDS
+// edit to any tier can't silently reintroduce a tie (or a regression) without failing here.
+describe('CompanionScavenging.STARCH_RANGE per-hour rate', () => {
+    test('every rarity\'s average starch-per-hour rate is strictly higher than the rarity below it', () => {
+        const rarityOrder = [
+            CompanionRarity.COMMON, CompanionRarity.RARE, CompanionRarity.LEGENDARY,
+            CompanionRarity.MYTHIC, CompanionRarity.HEIRLOOM,
+        ];
+        const perHourRates = rarityOrder.map((rarity) => {
+            const { min, max } = CompanionScavenging.STARCH_RANGE[rarity];
+            const avg = (min + max) / 2;
+            const durationHours = CompanionScavenging.DURATION_SECONDS[rarity] / 3600;
+            return avg / durationHours;
+        });
+
+        for (let i = 1; i < perHourRates.length; i++) {
+            expect(perHourRates[i]).toBeGreaterThan(perHourRates[i - 1]);
+        }
+    });
+
+    // Pins the exact value so the fix's own math (continuing the discovered (n+2)/(n+1)
+    // per-tier ratio pattern — Rare/Common=3/2, Legendary/Rare=4/3, Mythic/Legendary=5/4,
+    // Heirloom/Mythic=6/5 — one step further than the table used to) doesn't silently drift.
+    test('Heirloom\'s per-hour rate is exactly 1.2x Mythic\'s (continuing the existing tier-to-tier ratio pattern)', () => {
+        const mythicRange = CompanionScavenging.STARCH_RANGE[CompanionRarity.MYTHIC];
+        const heirloomRange = CompanionScavenging.STARCH_RANGE[CompanionRarity.HEIRLOOM];
+        const mythicPerHour = ((mythicRange.min + mythicRange.max) / 2) / (CompanionScavenging.DURATION_SECONDS[CompanionRarity.MYTHIC] / 3600);
+        const heirloomPerHour = ((heirloomRange.min + heirloomRange.max) / 2) / (CompanionScavenging.DURATION_SECONDS[CompanionRarity.HEIRLOOM] / 3600);
+
+        expect(heirloomPerHour).toBeCloseTo(mythicPerHour * 1.2);
+        expect(heirloomPerHour).toBeCloseTo(5); // 100/24 * 1.2 = 5/hr exactly
+    });
+});
+
 describe('applyMaxLevelTracking', () => {
     const maxWorkCount = CompanionLeveling.THRESHOLDS[CompanionLeveling.THRESHOLDS.length - 1].workCountRequired;
 

@@ -17460,3 +17460,47 @@ confirming it passes with the fix — a real regression guard, not just a shape 
 
 **Docs.** `systems/tower.md`'s `full-wipe option` subsection gained a "Live incident, fixed same
 day" paragraph documenting the failure mode, the fix, and the new guard.
+
+## Companion Scavenging: Heirloom's STARCH_RANGE bumped so its per-hour rate beats Mythic's (direct instruction: "look at legendary/mythic/heirloom scavenging values and make it so that each successive tier should on average be consistently higher than the previous")
+
+**What was asked.** Legendary/Mythic/Heirloom's scavenging starch values should each be, on
+average, consistently higher than the tier below — followed two questions asking for Mythic's own
+min/max scavenging starch numbers, which prompted a closer look at the whole tier ladder.
+
+**Root cause / what was found.** The raw per-scavenge average WAS already strictly increasing tier
+over tier (Legendary 40 < Mythic 100 < Heirloom 200) — that reading of "on average consistently
+higher" was already satisfied and needed no fix. The actual gap only shows up in the **per-hour**
+rate (`average ÷ DURATION_SECONDS`), the number that actually determines whether committing a
+companion for longer pays off: Common→Rare→Legendary→Mythic's own per-hour rates form a clean,
+evidently-deliberate pattern (each tier's rate is exactly `(n+2)/(n+1)` times the one before it —
+Rare/Common = 3/2, Legendary/Rare = 4/3, Mythic/Legendary = 5/4), but Heirloom's old value (a flat
+double of Mythic's, matching its duration also doubling) landed it at the **exact same** per-hour
+rate as Mythic (100÷24h = 200÷48h ≈ 4.1667/hr) — tied, not consistently higher, breaking the
+pattern the rest of the ladder already followed.
+
+**What changed.** `constants.js`'s `CompanionScavenging.STARCH_RANGE[CompanionRarity.HEIRLOOM]`
+changed from `{min:140, max:260}` (avg 200) to `{min:168, max:312}` (avg 240) — continuing the
+discovered ratio one tier further (`4.1667 × 6/5 = 5/hr` exactly, i.e. avg 240 over 48h), keeping
+the same ±30%-of-average spread every one of Legendary/Mythic/Heirloom already uses. Nothing else
+changed — `GOLDEN_YAM_VALUE_PERCENT`'s own per-hour-equivalent contribution was already strictly
+increasing (10%/12h < 40%/24h < 100%/48h), Common/Rare were out of scope (their own per-hour
+ordering was already fine and the instruction named Legendary/Mythic/Heirloom specifically), and
+`WORK_COUNT_RANGE`'s deliberately-flat per-hour rate across ALL five tiers is a separate, explicitly
+documented design decision ("no rarity is a faster leveling path than another") left untouched.
+
+**Tests.** `companionFactory.test.js` gained a `CompanionScavenging.STARCH_RANGE per-hour rate`
+describe block (2 new tests): a general property test asserting every rarity's per-hour rate is
+strictly greater than the one below it (across all five tiers, not just the three touched), and a
+pinned-value test asserting Heirloom's rate is exactly 1.2x Mythic's (5/hr exactly) so the fix's
+own math can't silently drift. Every pre-existing `resolveScavengeReward`/`getScavengeMultiplierBonus`
+test reads `CompanionScavenging.STARCH_RANGE` dynamically off the constant rather than hardcoding
+140/260, so none needed updating. Full suite: **112 suites / 2078 tests, all passing** (net +2 new
+tests, 0 broken).
+
+**Docs.** `systems/companions.md`'s Scavenging "Numbers" table updated (Heirloom's `STARCH_RANGE`
+column), with a new paragraph explaining the per-hour-rate reasoning and the discovered ratio
+pattern right below it.
+
+**Cross-repo note.** `financial-project` has a real Companion Scavenging port (confirmed via grep
+of `amplify/functions/gromp-companions/handler.ts` and `gromp-economy/handler.ts` for
+`CompanionScavenging`/`STARCH_RANGE`) — needs the identical `STARCH_RANGE` change ported into it.

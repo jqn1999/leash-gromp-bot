@@ -1333,12 +1333,34 @@ override only `owned`/`active` — regression-tested in `companionMarketFactory.
 | Rare | 6h (21,600s) | 12–20 | 10–20 | none |
 | Legendary | 12h (43,200s) | 24–40 | 28–52 | 10% of a Golden Yam's value |
 | Mythic | 24h (86,400s) | 48–80 | 70–130 | 40% of a Golden Yam's value |
-| Heirloom | 48h (172,800s) | 96–160 | 140–260 | 100% of a Golden Yam's value |
+| Heirloom | 48h (172,800s) | 96–160 | 168–312 | 100% of a Golden Yam's value |
 
 Duration is a clean doubling per tier — Common at 36x `/work`'s 300s cooldown / 3x the 1hr raid
 timer unambiguously reads as a between-sessions action, Mythic's 24h lands on the same once-a-day
 check-in cadence `/enter-tower` already uses, and Heirloom's 48h (added 2026-09-06 alongside
 Yamimic) continues the same doubling pattern one tier further.
+
+**`STARCH_RANGE` per-hour rate fixed 2026-09-24, direct instruction ("make it so that each
+successive tier should on average be consistently higher than the previous", scoped to
+Legendary/Mythic/Heirloom).** The raw per-scavenge average was already strictly increasing tier
+over tier (40 < 100 < 200) — that was never the actual gap, since it's essentially guaranteed to
+hold whenever a table's values only ever go up. The real invariant worth checking is the
+**per-hour** rate (`average ÷ DURATION_SECONDS`), the number that actually answers "does waiting
+longer for a higher rarity pay off": Common→Rare→Legendary→Mythic's own per-hour rates already
+formed a clean, evidently-deliberate pattern — each tier's rate is exactly `(n+2)/(n+1)` times the
+previous (Rare/Common = 3/2, Legendary/Rare = 4/3, Mythic/Legendary = 5/4) — but Heirloom's old
+value (200, a flat double of Mythic's 100, "continues the same doubling pattern" per the duration
+comment above) landed it at the **exact same** per-hour rate as Mythic (100÷24h = 200÷48h ≈
+4.1667/hr) — tied, not "consistently higher." Continuing the discovered ratio one step further
+(6/5) fixes it cleanly: `4.1667 × 6/5 = 5/hr` exactly, i.e. an average of 240 over Heirloom's 48h.
+`min`/`max` kept at the same ±30%-of-average spread every one of Legendary/Mythic/Heirloom already
+uses (`240 × 0.7 / 240 × 1.3 = 168 / 312`). The `GOLDEN_YAM_VALUE_PERCENT` bonus column needed no
+change — its own per-hour-equivalent contribution (`percent ÷ duration`) was already strictly
+increasing (10%/12h < 40%/24h < 100%/48h), so the fix only ever touched the floor.
+`companionFactory.test.js` gained a `CompanionScavenging.STARCH_RANGE per-hour rate` describe
+block pinning both the general "strictly increasing across all five rarities" property and the
+exact Heirloom/Mythic = 1.2x ratio, so a future edit to any tier's range or duration can't
+silently reintroduce a tie without failing a test.
 
 `WORK_COUNT_RANGE` is deliberately **never scaled by the scavenging companion's own current
 level** — level-scaling the very counter that *determines* level would be a self-reinforcing
