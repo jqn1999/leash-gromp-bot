@@ -2055,6 +2055,25 @@ const clearTowerLeaderboard = async function () {
     await updateStatFields("tower_leaderboard", { entries: [] });
 }
 
+// /admin reset-tower's "full wipe" option (2026-09-24, direct instruction) — removes exactly
+// ONE player's own entry from today's still-in-progress leaderboard batch (if they have one),
+// leaving every other player's entry untouched. A player only ever has at most one entry per
+// day (canEnterTower gates re-entry to once daily, restored either by this same admin command
+// or the next 8pm ET reset), so "their entry" is unambiguous. Self-contained read-filter-write,
+// not a ConditionExpression-guarded write — this is a rare, deliberate one-off admin
+// correction, not a routine concurrent gameplay path, and the target's own canEnterTower stays
+// false for the whole rest of this admin command's execution, so they can't start a fresh run
+// that would race this removal. Returns the removed entry (for the admin-facing confirmation
+// message with exact reverted amounts), or null if they had none to remove.
+const removeTowerLeaderboardEntry = async function (userId) {
+    const tower = await getStatDatabase("tower_leaderboard");
+    const entries = (tower && tower.entries) || [];
+    const entry = entries.find(e => e.userId === userId) || null;
+    if (!entry) return null;
+    await updateStatFields("tower_leaderboard", { entries: entries.filter(e => e !== entry) });
+    return entry;
+}
+
 // Which quests are currently live, and when each category's rotation started (used to
 // tell a fresh per-user progress snapshot from a stale one left over from a prior
 // rotation of the same quest — see questFactory.js).
@@ -2294,6 +2313,7 @@ module.exports = {
     recordTowerLeaderboardEntry,
     getTowerLeaderboard,
     clearTowerLeaderboard,
+    removeTowerLeaderboardEntry,
 
     getActiveQuests,
     setActiveQuests,

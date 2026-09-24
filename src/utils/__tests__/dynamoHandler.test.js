@@ -1487,3 +1487,42 @@ describe('getSortedMercenariesByBountyWins', () => {
         expect(sorted.map(u => u.userId)).toEqual(['u1']);
     });
 });
+
+// /admin reset-tower's "full wipe" option (2026-09-24) — removes exactly one player's own
+// entry from today's tower_leaderboard batch, leaving every other entry untouched.
+describe('removeTowerLeaderboardEntry', () => {
+    test('removes the matching entry and rewrites the array without it', async () => {
+        const entries = [
+            { userId: 'u1', username: 'Other', floor: 10, potatoes: 1000 },
+            { userId: 'u2', username: 'Target', floor: 30, potatoes: 5000 },
+            { userId: 'u3', username: 'AnotherOne', floor: 5, potatoes: 500 },
+        ];
+        docClient.query.mockReturnValue(resolved({ Items: [{ trackingId: 'tower_leaderboard', entries }] }));
+        docClient.update.mockReturnValue(resolved({}));
+
+        const removed = await dynamoHandler.removeTowerLeaderboardEntry('u2');
+
+        expect(removed).toEqual(entries[1]);
+        const [params] = docClient.update.mock.calls[0];
+        expect(params.ExpressionAttributeValues[':s0']).toEqual([entries[0], entries[2]]);
+    });
+
+    test('returns null and writes nothing when the player has no entry today', async () => {
+        const entries = [{ userId: 'u1', username: 'Other', floor: 10, potatoes: 1000 }];
+        docClient.query.mockReturnValue(resolved({ Items: [{ trackingId: 'tower_leaderboard', entries }] }));
+
+        const removed = await dynamoHandler.removeTowerLeaderboardEntry('u2');
+
+        expect(removed).toBeNull();
+        expect(docClient.update).not.toHaveBeenCalled();
+    });
+
+    test('returns null without writing when the leaderboard doc does not exist yet (fresh day, no runs yet)', async () => {
+        docClient.query.mockReturnValue(resolved({ Items: [] }));
+
+        const removed = await dynamoHandler.removeTowerLeaderboardEntry('u2');
+
+        expect(removed).toBeNull();
+        expect(docClient.update).not.toHaveBeenCalled();
+    });
+});

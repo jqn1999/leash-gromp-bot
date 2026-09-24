@@ -17349,3 +17349,40 @@ that edge is back (Golden Yam's is not, since it stayed excluded).
 **Cross-repo note.** `financial-project`'s `gromp-economy/handler.ts` has a real reimplementation of
 this same widened-scenario set (confirmed earlier this session when the original nerf was ported) —
 ported the identical restoration into it (see that repo's own log for the matching entry).
+
+## `/admin reset-tower` gained a `full-wipe` option (direct instruction: "make the admin reset tower command have an option to do a full wipe of a player's tower run for the day. Looks at the values stored in leaderboard and reverts their potatoes/stats gained for that day")
+
+**What was asked.** The existing `/admin reset-tower` only ever restores `canEnterTower` (a
+crash-recovery backstop — a crashed run never persists anything to roll back, see this same doc's
+earlier entry). A new option needed to cover the other support case: a run that completed normally
+but needs undoing anyway — revert the potatoes/stats it actually credited, sourced from the
+player's own entry in today's Tower leaderboard.
+
+**What changed.** Added a `full-wipe: true` boolean option to `/admin reset-tower`. New
+`dynamoHandler.removeTowerLeaderboardEntry(userId)` — a self-contained read-filter-write (same shape
+as `recordTowerLeaderboardEntry`/`clearTowerLeaderboard`) that removes exactly one player's entry
+from today's batch and returns it, or `null` if they have none (a died run never gets a leaderboard
+entry at all, so there's genuinely nothing to find/revert for that case). `admin.js`'s
+`runResetTower` then reverses the exact credit in ONE `updateUserFields` call: the four raw numeric
+stats (potatoes, totalEarnings, workMultiplierAmount, passiveAmount, bankCapacity) as atomic ADDs of
+the negative delta (race-safe regardless of concurrent activity), and `sweetPotatoBuffs` via a fresh
+re-fetch-decrement-SET (the same "moved since read" discipline `/rebirth`'s own confirm step
+follows, since it's a nested object DynamoDB can't ADD into directly). Deliberately does NOT touch
+companion leveling/Bastion drops or the `highestTowerFloor`/`towerChampionCount` records — the
+literal scope was "potatoes/stats," and those wouldn't have safe, unambiguous undo logic. The
+admin-facing confirmation message says so explicitly.
+
+**Tests.** `admin.test.js` gained a `full-wipe option` describe block (4 tests): no entry found
+still unlocks re-entry with a clear message; a real entry reverts the exact amounts and removes it;
+a stat-less entry (potatoes only) reverts cleanly with no NaN in the `sweetPotatoBuffs` correction;
+omitting the option never touches the leaderboard or calls `updateUserFields`. `dynamoHandler.test.js`
+gained a `removeTowerLeaderboardEntry` describe block (3 tests) against a mocked `docClient` —
+removes the right entry and rewrites the array, returns `null` without writing when the player has
+no entry, and returns `null` without writing when the leaderboard doc doesn't exist yet. Full suite:
+**112 suites / 2082 tests, all passing** (net +7 new tests, 0 broken).
+
+**Docs.** `systems/tower.md`'s `/admin reset-tower` section gained a `full-wipe option` subsection
+with the full design and the deliberately-excluded scope.
+
+**Cross-repo note.** `financial-project` has no Tower gameplay port at all (confirmed multiple times
+earlier this session) — no admin surface to mirror this into either way.
