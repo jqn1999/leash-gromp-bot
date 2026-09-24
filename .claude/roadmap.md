@@ -17504,3 +17504,47 @@ pattern right below it.
 **Cross-repo note.** `financial-project` has a real Companion Scavenging port (confirmed via grep
 of `amplify/functions/gromp-companions/handler.ts` and `gromp-economy/handler.ts` for
 `CompanionScavenging`/`STARCH_RANGE`) — needs the identical `STARCH_RANGE` change ported into it.
+
+## Cinderroot finds no longer blocked by a guild already possessing one (direct instruction: "make it so it can be found even when equipped, it should just go to the person who started the raids companion list")
+
+**What was asked.** A player asked "can a cinderroot be found if a guild is already using it? we
+havent found one in a while" — investigation (see the entry below on the question itself, answered
+without a code change first) surfaced that `rollGuildCompanionDrop` gated the roll off entirely
+once `guild.guildCompanion` was already non-null. Follow-up direct instruction: remove that gate —
+a find should still go to the raid-starting member's personal roster even while their guild
+already has one active.
+
+**Root cause / prior behavior.** `guildCompanionFactory.rollGuildCompanionDrop` (added in the
+2026-09-11 Cinderroot Rework, see that section in `systems/guilds.md`) short-circuited with
+`if (!wonThisRaid || guild.guildCompanion != null) return { awarded: false }` before even rolling
+against `GuildCompanionDrop.CHANCE`. Since the common path for a found Cinderroot is an immediate
+donation, this meant a guild's effective find rate dropped to zero the moment it acquired its
+first — new members joining an established guild, or a guild whose donated instance is mid-use,
+could never turn up a second one to hold in reserve.
+
+**What changed.** `rollGuildCompanionDrop` now only checks `wonThisRaid` and `raidSelection`'s own
+chance — the `guild.guildCompanion != null` gate is removed entirely. The award still lands
+exclusively on the raid-STARTING member's own personal roster via `resolveCinderrootAward` (never
+writes `guild.guildCompanion` directly, exactly as before), so this doesn't touch the guild-side
+mechanic at all. The **per-guild donation singleton is unchanged**: `validateDonateRequest` still
+rejects a second donation with "your guild already has a Cinderroot" while the guild possesses one
+— a player who finds a spare now just holds it (fully tradeable/fusable/sellable like any other
+owned Legendary in the meantime) until their guild's existing one is withdrawn or sacrificed, at
+which point they can donate the spare immediately instead of waiting on a fresh roll.
+
+**Tests.** `guildCompanionFactory.test.js`'s `rollGuildCompanionDrop` describe block: flipped the
+"never awards when the guild already POSSESSES a companion" case to assert it now awards on a
+guaranteed roll. `startRaidGuildCompanion.test.js`'s acquisition-roll describe block: flipped the
+equivalent end-to-end case (through `runStartRaidFlow`) to assert the finder is still awarded a
+second personal instance and `guild.guildCompanion` stays untouched. Full suite:
+**112 suites / 2078 tests, all passing** (2 tests rewritten to match new behavior, net 0 new/broken).
+
+**Docs.** `systems/guilds.md`'s Cinderroot Rework section: trimmed the stale "gated off entirely
+once a guild already possesses one" language from the Acquisition bullet, and added a new
+"Revision (2026-09-24)" subsection documenting the gate removal and why the donation-time
+singleton is still intact.
+
+**Cross-repo note.** `financial-project` has a real port (`amplify/functions/gromp-guilds/handler.ts`'s
+`maybeAwardGuildCompanion`, confirmed via grep — same `if (!won || guild.guildCompanion != null)
+return false;` gate). Ported the identical fix there in the same session; see that repo's own
+`NOTES_GROMP_WEB_INTEGRATION.md` entry.

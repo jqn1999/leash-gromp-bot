@@ -411,7 +411,11 @@ describe('Cinderroot acquisition roll (through runStartRaidFlow) — now awards 
         expect(companionsCall).toBeUndefined();
     });
 
-    test('never fires once a guild already POSSESSES one, even on a guaranteed win with a guaranteed roll', async () => {
+    // Revised 2026-09-24 (direct instruction): a guild already possessing Cinderroot no
+    // longer blocks a fresh find — it still lands on the raid-STARTING member's own roster
+    // (never straight onto the guild, so guild.guildCompanion is untouched either way). The
+    // per-guild singleton is enforced only at donation time, not at find time.
+    test('still fires once a guild already POSSESSES one, awarding a second personal instance to the finder', async () => {
         const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(GUARANTEED_ROLL);
         const guild = guildFixture({ guildCompanion: cinderroot });
         dynamoHandler.findGuildById.mockResolvedValueOnce(guild).mockResolvedValueOnce(guild).mockResolvedValueOnce({ ...guild, raidCount: 1 });
@@ -420,7 +424,12 @@ describe('Cinderroot acquisition roll (through runStartRaidFlow) — now awards 
         await runStartRaidFlow(interaction, 'regular');
         randomSpy.mockRestore();
 
-        const companionsCall = dynamoHandler.updateUserFields.mock.calls.find(([, fields]) => fields?.companions?.owned?.some(o => o.id === 'cinderroot'));
-        expect(companionsCall).toBeUndefined();
+        const guildCompanionCall = dynamoHandler.updateGuildDatabase.mock.calls.find(([, field]) => field === 'guildCompanion');
+        expect(guildCompanionCall).toBeUndefined();
+
+        const companionsCall = dynamoHandler.updateUserFields.mock.calls.find(([userId]) => userId === 'leader');
+        expect(companionsCall).toBeDefined();
+        const [, { companions }] = companionsCall;
+        expect(companions.owned.some(o => o.id === 'cinderroot')).toBe(true);
     });
 });

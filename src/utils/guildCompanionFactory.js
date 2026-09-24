@@ -56,14 +56,18 @@ function getWarbandSuccessBonus(guild) {
 }
 
 // One roll per winning raid RESOLUTION (never per member — see roadmap's fairness
-// reasoning), gated off entirely once a guild already POSSESSES one (only one Cinderroot
-// allowed per guild, per direct instruction). No longer writes anything itself — the actual
-// award now lands on the raid-STARTING member's own companion roster via
-// resolveCinderrootAward below, called by the caller (startRaid.js) with that member's own
-// userDetails, mirroring exactly how Yukon's own acquisition roll
+// reasoning). Revised 2026-09-24 (direct instruction): no longer gated on the guild's own
+// possession — a guild already holding a donated Cinderroot can still roll a fresh
+// find, since the award always lands on the raid-STARTING member's own personal roster
+// (below), never straight onto the guild. That member just holds the new instance until
+// their guild's slot frees up (withdraw/sacrifice) or they donate it to a different guild
+// later; the per-guild singleton is enforced entirely at donation time
+// (validateDonateRequest), not at find time. No longer writes anything itself — the actual
+// award lands via resolveCinderrootAward below, called by the caller (startRaid.js) with
+// that member's own userDetails, mirroring exactly how Yukon's own acquisition roll
 // (mercenaryFactory.resolveYukonAward) never touches this file at all.
 async function rollGuildCompanionDrop(guild, raidSelection, wonThisRaid) {
-    if (!wonThisRaid || guild.guildCompanion != null) return { awarded: false };
+    if (!wonThisRaid) return { awarded: false };
     const chance = GuildCompanionDrop.CHANCE[raidSelection] ?? 0;
     if (chance <= 0 || Math.random() >= chance) return { awarded: false };
     return { awarded: true };
