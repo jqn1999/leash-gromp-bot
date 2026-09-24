@@ -1705,6 +1705,24 @@ suites / 2082 tests, all passing** (net +7 new tests, 0 broken).
 `financial-project` has no Tower gameplay port at all (confirmed multiple times earlier this
 session) — nothing to port, and no equivalent admin surface exists there regardless.
 
+**Live incident, fixed same day (2026-09-24): the `full-wipe` option's own description broke
+`/admin` entirely.** The option shipped with a 121-character description — Discord's real cap on an
+application command option's `description` is 100 — and Discord rejects the ENTIRE command
+definition on one bad field, not just the offending option. `01registerCommands.js`'s per-command
+try/catch (see below) limited the blast radius to just the `admin` command, but that meant every
+`/admin` subcommand (give, stats, trigger-event, the works) was unusable, not just `reset-tower`,
+until fixed — `DiscordAPIError[50035]: options[1].options[1].description[BASE_TYPE_BAD_LENGTH]`.
+Shortened to "Also revert the potatoes/stats their Tower run earned today, not just unlock re-entry"
+(85 chars). This was a genuine test-coverage gap — nothing in the suite validated command
+definitions against Discord's own length limits before this. Added a regression test to
+`getLocalCommands.test.js` (which already requires every real command file, matching this exact
+"catch it in CI, not at startup" precedent from the 100-command-cap incident) — recursively walks
+every command's `options` (including nested Subcommand/SubcommandGroup levels, exactly the shape
+that broke here two levels deep) checking `name` (1-32 chars) and `description` (1-100 chars)
+against Discord's real limits. Confirmed this new test does fail against the original 121-char
+string before verifying it passes with the fix. Full suite: **112 suites / 2076 tests, all passing**
+(net +1 new test).
+
 #### Auto-recovery (2026-09-11, follow-up — same day)
 
 The admin command above is a manual mitigation; it still required someone to notice a player was

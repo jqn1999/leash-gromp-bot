@@ -633,7 +633,7 @@ module.exports = {
                 },
                 {
                     name: 'full-wipe',
-                    description: "Also revert the potatoes/stats they gained from today's Tower run (per their leaderboard entry), not just unlock re-entry",
+                    description: "Also revert the potatoes/stats their Tower run earned today, not just unlock re-entry",
                     required: false,
                     type: ApplicationCommandOptionType.Boolean,
                 }
