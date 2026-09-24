@@ -1355,12 +1355,30 @@ const CompanionScavenging = {
         { name: 'great', multiplier: 1.5, chance: 0.95 },
         { name: 'incredible', multiplier: 3, chance: 1.0 }
     ],
+    // Heirloom's average bumped 200 -> 240 (2026-09-24, direct instruction: "make it so that
+    // each successive tier should on average be consistently higher than the previous",
+    // scoped to Legendary/Mythic/Heirloom). Per-scavenge totals were already strictly
+    // increasing tier over tier (40 < 100 < 200) — the actual problem was the per-HOUR rate
+    // (avg / DURATION_SECONDS), the number that actually matters when comparing whether a
+    // longer commitment pays off: Common->Rare->Legendary->Mythic's own per-hour rates already
+    // formed a clean, discoverable pattern — each ratio to the previous tier is exactly
+    // (n+2)/(n+1) (Rare/Common = 3/2, Legendary/Rare = 4/3, Mythic/Legendary = 5/4) — but
+    // Heirloom's "just double it, same as duration doubling" value (200, continuing the
+    // doubling-with-duration pattern literally) gave it the EXACT SAME per-hour rate as Mythic
+    // (100/24h = 200/48h = 4.1667/hr) — tied, not "consistently higher." Continuing the same
+    // ratio pattern one more step (6/5) instead fixes it: 4.1667 * 6/5 = 5/hr exactly, i.e. an
+    // average of 240 over Heirloom's 48h duration — Legendary(3.333/hr) < Mythic(4.167/hr) <
+    // Heirloom(5/hr) now holds for every tier, not just some. min/max kept at the same ±30%-
+    // of-average spread every one of these three tiers already uses (240 * 0.7/1.3 = 168/312).
+    // The GOLDEN_YAM_VALUE_PERCENT bonus below didn't need any change — its own per-hour-
+    // equivalent contribution (percent / duration) was already strictly increasing
+    // (0.10/12h < 0.40/24h < 1.00/48h), so the fix only needed to touch the floor.
     STARCH_RANGE: {
         [CompanionRarity.COMMON]: { min: 3, max: 7 },
         [CompanionRarity.RARE]: { min: 10, max: 20 },
         [CompanionRarity.LEGENDARY]: { min: 28, max: 52 },
         [CompanionRarity.MYTHIC]: { min: 70, max: 130 },
-        [CompanionRarity.HEIRLOOM]: { min: 140, max: 260 } // same doubling-with-duration pattern
+        [CompanionRarity.HEIRLOOM]: { min: 168, max: 312 } // avg 240, not a flat double of Mythic anymore — see comment above
     },
     // Multi-scaled starch bonus (2026-09-07, direct instruction — "have companion
     // scavenging scale with the player's multi... current numbers can be the floor amount

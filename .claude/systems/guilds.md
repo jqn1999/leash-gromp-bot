@@ -1154,8 +1154,8 @@ instance to whoever runs that command.
   `active.perks.find(...)` stays a safe no-op if a player equips it personally pre-donation,
   rather than wiring real values through the generic per-companion pipeline). It's found the
   exact same way Yukon is: `guildCompanionFactory.rollGuildCompanionDrop` keeps its exact
-  trigger point/odds table/gate (one roll per winning raid resolution, gated off entirely once a
-  guild already possesses one), but no longer writes anything itself; a hit is resolved into a
+  trigger point/odds table (one roll per winning raid resolution), but no longer writes
+  anything itself; a hit is resolved into a
   real owned instance via `guildCompanionFactory.resolveCinderrootAward` (mirrors
   `mercenaryFactory.resolveYukonAward` byte-for-byte) for **whoever STARTED the raid**
   (`resolveRaid`'s own `userId`/`userDetails`, already in scope — no new plumbing needed),
@@ -1205,6 +1205,25 @@ instance to whoever runs that command.
   list/sell/fuse while it's guild property. The only windows where Cinderroot is a normal, fully-
   tradeable/fusable Legendary companion are between being FOUND and being DONATED, and again after
   a WITHDRAW — exactly like Yukon has zero restrictions post-acquisition.
+
+### Revision (2026-09-24, direct instruction): finds no longer gated on guild possession
+
+Originally `rollGuildCompanionDrop` refused to even roll once `guild.guildCompanion` was
+already non-null — a guild sitting on a donated Cinderroot could never turn up a second one,
+which meant a guild's find rate effectively dropped to zero the moment it acquired its first
+(donation being the common case once found at all). Per direct instruction ("make it so it
+can be found even when equipped, it should just go to the person who started the raid's
+companion list"), that gate is removed: the roll now only checks `wonThisRaid` and
+`raidSelection`'s own chance, regardless of what the guild currently possesses. The award
+still lands exclusively on the raid-STARTING member's own personal roster via
+`resolveCinderrootAward` — it never touches `guild.guildCompanion` — so a member can now hold
+a second (or third) personal Cinderroot instance while their guild's slot is already occupied
+by an earlier donation. The **per-guild singleton is unchanged and still enforced entirely at
+donation time**: `validateDonateRequest` still rejects a donation with "your guild already has
+a Cinderroot" while `guild.guildCompanion` is non-null. In practice this means a player who
+finds a second Cinderroot just holds it (tradeable/fusable/sellable like any other owned
+companion in the meantime) until their guild's existing one is withdrawn or sacrificed, at
+which point they can donate their spare immediately instead of waiting on a fresh roll.
 
 ### Status is shown on `/guild`, no dedicated status command
 

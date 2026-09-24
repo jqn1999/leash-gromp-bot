@@ -118,11 +118,15 @@ describe('rollGuildCompanionDrop', () => {
         expect(result).toEqual({ awarded: false });
     });
 
-    test('never awards when the guild already POSSESSES a companion, even on a guaranteed roll', async () => {
+    // Revised 2026-09-24 (direct instruction): a guild already possessing Cinderroot no
+    // longer blocks a fresh find — the award always lands on the raid-starting member's own
+    // roster (never straight onto the guild), so it just sits there until a guild slot opens
+    // up. The per-guild singleton is enforced only at donation time (validateDonateRequest).
+    test('still awards when the guild already POSSESSES a companion, on a guaranteed roll', async () => {
         const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0);
 
         const guild = { guildId: 'g1', guildCompanion: { id: 'cinderroot' } };
-        expect(await rollGuildCompanionDrop(guild, 'legendary', true)).toEqual({ awarded: false });
+        expect(await rollGuildCompanionDrop(guild, 'legendary', true)).toEqual({ awarded: true });
 
         randomSpy.mockRestore();
     });
