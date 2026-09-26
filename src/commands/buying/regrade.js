@@ -57,9 +57,16 @@ function hasRequiredBaseAmount(currentAmount, requiredBaseAmount, interaction, u
     return true
 }
 
+// The highest tier whose own currentRegradeAmount has been reached or surpassed — not a
+// strict `==` match. A player's regradeAmount should always land exactly on a real
+// checkpoint by construction, but a strict match returns undefined the moment it doesn't
+// (leftover pre-2026-09-26 drift from the old two-separate-writes bug, or any future bug of
+// that same shape) — and checkEligibility immediately reads `.chance`/`.cost` off the
+// result with no null check, which would crash the whole command rather than show a clean
+// message. Falling back to the nearest lower tier degrades gracefully instead: the player
+// sees whichever tier they've actually reached (or surpassed), not a thrown error.
 function findCurrentRegradeTier(regradeTiers, currentRegradeAmount) {
-    let currentTier = regradeTiers.filter((tier) => tier.currentRegradeAmount == currentRegradeAmount)
-    return currentTier[0]
+    return [...regradeTiers].reverse().find((tier) => tier.currentRegradeAmount <= currentRegradeAmount) || regradeTiers[0];
 }
 
 function getBaseAmount(userDetails, config) {

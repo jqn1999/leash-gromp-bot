@@ -251,4 +251,33 @@ describe('processRewardPayouts stat crediting (batched write)', () => {
         // The stat credit didn't land — no point also touching companion leveling/drops.
         expect(dynamoHandler.updateUserDatabase).not.toHaveBeenCalledWith('user-1', 'companions', expect.anything());
     });
+
+    // Direct instruction (2026-09-26, same-day follow-up): "have tower fail more obviously
+    // if any writes fail to go through but still let the user know what stats they gained" —
+    // the run's own results embed above is sent in the same celebratory style as a real
+    // success, so a text-only failure followUp right after it was easy to skim past. A loud
+    // red warning embed with the actual numbers broken into real fields makes it
+    // unmistakable, without dropping the existing JSON block admins already copy-paste from.
+    test('the failure notice includes a red warning embed with the actual reward numbers, not just the JSON block', async () => {
+        dynamoHandler.findUser.mockResolvedValue(baseUser({ workMultiplierAmount: tC.ENTRY_GATE_MULTI }));
+        dynamoHandler.updateUserFields.mockResolvedValue(undefined);
+        towerFactory.mockImplementation(() => ({
+            startRun: jest.fn().mockResolvedValue([[5000, 0.2, 0, 0], 10, false]),
+        }));
+        const interaction = fakeInteraction();
+
+        await callback({}, interaction);
+
+        const failureCall = interaction.followUp.mock.calls.find(([opts]) => opts.content?.includes('database error'));
+        expect(failureCall).toBeTruthy();
+        const [{ embeds }] = failureCall;
+        expect(embeds).toHaveLength(1);
+        const embed = embeds[0];
+        expect(embed.data.color).toBe(0xED4245); // Discord.js 'Red'
+        expect(embed.data.title).toMatch(/not saved/i);
+        const fieldValues = embed.data.fields.map(f => f.value).join(' ');
+        expect(fieldValues).toContain('10'); // floor
+        expect(fieldValues).toContain('5,000'); // potatoes
+        expect(fieldValues).toContain('0.20'); // work multiplier
+    });
 });

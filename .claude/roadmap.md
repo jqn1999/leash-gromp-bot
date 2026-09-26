@@ -17773,3 +17773,40 @@ sections already expect from a fix comment like this.
 **Cross-repo note.** `financial-project`'s own regrade port (if one exists) hasn't been checked yet
 this session — worth a follow-up look for the identical two-separate-writes shape before assuming
 it's bot-only.
+
+## Same-day addendum: hardened `/regrade` against a drifted `regradeAmount` crashing the command outright (direct instruction: "Would it ever drift and say they can't regrade?")
+
+**What was asked.** Whether the drift class fixed above could also make `/regrade` wrongly refuse a
+player, or otherwise misbehave, given the atomic-write fix only prevents NEW drift — it doesn't touch
+any `regradeAmount` that's already sitting off a real tier checkpoint from before that fix landed.
+
+**What was found.** Two distinct exposures, one worse than "wrongly refuses":
+1. `findCurrentRegradeTier` matched a player's `regradeAmount` against each tier's own
+   `currentRegradeAmount` with strict `==`. A `regradeAmount` that doesn't land exactly on one (any
+   leftover pre-fix drift, or a future bug of the same shape) makes it return `undefined` — and
+   `checkEligibility`'s very next line reads `.chance`/`.cost` off that result with **no null check**,
+   throwing an uncaught `TypeError` and crashing the whole command rather than showing any message at
+   all.
+2. `hasRequiredBaseAmount`'s `base < shopMax` gate genuinely CAN false-refuse a player who has truly
+   finished the shop, if their `base` is under-counted from old drift (the direction the self-heal
+   deliberately doesn't touch — see `healBaseDrift`'s own "below the account's own floor" guard,
+   which is this same problem generalized). This is now closed **going forward** by the atomic-write
+   fix above (regradeAmount and the stat field can no longer desync from each other on a fresh
+   attempt), but an account that already has this specific old damage would still see it until
+   manually corrected — there's no safe way to "add back" a lost regrade credit automatically, since
+   the exact amount that should have landed isn't recoverable from the current state alone (unlike
+   the "excess" case, which is safe to heal because the correct destination is unambiguous).
+
+**What changed.** `findCurrentRegradeTier` rewritten to find the **highest tier whose
+`currentRegradeAmount` has been reached or surpassed**, not a strict match — always resolves to a
+real tier (the first tier's `currentRegradeAmount` is 0, so it can never fall through to nothing),
+degrading gracefully to "whichever tier you've actually reached" instead of crashing. The
+false-refusal risk (`hasRequiredBaseAmount`) is not separately patched — it's structurally closed for
+all NEW regrades by the earlier atomic-write fix, and there's no safe automatic fix for pre-existing
+under-counted accounts; flagged rather than built, since guessing at a correction here risks being
+wrong in a way the excess-side heal isn't.
+
+**Tests.** `regrade.test.js` gained a test reproducing the exact crash: a `regradeAmount` of 25 (no
+tier's `currentRegradeAmount` equals 25) now resolves to tier 3 (`currentRegradeAmount` 20, the
+highest one reached) instead of throwing, verified via the actual cost/increase passed to the preview
+embed. Full suite: **113 suites / 2111 tests, all passing** (net +1 new test, 0 broken).

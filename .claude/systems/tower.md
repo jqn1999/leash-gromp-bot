@@ -2792,3 +2792,28 @@ for its UI, would show the identical "N/A"/broken-tier symptom for an affected a
 bot's self-heal happens to run for that player first. Flagging this rather than silently deciding —
 worth checking whether `financial-project` needs the equivalent `healBaseDrift` (or at least the same
 epsilon-tolerance hardening) ported into its own Lambda(s) that compute shop/regrade progress.
+
+### Same-session addendum: the reward-failure notice made visually loud, not just present (direct instruction: "have tower fail more obviously if any writes fail to go through but still let the user know what stats they gained")
+
+The 2026-09-23 same-day follow-up above already sends a failure notice with the exact reward numbers
+in a copy-pasteable JSON block the moment `processRewardPayouts`'s write fails — that part of the ask
+was already built. What wasn't: the run's own results embed (`createResult`) is sent FIRST, in the
+same yellow, celebratory style every successful run gets, showing the rewards as if they landed
+regardless of whether the later write actually succeeds. The failure notice that follows it was
+plain text only — easy to skim past as more of the same good news rather than a warning, especially
+since Discord renders a plain-text followUp far less prominently than an embed.
+
+`sendRewardFailureNotice` now also attaches a new `createRewardFailureEmbed` — red, titled "⚠️ Tower
+Reward NOT Saved", with the floor/outcome/potatoes/work multiplier/passive income/bank capacity each
+broken into their own real fields (not just buried in the JSON block) — alongside the exact same
+`content` string as before (JSON block included, still ephemeral, still the same wording). This is
+purely additive: the existing JSON-block behavior every admin correction already relies on is
+untouched, this just makes the failure state visually impossible to mistake for the success it sits
+right next to. Visibility (ephemeral vs. public so a mod could see it without the player forwarding
+anything) was deliberately left as-is rather than changed unasked — a real design tradeoff (channel
+noise, exposing a userId publicly) worth a separate decision if wanted.
+
+**Tests.** `enter-tower.test.js` gained a test confirming the failure followUp carries exactly one Red
+embed with the actual floor/potatoes/work-multiplier values present in its fields, alongside (not
+instead of) the pre-existing JSON-block assertion. Full suite: **113 suites / 2112 tests, all
+passing** (net +1 new test, 0 broken).

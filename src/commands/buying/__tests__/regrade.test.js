@@ -117,6 +117,41 @@ test('the boost changes a real roll outcome, not just the displayed number', asy
 // stat field's own write failed transiently (or vice versa) permanently desyncs base
 // (statField - sweetPotatoBuffs - regradeAmount) from any real shop tier — exactly the bug
 // that kept recurring for a player even after a manual account correction.
+describe('findCurrentRegradeTier degrades gracefully on a drifted regradeAmount (2026-09-26 fix)', () => {
+    // Reproduces the exact crash risk: a regradeAmount that doesn't land on ANY tier's
+    // currentRegradeAmount (leftover pre-fix drift, or any future bug of the same shape)
+    // used to make findCurrentRegradeTier return undefined, and checkEligibility's very
+    // next line reads currentTier.chance with no null check — an uncaught TypeError,
+    // not a clean player-facing message.
+    test('a regradeAmount that does not land on any real checkpoint resolves to the nearest lower tier instead of crashing', async () => {
+        const drifted = {
+            userId: 'user-1', username: 'User',
+            potatoes: 999999999999,
+            workMultiplierAmount: REQUIRED_WORK_BASE + 25, // between tier 3 (20) and tier 4 (30)
+            sweetPotatoBuffs: { workMultiplierAmount: 0, passiveAmount: 0, bankCapacity: 0 },
+            regrades: {
+                workMulti: { regradeAmount: 25, failStack: 0 }, // no tier has currentRegradeAmount === 25
+                passiveAmount: { regradeAmount: 0, failStack: 0 },
+                bankCapacity: { regradeAmount: 0, failStack: 0 },
+            },
+            companions: { owned: [], active: null },
+        };
+        dynamoHandler.findUser.mockResolvedValue(drifted);
+        const previewSpy = jest.spyOn(EmbedFactory.prototype, 'createRegradePreviewEmbed').mockReturnValue({});
+        const interaction = fakeInteraction();
+
+        await expect(callback({}, interaction)).resolves.not.toThrow();
+
+        expect(previewSpy).toHaveBeenCalledTimes(1);
+        // (userDisplayName, userId, userAvatar, potatoes, label, base, cost, increase, chance, failStack)
+        const [, , , , , , cost, increase] = previewSpy.mock.calls[0];
+        // Tier 3 (currentRegradeAmount 20 <= 25) is the highest tier actually reached.
+        expect(cost).toBe(workRegradeTiers[2].cost);
+        expect(increase).toBe(workRegradeTiers[2].increase);
+        previewSpy.mockRestore();
+    });
+});
+
 describe('atomic write (2026-09-26 fix — regrades/stat/companions/potatoes in one call)', () => {
     test('a success writes everything in exactly one updateUserFields call, never touches updateUserDatabase/addUserDatabase', async () => {
         dynamoHandler.findUser.mockResolvedValue(baseUser({ owned: [], active: null }));
