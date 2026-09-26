@@ -2023,7 +2023,7 @@ class EmbedFactory {
             if (milestoneJustReached) {
                 fields.push({
                     name: `🏅 Toxic Tolerance:`,
-                    value: `10 Poison hits in one week — the loss and lockout are cut way down for the rest of this week!`,
+                    value: `10 Poison hits in one week — your loss/lockout reduction was already capped at 60%, so this milestone doesn't soften it any further. Just a badge for a rough week.`,
                     inline: false,
                 });
             }
@@ -2115,7 +2115,7 @@ class EmbedFactory {
             if (milestoneJustReached) {
                 fields.push({
                     name: `🏅 Mimic-Proofed:`,
-                    value: `10 Mimic hits in one week — the bank loss is cut way down for the rest of this week!`,
+                    value: `10 Mimic hits in one week — your bank-loss reduction was already capped at 60%, so this milestone doesn't soften it any further. Just a badge for a rough week.`,
                     inline: false,
                 });
             }

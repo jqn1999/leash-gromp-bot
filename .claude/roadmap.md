@@ -17616,3 +17616,41 @@ extraction.
 pagination) — no formula, balance number, or data-shape change. `financial-project`'s `/gromp` page
 has its own entirely separate React UI for regrading and scavenging (not Discord embeds), so there
 is nothing to port here.
+
+## Stale UI text: the 10-hit Poison/Mimic milestone still claimed a bigger reduction after the 90% jump was removed (player-reported: "it still says huge loss reduction for rest of week but that changed to just stick to the 60%")
+
+**What was asked.** A UI-copy check after the earlier 2026-09-24 fix that removed the 90% Poison/
+Mimic milestone reduction entirely (everyone now caps at 60%, milestone crossed or not) — the
+10-hit milestone fields were never updated to match, still promising a bigger discount that no
+longer exists in the underlying math.
+
+**What was found.** Three player-facing strings, all written when hit-10 genuinely jumped
+`reduction` to 90%, none touched by the 2026-09-24 fix (which only changed `workFactory.js`'s
+actual math, not any of the copy describing it):
+- `embedFactory.js`'s Poison Potato result embed ("🏅 Toxic Tolerance") — "the loss and lockout
+  are cut way down for the rest of this week!"
+- `embedFactory.js`'s Mimic Potato result embed ("🏅 Mimic-Proofed") — "the bank loss is cut way
+  down for the rest of this week!"
+- `constants.js`'s `/help topic:poison-mimic` content string — literally spelled out "capped -60%
+  through hit 9, then a -90% break from hit 10 on," describing math that hasn't been true since
+  2026-09-24.
+
+All three implied hitting the milestone unlocks additional relief beyond the 60% cap. In reality
+`reduction` is already sitting at the 60% cap by hit 4 (`REDUCTION_PER_HIT` 15% × 4), so by hit 10
+the milestone fires purely as an achievement trigger with zero effect on `reduction` — exactly as
+`constants.js`'s own `PoisonMitigation`/`MimicMitigation` comments already say, the UI just never
+caught up to that.
+
+**What changed.** All three reworded to state plainly that the reduction was already capped at 60%
+before the milestone, and that hitting 10 doesn't soften it any further — it's a badge for a rough
+week, not a bigger discount. The 20-hit milestone fields ("Immune to Venom"/"The Mimic's Best
+Customer") were already worded as flavor-only with no claimed mechanical effect, so those were left
+untouched.
+
+**Tests.** No test asserted the exact field/content text in any of the three spots (`embedFactory.test.js`'s
+Mimic-Proofed check only asserts the field NAME exists, not its value), so nothing needed updating.
+Full suite: **113 suites / 2092 tests, all passing**, unaffected by a text-only change.
+
+**Docs.** None needed — `.claude/systems/companions.md`/`economy-and-work.md`'s own existing
+references to the 90% removal are already correctly worded in past tense as history, not current
+behavior; this fix only touched player-facing copy that had never been swept in the first place.
