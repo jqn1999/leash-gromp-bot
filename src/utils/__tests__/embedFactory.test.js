@@ -920,6 +920,28 @@ describe('createSpudKeepRosterEmbed', () => {
         const field = embed.data.fields.find(f => f.name.includes('Enrolled Players'));
         expect(field.value).toContain('No players enrolled');
     });
+
+    // Power contribution per player (2026-09-27, direct instruction: "include how much
+    // power each player is adding to the total for their guild / to mercs").
+    test('shows each player\'s own power contribution and rank-decay weight when present', () => {
+        const preview = basePreview();
+        const pageRows = [
+            { username: 'Alice', entrantName: 'Guild A', entrantType: 'guild', contribution: { power: 100, weight: 1.0, contribution: 100 } },
+            { username: 'Bob', entrantName: 'Guild A', entrantType: 'guild', contribution: { power: 40, weight: 0.25, contribution: 10 } },
+        ];
+        const embed = embedFactory.createSpudKeepRosterEmbed(preview, pageRows, 0, 1);
+        const field = embed.data.fields.find(f => f.name.includes('Enrolled Players'));
+        expect(field.value).toContain('Alice — 🏰 Guild A — adding **100.00** power (100% of their own 100.00)');
+        expect(field.value).toContain('Bob — 🏰 Guild A — adding **10.00** power (25% of their own 40.00)');
+    });
+
+    test('a null contribution (no matching memberContributions entry) falls back to the plain line, not a crash', () => {
+        const preview = basePreview();
+        const pageRows = [{ username: 'Alice', entrantName: 'Guild A', entrantType: 'guild', contribution: null }];
+        const embed = embedFactory.createSpudKeepRosterEmbed(preview, pageRows, 0, 1);
+        const field = embed.data.fields.find(f => f.name.includes('Enrolled Players'));
+        expect(field.value).toBe('Alice — 🏰 Guild A');
+    });
 });
 
 // Per-player pot payout breakdown (2026-08-30, direct instruction: "a per player amount

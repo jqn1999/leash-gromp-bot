@@ -123,14 +123,29 @@ function getSpudKeepMemberPower(userDetails) {
 // spudKeepFactory.js is the one caller that passes getSpudKeepMemberPower instead, so its
 // own entrant power excludes companion boosts without duplicating this whole
 // rank-weighted/headcount-bonus formula a second time.
+//
+// memberContributions (2026-09-27, direct instruction: "include how much power each player
+// is adding to the total for their guild / to mercs") — purely additive, every existing
+// caller that only reads teamPower/headcountBonus/effectivePower is unaffected. Each
+// element is { member, power, weight, contribution }, in the SAME sorted-descending-by-
+// power order teamPower itself is computed in, so a caller can show "who's contributing
+// what" without re-deriving the rank-weighted formula a second time. `member` is whatever
+// memberDetailsList's own elements are (full userDetails for every current caller), not
+// re-shaped, so a caller can still read member.userId/username/etc. off it directly.
 function getEffectiveRaidPowerBreakdown(memberDetailsList, powerFn = getMemberRaidPower) {
     if (memberDetailsList.length === 0) {
-        return { teamPower: 0, headcountBonus: 0, effectivePower: 0 };
+        return { teamPower: 0, headcountBonus: 0, effectivePower: 0, memberContributions: [] };
     }
-    const powers = memberDetailsList.map(powerFn).sort((a, b) => b - a);
-    const teamPower = powers.reduce((sum, power, rank) => sum + power * Math.max(Math.pow(Raid.RAID_TEAM_DECAY, rank), Raid.RAID_TEAM_DECAY_FLOOR), 0);
+    const ranked = memberDetailsList
+        .map(member => ({ member, power: powerFn(member) }))
+        .sort((a, b) => b.power - a.power);
+    const memberContributions = ranked.map(({ member, power }, rank) => {
+        const weight = Math.max(Math.pow(Raid.RAID_TEAM_DECAY, rank), Raid.RAID_TEAM_DECAY_FLOOR);
+        return { member, power, weight, contribution: power * weight };
+    });
+    const teamPower = memberContributions.reduce((sum, m) => sum + m.contribution, 0);
     const headcountBonus = Math.min(Raid.RAID_HEADCOUNT_BONUS_CAP, Raid.RAID_HEADCOUNT_BONUS_PER_MEMBER * (memberDetailsList.length - 1));
-    return { teamPower, headcountBonus, effectivePower: teamPower * (1 + headcountBonus) };
+    return { teamPower, headcountBonus, effectivePower: teamPower * (1 + headcountBonus), memberContributions };
 }
 
 // Shared by startRaid.js's actual roll, currentRaid.js's preview display, and Bounty's

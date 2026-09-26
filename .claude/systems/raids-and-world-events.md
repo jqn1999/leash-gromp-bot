@@ -162,12 +162,16 @@ insertion argument the pure geometric shape used still holds — inserting a new
 `RAID_TEAM_DECAY`/`RAID_TEAM_DECAY_FLOOR`'s actual values, which are pure balance knobs (fuzz-tested
 numerically in `raidFactory.test.js`, 0 violations across thousands of random trials).
 
-`getEffectiveRaidPowerBreakdown` returns `{ teamPower, headcountBonus, effectivePower }` (not just the
-final number) so `current-raid`'s embed can show what the Total Multiplier is made of.
-`getEffectiveRaidPower` is a thin wrapper over it returning just `.effectivePower`. **n=1 is an exact
-identity with the old formula** (`teamPower = power_0 * max(r^0, floor) = power_0`, `headcountBonus =
-0`), so Bounty's solo "roster" (`mercenaryFactory.js`'s `getEffectiveRaidPower([userDetails])`) needed
-zero changes and produces byte-identical numbers to before.
+`getEffectiveRaidPowerBreakdown` returns `{ teamPower, headcountBonus, effectivePower,
+memberContributions }` (not just the final number) so `current-raid`'s embed can show what the Total
+Multiplier is made of. `memberContributions` (2026-09-27, added for Spud Keep's own per-player
+breakdown — see `systems/spud-keep.md`) is `[{ member, power, weight, contribution }]`, one per
+roster member in the same sorted-descending order `teamPower` is summed in — purely additive, every
+pre-existing caller reading only the other three fields is unaffected. `getEffectiveRaidPower` is a
+thin wrapper over it returning just `.effectivePower`. **n=1 is an exact identity with the old
+formula** (`teamPower = power_0 * max(r^0, floor) = power_0`, `headcountBonus = 0`), so Bounty's solo
+"roster" (`mercenaryFactory.js`'s `getEffectiveRaidPower([userDetails])`) needed zero changes and
+produces byte-identical numbers to before.
 
 **`RAID_TEAM_DECAY_FLOOR` (2026-09-27, direct instruction: "don't strictly do 100% then 50% then 25%
 then 12.5% etc, floor it at 25% power contribution") deliberately removes the old ceiling.** Before

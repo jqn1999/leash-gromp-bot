@@ -15,14 +15,29 @@ function chunkArray(array, size) {
 }
 
 // Flattens every entrant's roster into one player-level list (username + which
-// guild/Merc Faction they're enrolled under) — see embedFactory.createSpudKeepRosterEmbed.
-// Each entrant field on the status page above only shows a roster COUNT, never the
-// actual usernames, which is what this flat list exists to surface.
+// guild/Merc Faction they're enrolled under, plus their own power contribution to that
+// entrant's teamPower) — see embedFactory.createSpudKeepRosterEmbed. Each entrant field on
+// the status page above only shows a roster COUNT, never the actual usernames or each
+// member's own share, which is what this flat list exists to surface.
+//
+// contribution (2026-09-27, direct instruction: "include how much power each player is
+// adding to the total for their guild / to mercs") — read off
+// raidFactory.getEffectiveRaidPowerBreakdown's own memberContributions (already computed
+// for entrant.breakdown, nothing re-derived here), keyed by userId since entrant.roster's
+// own entries use `.id` (guild.memberList's own shape) while memberContributions' entries
+// carry the full userDetails object under `.member` (`.userId`) — same value, different
+// field name across the two shapes. null for a member missing from memberContributions
+// (shouldn't happen in practice — the roster IS what memberContributions was computed
+// from — but degrades to "no contribution shown" rather than a crash if it ever did).
 function flattenRoster(entrants) {
     const rows = [];
     for (const entrant of entrants) {
+        const contributionByUserId = new Map(
+            (entrant.breakdown.memberContributions || []).map(c => [c.member.userId, c])
+        );
         for (const member of entrant.roster) {
-            rows.push({ username: member.username, entrantName: entrant.name, entrantType: entrant.type });
+            const contribution = contributionByUserId.get(member.id) || null;
+            rows.push({ username: member.username, entrantName: entrant.name, entrantType: entrant.type, contribution });
         }
     }
     return rows;
@@ -44,6 +59,7 @@ module.exports = {
     description: "Live Spud Keep status — current holder, this cycle's entrants, and the accruing pot",
     devOnly: false,
     deleted: false,
+    flattenRoster, // exported for direct unit testing of the userId-matching logic
     callback: async (client, interaction) => {
         await interaction.deferReply();
         const [userId, username, userDisplayName] = getUserInteractionDetails(interaction);
