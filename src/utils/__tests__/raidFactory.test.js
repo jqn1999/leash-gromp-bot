@@ -540,31 +540,54 @@ describe('getEffectiveRaidPower', () => {
 
     test('the headcount bonus caps rather than growing without bound for a huge roster', () => {
         const hugeRoster = Array.from({ length: 100 }, () => ({ workMultiplierAmount: 50, rebirthCount: 0 }));
-        // teamPower for a huge equal-power roster converges to the geometric ceiling:
-        // power * 1/(1 - RAID_TEAM_DECAY).
-        const teamPowerCeiling = 50 * (1 / (1 - Raid.RAID_TEAM_DECAY));
-        expect(getEffectiveRaidPower(hugeRoster)).toBeCloseTo(teamPowerCeiling * (1 + Raid.RAID_HEADCOUNT_BONUS_CAP));
+        // teamPower for a huge equal-power roster no longer converges (see the floor test
+        // below) — it's exactly rank0(1.0) + rank1(0.5) + every later rank at the floor
+        // (0.25). This test only guards that the HEADCOUNT bonus multiplier itself still
+        // caps at RAID_HEADCOUNT_BONUS_CAP, independent of teamPower's own growth.
+        const rankWeightSum = 1.0 + Raid.RAID_TEAM_DECAY + Raid.RAID_TEAM_DECAY_FLOOR * (100 - 2);
+        const teamPower = 50 * rankWeightSum;
+        expect(getEffectiveRaidPower(hugeRoster)).toBeCloseTo(teamPower * (1 + Raid.RAID_HEADCOUNT_BONUS_CAP));
     });
 
-    // The geometric (not harmonic) shape converges to a hard ceiling of
-    // 1/(1-RAID_TEAM_DECAY) = 2.0x the top raider's own power regardless of how large the
-    // roster gets — this holds no matter how high memberCap is upgraded via guildBuy.js.
-    test('the geometric ceiling: a large equal-power roster approaches but never exceeds 1/(1-RAID_TEAM_DECAY)x the top raider\'s own power', () => {
-        const ceiling = 1 / (1 - Raid.RAID_TEAM_DECAY);
+    // RAID_TEAM_DECAY_FLOOR (2026-09-27, direct instruction: "don't strictly do 100% then
+    // 50% then 25% then 12.5% etc, floor it at 25% power contribution") deliberately REMOVES
+    // the old geometric ceiling — every rank from 2 onward now contributes a flat 25%
+    // forever instead of continuing to halve toward 0, so teamPower grows without bound as
+    // roster size grows, unlike the pre-floor formula's hard 1/(1-RAID_TEAM_DECAY) = 2.0x
+    // asymptote. See RAID_TEAM_DECAY_FLOOR's own comment in constants.js for the full
+    // before/after.
+    test('the floor removes the old geometric ceiling: a large equal-power roster exceeds 1/(1-RAID_TEAM_DECAY)x the top raider\'s own power', () => {
+        const oldCeiling = 1 / (1 - Raid.RAID_TEAM_DECAY); // the pre-floor asymptote, 2.0x
         const power = 50;
         const bigRoster = Array.from({ length: 40 }, () => ({ workMultiplierAmount: power, rebirthCount: 0 }));
         const { teamPower } = getEffectiveRaidPowerBreakdown(bigRoster);
-        expect(teamPower).toBeLessThan(power * ceiling);
-        expect(teamPower).toBeCloseTo(power * ceiling, 2);
+        expect(teamPower).toBeGreaterThan(power * oldCeiling);
+        // Exact value: rank0(1.0) + rank1(0.5) + every one of the remaining 38 ranks at the
+        // 0.25 floor.
+        const rankWeightSum = 1.0 + Raid.RAID_TEAM_DECAY + Raid.RAID_TEAM_DECAY_FLOOR * (40 - 2);
+        expect(teamPower).toBeCloseTo(power * rankWeightSum, 6);
+    });
+
+    test('teamPower grows exactly linearly with roster size once every added rank is past the floor', () => {
+        const power = 50;
+        const rosterOf10 = Array.from({ length: 10 }, () => ({ workMultiplierAmount: power, rebirthCount: 0 }));
+        const rosterOf20 = Array.from({ length: 20 }, () => ({ workMultiplierAmount: power, rebirthCount: 0 }));
+        const teamPower10 = getEffectiveRaidPowerBreakdown(rosterOf10).teamPower;
+        const teamPower20 = getEffectiveRaidPowerBreakdown(rosterOf20).teamPower;
+        // Every one of the 10 extra members (all well past rank 2) adds exactly
+        // power * RAID_TEAM_DECAY_FLOOR to teamPower — no more diminishing returns once
+        // the floor is reached.
+        expect(teamPower20 - teamPower10).toBeCloseTo(power * Raid.RAID_TEAM_DECAY_FLOOR * 10, 6);
     });
 
     // The documented extreme case from the design: a maxed-memberCap (25), all-equal-power
-    // roster reaches ~3.0x a single raider's own power (2.0x teamPower ceiling * 1.5x
-    // headcount bonus ceiling) — a sane reward for that level of investment, not a runaway.
-    test('at the documented extreme (25-member maxed roster, equal power), effectivePower reaches ~3.0x a single raider\'s power', () => {
+    // roster now reaches well beyond the old ~3.0x figure (2.0x teamPower ceiling * 1.5x
+    // headcount bonus ceiling), since the floor removes teamPower's own ceiling entirely —
+    // a deliberate reward for a large, well-populated guild, not a bug.
+    test('at the documented extreme (25-member maxed roster, equal power), effectivePower reaches ~10.875x a single raider\'s power', () => {
         const power = 100;
         const roster = Array.from({ length: 25 }, () => ({ workMultiplierAmount: power, rebirthCount: 0 }));
-        expect(getEffectiveRaidPower(roster)).toBeCloseTo(power * 3.0, 1);
+        expect(getEffectiveRaidPower(roster)).toBeCloseTo(power * 10.875, 1);
     });
 
     test('an empty roster is 0, not NaN from a division by zero', () => {

@@ -99,22 +99,24 @@ function getSpudKeepMemberPower(userDetails) {
 //
 // teamPower replaces a straight arithmetic mean (2026-08-26 rework): sort raiders by
 // their own power descending, the top raider counts at full weight, each next-strongest
-// raider counts at Raid.RAID_TEAM_DECAY (50%) of the rank above them —
-// teamPower = sum(power_i * RAID_TEAM_DECAY^rank). A straight average gave zero
-// incentive to recruit more raiders and, worse, let a below-average new member drag the
-// average down by MORE than the headcount bonus could offset — making the single
-// strongest guild member soloing every raid strictly dominant over real multi-member
-// participation (the bug this rework fixes). This geometric shape is provably
-// non-decreasing: for weights w_i = r^i (0 < r < 1), inserting a new member at ANY power
-// p_new >= 0 at its correctly-sorted rank k changes teamPower by exactly p_new * r^n >= 0
-// (n = roster size before insertion) — every existing member at rank >= k gets demoted
-// one slot and loses p_i * r^i * (1-r), but since insertion at rank k requires
-// p_new >= p_i for every demoted member, the total loss is bounded above by the gain.
-// This is a correctness guarantee of the formula shape itself (fuzz-tested numerically in
-// raidFactory.test.js), independent of RAID_TEAM_DECAY's actual value, which is a pure
-// balance knob. n=1 is an exact identity with the old formula: teamPower = power_0 * r^0
-// = power_0, headcountBonus = 0 — so getEffectiveRaidPower([single]) (Bounty's solo
-// "roster" in mercenaryFactory.js) is byte-identical to before.
+// raider counts at Raid.RAID_TEAM_DECAY (50%) of the rank above them, floored at
+// Raid.RAID_TEAM_DECAY_FLOOR (25%, added 2026-09-27) —
+// teamPower = sum(power_i * max(RAID_TEAM_DECAY^rank, RAID_TEAM_DECAY_FLOOR)). A straight
+// average gave zero incentive to recruit more raiders and, worse, let a below-average new
+// member drag the average down by MORE than the headcount bonus could offset — making the
+// single strongest guild member soloing every raid strictly dominant over real
+// multi-member participation (the bug this rework fixes). This geometric-with-a-floor
+// shape is still provably non-decreasing: max(x, floor) is non-decreasing in x, so the
+// same rank-by-rank insertion argument the pure geometric shape used still holds (fuzz-
+// tested numerically in raidFactory.test.js) — independent of RAID_TEAM_DECAY/
+// RAID_TEAM_DECAY_FLOOR's actual values, which are pure balance knobs. The floor is a
+// deliberate balance change, not just a formula tweak: every rank from 2 onward now
+// contributes a flat 25% forever instead of continuing to halve toward 0, so teamPower no
+// longer converges to a fixed ceiling as roster size grows — see RAID_TEAM_DECAY_FLOOR's
+// own comment in constants.js for the full before/after. n=1 is still an exact identity
+// with the old formula: teamPower = power_0 * max(r^0, floor) = power_0, headcountBonus
+// = 0 — so getEffectiveRaidPower([single]) (Bounty's solo "roster" in mercenaryFactory.js)
+// is byte-identical to before.
 //
 // powerFn (2026-09-13, added for Spud Keep) — optional, defaults to getMemberRaidPower so
 // every pre-existing caller (real raids, currentRaid.js, Bounty) is completely unchanged.
@@ -126,7 +128,7 @@ function getEffectiveRaidPowerBreakdown(memberDetailsList, powerFn = getMemberRa
         return { teamPower: 0, headcountBonus: 0, effectivePower: 0 };
     }
     const powers = memberDetailsList.map(powerFn).sort((a, b) => b - a);
-    const teamPower = powers.reduce((sum, power, rank) => sum + power * Math.pow(Raid.RAID_TEAM_DECAY, rank), 0);
+    const teamPower = powers.reduce((sum, power, rank) => sum + power * Math.max(Math.pow(Raid.RAID_TEAM_DECAY, rank), Raid.RAID_TEAM_DECAY_FLOOR), 0);
     const headcountBonus = Math.min(Raid.RAID_HEADCOUNT_BONUS_CAP, Raid.RAID_HEADCOUNT_BONUS_PER_MEMBER * (memberDetailsList.length - 1));
     return { teamPower, headcountBonus, effectivePower: teamPower * (1 + headcountBonus) };
 }
