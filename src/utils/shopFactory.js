@@ -35,13 +35,23 @@ function getUserBaseShopValue(userDetails, shopId) {
     }
 }
 
+// Epsilon-tolerant, not exact `==` — same fix and same reasoning as workFactory.js's own
+// SHOP_TIER_MATCH_TOLERANCE (getBaseValue's base-minus-sweet-minus-regrade reconstruction
+// can land a hair off a real tier from ordinary float noise, or genuinely off one from an
+// unhealed base-drift account — see rebirthFactory.healBaseDrift). Without this, a strict
+// `==` here reads as "every tier already owned" (returns -1, shows "Maxed Out") for a
+// player who very much isn't, which is exactly the failure mode player reports traced back
+// to this function.
+const SHOP_TIER_MATCH_TOLERANCE = 1e-6;
+
 // The next item a user can buy from a shop is whichever tier's `currentAmount` matches their
-// own current base value exactly — shop tiers chain (each item's `amount` becomes the next
-// item's `currentAmount`), so there's always at most one match. Returns -1 (not null) when
-// every tier is already owned, matching this function's original callers.
+// own current base value — shop tiers chain (each item's `amount` becomes the next item's
+// `currentAmount`), so there's always at most one match. Returns -1 (not null) when every
+// tier is already owned, matching this function's original callers.
 function getNextItemFromShop(shop, currentAmount) {
+    const numericAmount = Number(currentAmount);
     for (const item of shop.items) {
-        if (item.currentAmount == currentAmount) {
+        if (Math.abs(item.currentAmount - numericAmount) < SHOP_TIER_MATCH_TOLERANCE) {
             return item;
         }
     }
@@ -53,7 +63,7 @@ function getNextItemFromShop(shop, currentAmount) {
 const SHOP_TIER_STATUS = { OWNED: 'owned', NEXT: 'next', LOCKED: 'locked' };
 function getShopTierStatus(item, numericBaseValue) {
     if (item.amount <= numericBaseValue) return SHOP_TIER_STATUS.OWNED;
-    if (item.currentAmount == numericBaseValue) return SHOP_TIER_STATUS.NEXT;
+    if (Math.abs(item.currentAmount - numericBaseValue) < SHOP_TIER_MATCH_TOLERANCE) return SHOP_TIER_STATUS.NEXT;
     return SHOP_TIER_STATUS.LOCKED;
 }
 

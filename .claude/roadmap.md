@@ -17654,3 +17654,77 @@ Full suite: **113 suites / 2092 tests, all passing**, unaffected by a text-only 
 **Docs.** None needed — `.claude/systems/companions.md`/`economy-and-work.md`'s own existing
 references to the 90% removal are already correctly worded in past tense as history, not current
 behavior; this fix only touched player-facing copy that had never been swept in the first place.
+
+## Base-vs-shop-tier drift: hunted down every remaining source, added a general self-heal instead of another one-off manual fix (2026-09-26, direct instruction: "Hunt down in my code base how some people's user-stats keeps showing their base - sweet amounts having the base drift from the shop tier upgrades... have these self healing... or fixing wherever it's happening")
+
+**What was asked.** The same player from `systems/tower.md`'s 2026-09-23 root-cause entry was
+reported broken again for work multiplier and bank capacity (`/user-stats` "N/A" tier names, base
+sitting above/between real shop tiers) — direct instruction to find every place this can still
+happen and either self-heal it (converting the drifted excess into `sweetPotatoBuffs`) or fix it at
+the source, since it was already "causing issues with buy commands and probably will cause issues
+for the regrade commands too."
+
+**What was found.** Two separate findings, not one:
+1. **Not a new bug — the manual fix was never applied.** The 2026-09-23 entry's code fix (batching
+   Tower's payout into one atomic write) was confirmed still in place and correct. Every other
+   stat-granting path in the codebase was re-audited from scratch — `questFactory`'s weekly reward
+   write, `raidFactory.handleStatSplit`/`handlePercentStatSplit`, `workFactory.js`'s
+   `handleMetalPotato`/`handleSweetPotato`/`handleAncientPotato`, `admin.js`'s reset-tower full-wipe
+   reversal, every write in `shopFactory.js`, `rebirthFactory.computeRebirthState` — and every single
+   one bundles the raw stat and `sweetPotatoBuffs` into one atomic `updateUserFields` call already. A
+   grep for `updateUserDatabase`/`addUserDatabase` (the single-field, error-swallowing functions that
+   caused the original bug) against any of `workMultiplierAmount`/`bankCapacity`/`passiveAmount`/
+   `sweetPotatoBuffs` came back with zero hits anywhere in the codebase. What was showing was simply
+   the SAME pre-fix damage from before 2026-09-23 — the 2026-09-23 entry's own "not fixed by this
+   pass... being handled directly" manual correction had evidently never actually been applied.
+2. **A real, independent bug in `/buy`'s own tier lookup.** `shopFactory.js`'s `getNextItemFromShop`
+   used a strict `item.currentAmount == currentAmount` — any base sitting even slightly off a real
+   tier (from ANY cause, old float noise or a genuine drifted account) reads as "no next tier found,"
+   returning `-1`, which `/buy`/`/shop`'s "Buy Next Tier" button renders as "already maxed out!" for a
+   player who hasn't finished the shop at all. `workFactory.js`'s `getNextShopTier` had already been
+   given an epsilon-tolerant fix for this exact class of drift (its own comment diagnosing float
+   noise from repeated additions), but that fix was never propagated to `shopFactory.js`'s copy of
+   the same lookup — confirming the player's report that this "is causing issues with buy commands."
+
+**What changed.** Two fixes, matching the two findings:
+1. **General self-heal, not another manual account fix.** New `rebirthFactory.healBaseDrift(userDetails)`
+   — for each of the three tracked stats, reconstructs `base` the same way `getBaseValue` always has,
+   finds the highest real checkpoint (account default, or a shop tier's post-purchase `amount`) at or
+   below it, and folds the difference into `sweetPotatoBuffs` if `base` doesn't land there exactly.
+   The live total is never touched — this only recategorizes an already-earned amount, it can never
+   grant or remove anything. Wired into `dynamoHandler.findUser` (every command's own read path)
+   right after the existing companion-instance migration self-heal, same shape: heal once, persist
+   via one atomic `updateUserFields({ sweetPotatoBuffs })` call, tolerate a failed write by leaving
+   the account unhealed for the next lookup. Runs on every single `findUser` call in the game, so it
+   has to be (and is) a cheap no-op for the overwhelmingly common already-clean account.
+2. **Hardened `getNextItemFromShop`/`getShopTierStatus`** in `shopFactory.js` with the same `1e-6`
+   epsilon tolerance `getNextShopTier` already used, closing the specific `/buy` failure mode
+   directly — defense in depth for the rare case a heal write itself fails transiently.
+   `embedFactory.js`'s `findShopItemName` (the "N/A" display) was deliberately left alone — its
+   existing `.toFixed(1)` loose match already tolerates ordinary noise, it's display-only, and the
+   self-heal fixes the actual number it reads regardless.
+
+**Tests.** `rebirthFactory.test.js` gained a `healBaseDrift` describe block (9 tests) covering: no
+healing needed at the default, mid-ladder, or top tier; the exact reported work-multi (0.80 above the
+top tier) and bank-capacity (between two tiers) cases each heal correctly with the total unchanged;
+both drifting together in one account; float noise (~1e-10) below tolerance triggers nothing; a base
+impossibly below the account floor (the opposite problem) is left alone; `passiveAmount` heals the
+same way. `dynamoHandler.test.js` gained 3 tests confirming `findUser` calls `healBaseDrift`,
+persists and returns the correction, makes no write for a clean account, and tolerates a failed heal
+write without throwing. `shopFactory.test.js` gained 4 regression tests for the epsilon-tolerance fix
+(float-noise drift, a stringified base value from `getUserBaseShopValue`'s workShop branch,
+`getShopTierStatus`'s NEXT threshold). Full suite: **113 suites / 2108 tests, all passing** (net +16
+new tests, 0 broken).
+
+**Docs.** `.claude/systems/tower.md`'s existing 2026-09-23 root-cause entry got a "Follow-up
+(2026-09-26)" continuation documenting this investigation and fix, rather than a disconnected new
+section for the same underlying issue. `.claude/systems/economy-and-work.md`'s Personal Shops section
+gained a paragraph on the epsilon-tolerance fix and the self-heal mechanism.
+
+**Cross-repo note.** This is a shared-data-model concern, not bot-specific — `financial-project`'s
+`/gromp` page reads the same DynamoDB row, and if it has its own base-reconstruction logic for
+shop/regrade progress, an affected account would show the identical symptom there until the bot's
+self-heal happens to run for that player first (which now happens automatically the next time they
+touch ANY bot command, but not before). Flagging rather than silently deciding whether to port
+`healBaseDrift`'s equivalent (or at least the epsilon-tolerance hardening) into `financial-project`'s
+own Lambda(s) — not yet checked this session.

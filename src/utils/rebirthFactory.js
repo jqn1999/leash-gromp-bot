@@ -20,6 +20,62 @@ function getBaseValue(userDetails, statType) {
     return userDetails[statType] - userDetails.sweetPotatoBuffs[statType] - userDetails.regrades[REGRADE_KEY[statType]].regradeAmount;
 }
 
+// Every value getBaseValue(userDetails, statType) SHOULD legitimately land on: the
+// account's own pre-purchase default, or a real shop tier's post-purchase `amount` — never
+// anything in between, and never above the highest tier. dynamoHandler.findUser's own
+// self-heal (see healBaseDrift below) exists because it sometimes drifts off that anyway.
+const BASE_SHOP_INFO = {
+    workMultiplierAmount: { shopId: 'workShop', defaultValue: 1 },
+    passiveAmount: { shopId: 'passiveIncomeShop', defaultValue: 0 },
+    bankCapacity: { shopId: 'bankShop', defaultValue: Bank.STARTING_CAPACITY },
+};
+
+// Far above realistic float noise (~1e-13-1e-10 after any reasonable number of grants —
+// see workFactory.js's own SHOP_TIER_MATCH_TOLERANCE, the first place this exact class of
+// drift was diagnosed) and far below the smallest real gap between adjacent tiers in any
+// of these three shops, so it can never mistake real, uncorrected progress for noise.
+const BASE_DRIFT_TOLERANCE = 1e-6;
+
+// Root cause (2026-09-23 Tower investigation, `.claude/roadmap.md`): a reward path that
+// credits a stat's raw total WITHOUT symmetrically crediting `sweetPotatoBuffs` by the same
+// amount (found once already, in `enter-tower.js`'s old six-separate-writes payout, since
+// fixed) permanently strands the extra amount in `getBaseValue`'s reconstruction — the
+// player's `base` ends up sitting between two real shop tiers (or above the top one
+// entirely), which is otherwise impossible. That breaks `/buy`'s exact-match tier lookup
+// (`shopFactory.getNextItemFromShop`) and `/regrade`'s shop-completion gate
+// (`hasRequiredBaseAmount`), and shows as "N/A" instead of a real tier name on `/profile`.
+//
+// Self-heals it by folding whatever sits between `base` and the highest real checkpoint AT
+// OR BELOW it into `sweetPotatoBuffs` — the account's live total (and everything computed
+// from it: `/work` rewards, raid power, everything) is completely unchanged, this only
+// moves an already-earned amount into the bucket it should have landed in the first place.
+// Returns the healed `sweetPotatoBuffs` object, or `null` if every tracked stat's base is
+// already clean (the overwhelmingly common case — this runs on every findUser call, so it
+// has to be a cheap no-op for a healthy account).
+function healBaseDrift(userDetails) {
+    let healedSweetPotatoBuffs = null;
+    for (const [statType, info] of Object.entries(BASE_SHOP_INFO)) {
+        const base = getBaseValue(userDetails, statType);
+        // Below the account's own floor is a DIFFERENT problem (sweetPotatoBuffs/regrade
+        // overcounted relative to the total) — folding more into sweetPotatoBuffs would
+        // only make that worse, so this leaves it alone rather than guessing at a fix.
+        if (base < info.defaultValue - BASE_DRIFT_TOLERANCE) continue;
+
+        const shop = shops.find(s => s.shopId === info.shopId);
+        const nearestCheckpoint = shop.items.reduce(
+            (best, item) => (item.amount <= base + BASE_DRIFT_TOLERANCE && item.amount > best) ? item.amount : best,
+            info.defaultValue
+        );
+
+        const drift = base - nearestCheckpoint;
+        if (drift > BASE_DRIFT_TOLERANCE) {
+            if (!healedSweetPotatoBuffs) healedSweetPotatoBuffs = { ...userDetails.sweetPotatoBuffs };
+            healedSweetPotatoBuffs[statType] += drift;
+        }
+    }
+    return healedSweetPotatoBuffs;
+}
+
 // "Maxed" requires every base shop tier AND every regrade track fully complete — the
 // full-completion gate, not just the two the player happens to have finished. Returns
 // what's still missing so the command can tell them exactly what's left instead of a
@@ -117,5 +173,6 @@ module.exports = {
     previewRebirthBonus,
     computeRebirthState,
     getShopMax,
-    getBaseValue
+    getBaseValue,
+    healBaseDrift
 }

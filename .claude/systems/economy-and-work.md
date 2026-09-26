@@ -621,7 +621,19 @@ upgrades to.
 find the next purchasable tier — buffs/regrades don't let you skip shop tiers early. This base-value
 lookup (`getUserBaseShopValue`/`getNextItemFromShop`) lives in
 [shopFactory.js](../../src/utils/shopFactory.js), shared by both `/buy` and `/shop` so they always
-agree on where a player actually stands.
+agree on where a player actually stands. `getNextItemFromShop`/`getShopTierStatus` match with a
+`1e-6` epsilon tolerance, not strict `==` (2026-09-26 fix) — a strict match reads any drift at all as
+"every tier already owned," reporting "already maxed out!" for a player who very much isn't.
+
+**Base-vs-shop-tier drift self-heal** (root-caused in `systems/tower.md`'s "Root cause found:
+`processRewardPayouts`'s reward credit desyncing..." entry and its 2026-09-26 follow-up) — any
+reward path that ever credits a stat's raw total without symmetrically crediting `sweetPotatoBuffs`
+by the same amount permanently strands the excess in the base reconstruction, since base is never
+stored directly, only derived. `rebirthFactory.healBaseDrift(userDetails)` detects this (base sitting
+somewhere other than the account default or a real shop tier's post-purchase `amount`) and folds the
+difference into `sweetPotatoBuffs`, leaving the live total untouched — `dynamoHandler.findUser` runs
+it on every lookup, so any affected account self-corrects on its very next command with no manual
+intervention.
 
 `/shop`'s per-category listing marks every tier ✅ owned / ➡️ next up / 🔒 locked against the caller's
 own progress, and its description calls out the actual next purchase (cost + whether they can

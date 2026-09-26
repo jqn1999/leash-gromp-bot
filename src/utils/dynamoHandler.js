@@ -911,6 +911,25 @@ const findUser = async function (userId, username) {
                 }
             }
 
+            // Base-vs-shop-tier drift self-heal (root-caused 2026-09-23, see
+            // rebirthFactory.healBaseDrift's own comment for the full mechanism) — a stat
+            // reward that ever credited the raw total without symmetrically crediting
+            // sweetPotatoBuffs leaves getBaseValue's reconstruction sitting off a real shop
+            // tier forever, breaking /buy's and /regrade's exact-match tier lookups. Folds
+            // the drift into sweetPotatoBuffs (the live total is unchanged either way) the
+            // next time this account is looked up, same tolerate-a-failed-write shape as
+            // the companion migration right above.
+            const healedSweetPotatoBuffs = rebirthFactory.healBaseDrift(user);
+            if (healedSweetPotatoBuffs) {
+                const healed = await updateUserFields(userId, { sweetPotatoBuffs: healedSweetPotatoBuffs });
+                if (healed) {
+                    console.log(`findUser healed base-vs-shop-tier drift for ${userId}`);
+                    user = { ...user, sweetPotatoBuffs: healedSweetPotatoBuffs };
+                } else {
+                    console.log(`findUser could not heal base-vs-shop-tier drift for ${userId} — leaving unhealed`);
+                }
+            }
+
             return user;
         })
         .catch(function (err) {

@@ -69,6 +69,22 @@ describe('getNextItemFromShop', () => {
         const item = getNextItemFromShop(workShop, 999999);
         expect(item).toBe(-1);
     });
+
+    // Epsilon-tolerant match (2026-09-26 fix — see rebirthFactory.healBaseDrift's own
+    // comment for the root cause this guards against): a strict `==` here used to read a
+    // hair-off base value as "every tier already owned" (returns -1, /buy shows "Maxed
+    // Out") for a player who very much wasn't. Also confirms a stringified base
+    // (getUserBaseShopValue's workShop branch returns `.toFixed(1)`, a string) still
+    // resolves correctly, not just a raw number.
+    test('still finds the right tier when the base is a hair off from float noise', () => {
+        const item = getNextItemFromShop(workShop, workShop.items[2].currentAmount + 1e-9);
+        expect(item.name).toBe(workShop.items[2].name);
+    });
+
+    test('resolves correctly when currentAmount is passed as a string (getUserBaseShopValue\'s workShop shape)', () => {
+        const item = getNextItemFromShop(workShop, workShop.items[3].currentAmount.toFixed(1));
+        expect(item.name).toBe(workShop.items[3].name);
+    });
 });
 
 describe('getShopTierStatus', () => {
@@ -85,6 +101,10 @@ describe('getShopTierStatus', () => {
 
     test('a tier further out than the base is LOCKED', () => {
         expect(getShopTierStatus(tier3, tier1.currentAmount)).toBe(SHOP_TIER_STATUS.LOCKED);
+    });
+
+    test('a base a hair off from float noise still reads as NEXT, not LOCKED', () => {
+        expect(getShopTierStatus(tier2, tier2.currentAmount + 1e-9)).toBe(SHOP_TIER_STATUS.NEXT);
     });
 });
 
