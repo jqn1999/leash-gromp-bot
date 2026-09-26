@@ -371,6 +371,98 @@ describe('findUser', () => {
         );
         expect(recordsWrite).toBeDefined();
     });
+
+    // Base-vs-shop-tier drift self-heal (root-caused 2026-09-23, see
+    // rebirthFactory.healBaseDrift's own comment for the full mechanism) — a reward path
+    // that ever credited a stat's raw total without symmetrically crediting
+    // sweetPotatoBuffs strands the excess in the base reconstruction forever, breaking
+    // /buy's and /regrade's exact-match tier lookups. healBaseDrift's own unit tests
+    // (rebirthFactory.test.js) cover the correction math itself; these two confirm findUser
+    // actually calls it, persists the result, and returns it as part of the same record.
+    test('heals a base-vs-shop-tier drift found on lookup and returns the corrected sweetPotatoBuffs', async () => {
+        docClient.query.mockReturnValue(resolved({
+            Count: 1,
+            Items: [{
+                userId: 'u11', username: 'name11',
+                // Reported case: work multi base 100.80 (0.80 above the top real tier, 100)
+                // + sweetPotatoBuffs 47.60 + regrade 0 = total 148.40.
+                workMultiplierAmount: 148.40,
+                passiveAmount: 0,
+                bankCapacity: Bank.STARTING_CAPACITY,
+                sweetPotatoBuffs: { workMultiplierAmount: 47.60, passiveAmount: 0, bankCapacity: 0 },
+                regrades: {
+                    workMulti: { regradeAmount: 0, failStack: 0 },
+                    passiveAmount: { regradeAmount: 0, failStack: 0 },
+                    bankCapacity: { regradeAmount: 0, failStack: 0 },
+                },
+            }],
+        }));
+        docClient.update.mockReturnValue(resolved({}));
+
+        const user = await dynamoHandler.findUser('u11', 'name11');
+
+        expect(user.sweetPotatoBuffs.workMultiplierAmount).toBeCloseTo(48.40);
+        // The live total itself is never touched by the heal.
+        expect(user.workMultiplierAmount).toBe(148.40);
+
+        const driftWrite = docClient.update.mock.calls.find(
+            ([params]) => Object.values(params.ExpressionAttributeNames).includes('sweetPotatoBuffs')
+        );
+        expect(driftWrite).toBeDefined();
+    });
+
+    test('a clean account (base already sitting on a real shop tier) triggers no drift-heal write', async () => {
+        docClient.query.mockReturnValue(resolved({
+            Count: 1,
+            Items: [{
+                userId: 'u12', username: 'name12',
+                workMultiplierAmount: 100, // exactly the top real tier, no sweetPotatoBuffs/regrade
+                passiveAmount: 0,
+                bankCapacity: Bank.STARTING_CAPACITY,
+                sweetPotatoBuffs: { workMultiplierAmount: 0, passiveAmount: 0, bankCapacity: 0 },
+                regrades: {
+                    workMulti: { regradeAmount: 0, failStack: 0 },
+                    passiveAmount: { regradeAmount: 0, failStack: 0 },
+                    bankCapacity: { regradeAmount: 0, failStack: 0 },
+                },
+            }],
+        }));
+        docClient.update.mockReturnValue(resolved({}));
+
+        await dynamoHandler.findUser('u12', 'name12');
+
+        const driftWrite = docClient.update.mock.calls.find(
+            ([params]) => Object.values(params.ExpressionAttributeNames).includes('sweetPotatoBuffs')
+        );
+        expect(driftWrite).toBeUndefined();
+    });
+
+    // Same tolerate-a-failed-write shape as the companion-migration heal right above it in
+    // findUser — a transient write failure leaves the account unhealed for now (it'll be
+    // retried on the next lookup) rather than throwing and failing the whole command.
+    test('tolerates a failed drift-heal write, leaving the account unhealed rather than throwing', async () => {
+        docClient.query.mockReturnValue(resolved({
+            Count: 1,
+            Items: [{
+                userId: 'u13', username: 'name13',
+                workMultiplierAmount: 148.40,
+                passiveAmount: 0,
+                bankCapacity: Bank.STARTING_CAPACITY,
+                sweetPotatoBuffs: { workMultiplierAmount: 47.60, passiveAmount: 0, bankCapacity: 0 },
+                regrades: {
+                    workMulti: { regradeAmount: 0, failStack: 0 },
+                    passiveAmount: { regradeAmount: 0, failStack: 0 },
+                    bankCapacity: { regradeAmount: 0, failStack: 0 },
+                },
+            }],
+        }));
+        docClient.update.mockReturnValue(rejected(new Error('transient')));
+
+        const user = await dynamoHandler.findUser('u13', 'name13');
+
+        expect(user).toBeDefined();
+        expect(user.sweetPotatoBuffs.workMultiplierAmount).toBe(47.60); // unhealed, but still returned
+    });
 });
 
 // Companion Scavenging's collect/cancel race guard (roadmap #17) — same

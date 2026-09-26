@@ -621,7 +621,19 @@ upgrades to.
 find the next purchasable tier — buffs/regrades don't let you skip shop tiers early. This base-value
 lookup (`getUserBaseShopValue`/`getNextItemFromShop`) lives in
 [shopFactory.js](../../src/utils/shopFactory.js), shared by both `/buy` and `/shop` so they always
-agree on where a player actually stands.
+agree on where a player actually stands. `getNextItemFromShop`/`getShopTierStatus` match with a
+`1e-6` epsilon tolerance, not strict `==` (2026-09-26 fix) — a strict match reads any drift at all as
+"every tier already owned," reporting "already maxed out!" for a player who very much isn't.
+
+**Base-vs-shop-tier drift self-heal** (root-caused in `systems/tower.md`'s "Root cause found:
+`processRewardPayouts`'s reward credit desyncing..." entry and its 2026-09-26 follow-up) — any
+reward path that ever credits a stat's raw total without symmetrically crediting `sweetPotatoBuffs`
+by the same amount permanently strands the excess in the base reconstruction, since base is never
+stored directly, only derived. `rebirthFactory.healBaseDrift(userDetails)` detects this (base sitting
+somewhere other than the account default or a real shop tier's post-purchase `amount`) and folds the
+difference into `sweetPotatoBuffs`, leaving the live total untouched — `dynamoHandler.findUser` runs
+it on every lookup, so any affected account self-corrects on its very next command with no manual
+intervention.
 
 `/shop`'s per-category listing marks every tier ✅ owned / ➡️ next up / 🔒 locked against the caller's
 own progress, and its description calls out the actual next purchase (cost + whether they can
@@ -661,6 +673,25 @@ unconditional on success/fail (the cost is a guaranteed sunk cost regardless of 
 chance rather than adding a flat amount (2026-09-04, direct instruction) —
 `currentTier.chance * (1 + boost) + failStack` — so Elder Rootbeard's 50% base value turns a 50%
 tier into 75%, a 10% tier into 15%, etc.
+
+**Confirm-preview step** (2026-09-26, direct instruction: "show an embed with the regrade info
+and buttons for regrading or not") — `/regrade` no longer spends/rolls the instant it's called.
+It first shows `createRegradePreviewEmbed` (current base amount, this tier's cost/success
+chance/potential increase) with a Confirm/Cancel row (`buildConfirmCancelRow`, the same helper
+`/rob`/`/start-raid`/Rebirth already use), and only executes the actual spend+roll on a Confirm
+click — re-validated against a **fresh** `findUser` read at that point (not the read the preview
+was built from), since the confirm button can sit on screen for up to 60s. A Cancel click or a
+timeout clears the buttons and changes nothing. The three tracks' near-identical spend+roll logic
+(previously three separate `switch`/`case` blocks) was consolidated into one `TRACK_CONFIGS`-driven
+code path as part of this change — adding the confirm step on top of three separately-maintained
+copies would have tripled the duplication instead of just adding it once.
+
+**`view-tiers` option** (same direct instruction: "add option to see all regrade tiers with
+pagination") — a boolean option on `/regrade` that, when true, skips the preview/confirm flow
+entirely and instead shows that track's full tier ladder (cost/increase/chance per rung, current
+rung marked) via `createRegradeTiersPageEmbed`, paginated with the same generic
+`buildPaginationRow`/`runPaginatedReply` helpers `/achievements`/`/quests`/`/shop` already use.
+Purely a read: no potatoes touched, nothing rolled.
 
 ## Rebirth (prestige reset)
 

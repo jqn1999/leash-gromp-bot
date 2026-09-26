@@ -38,12 +38,37 @@ async function processTowerCompanionRewards(userId, userDetails, floor, elitesSu
     return bastionAward;
 }
 
+// A loud, impossible-to-mistake-for-success visual (2026-09-26, direct instruction: "have
+// tower fail more obviously if any writes fail to go through") — the run's own results
+// embed above already told the player they won stuff, in the same yellow/celebratory style
+// every successful run gets, so a quiet text-only followUp right after it was easy to skim
+// past as more of the same good news rather than the opposite. Red + a warning title + the
+// numbers broken into real fields (not just buried in a JSON block) makes the failure state
+// visually distinct from every other embed this command sends.
+function createRewardFailureEmbed(failureReport) {
+    return new EmbedBuilder()
+        .setTitle('⚠️ Tower Reward NOT Saved')
+        .setDescription("A database error stopped this run's reward from being credited to your account. Nothing below was actually saved — send the JSON block in the message above to an admin so they can manually credit you.")
+        .setColor('Red')
+        .setTimestamp(Date.now())
+        .addFields(
+            { name: 'Floor Reached', value: `${failureReport.floor}`, inline: true },
+            { name: 'Outcome', value: failureReport.died ? 'Died' : 'Survived', inline: true },
+            { name: '​', value: '​', inline: true },
+            { name: 'Potatoes', value: `${failureReport.rewards.potatoes.toLocaleString()}`, inline: true },
+            { name: 'Work Multiplier', value: `${failureReport.rewards.workMultiplier.toFixed(2)}`, inline: true },
+            { name: 'Passive Income', value: `${failureReport.rewards.passiveIncome.toLocaleString()}`, inline: true },
+            { name: 'Bank Capacity', value: `${failureReport.rewards.bankCapacity.toLocaleString()}`, inline: true },
+        );
+}
+
 // Shared by both reward-crediting failure paths below (the initial userDetails read
 // coming back empty, and the batched stat/potato updateUserFields write itself failing) —
 // same recovery UX either way, since in both cases the run's reward wasn't actually saved
 // and there's no reliable server-side record for an admin to look up on their own. Hands
 // the player a copy-pasteable JSON block with the exact numbers so nothing has to be
-// reconstructed from memory.
+// reconstructed from memory, plus the loud embed above so the failure itself can't be
+// missed the way a plain-text-only followUp could.
 async function sendRewardFailureNotice(interaction, userDisplayName, userId, username, floor, died, rewards) {
     const failureReport = {
         userId,
@@ -60,6 +85,7 @@ async function sendRewardFailureNotice(interaction, userDisplayName, userId, use
     };
     await interaction.followUp({
         content: `${userDisplayName}, your tower run's rewards could not be saved due to a database error. Send this to an admin so they can manually credit you:\n\`\`\`json\n${JSON.stringify(failureReport, null, 2)}\n\`\`\``,
+        embeds: [createRewardFailureEmbed(failureReport)],
         ephemeral: true
     });
 }

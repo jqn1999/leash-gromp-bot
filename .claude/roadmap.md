@@ -17548,3 +17548,265 @@ singleton is still intact.
 `maybeAwardGuildCompanion`, confirmed via grep — same `if (!won || guild.guildCompanion != null)
 return false;` gate). Ported the identical fix there in the same session; see that repo's own
 `NOTES_GROMP_WEB_INTEGRATION.md` entry.
+
+## `/regrade` gets a confirm-preview embed + a `view-tiers` pagination option; `/companion-scavenge-collect` gets a "Scavenge Again" button (direct instruction: "Update regrade command to show an embed with the regrade info and buttons for regrading or not. Also add option to see all regrade tiers with pagination. Have companion scavenge collection embed have a button to resend the same companion out to scavenge again")
+
+**What was asked.** Three Discord UX additions, no balance/formula changes: (1) `/regrade` should
+show a preview embed with Confirm/Cancel buttons instead of spending and rolling the instant it's
+called; (2) a new option to browse the full tier ladder for a track, paginated; (3)
+`/companion-scavenge-collect`'s return embed should carry a button to immediately re-send the same
+companion instance scavenging, without a separate `/companion-scavenge` round trip.
+
+**What changed — `/regrade`.** The command previously executed everything (spend, roll, write) the
+instant it was called, across three near-identical `switch`/`case` blocks (work-multi/passive-
+income/bank-capacity, differing only in which `userDetails` field/shop/`regrades` key they read).
+Adding a confirm step on top of three separately-maintained copies would have tripled that
+duplication, so the three tracks were first consolidated into one `TRACK_CONFIGS`-driven code path
+(`getBaseAmount`/`checkEligibility`/`executeRegrade` all read the config instead of being repeated
+per track) — behavior-preserving, not a rebalance. The command now: shows
+`embedFactory.createRegradePreviewEmbed` (current base amount, this tier's cost/success chance/
+potential increase) with a `buildConfirmCancelRow` (the same helper `/rob`/`/start-raid`/Rebirth
+already use) once the shop-tier precondition is met; on Confirm, **re-fetches `userDetails` fresh**
+and re-validates before spending — the button can sit on screen up to 60s, long enough for potatoes
+or `regradeAmount` to have genuinely moved since the preview was built, and the pre-existing
+Rebirth confirm flow already established re-checking eligibility at commit time as this repo's
+precedent for exactly that risk. Cancel or a timeout clears the buttons and changes nothing. A new
+`view-tiers` boolean option skips the preview/confirm flow entirely and instead pages through that
+track's full tier ladder (`embedFactory.createRegradeTiersPageEmbed`, current rung marked) using the
+existing generic `buildPaginationRow`/`runPaginatedReply` helpers `/achievements`/`/quests`/`/shop`
+already share — a pure read, nothing spent or rolled.
+
+**What changed — `/companion-scavenge-collect`.** The return embed now carries a "Scavenge Again"
+button that re-dispatches the SAME instance that just came home. Rather than trust the userDetails
+the reply was originally rendered with, a click re-validates against a fresh `findUser` read first
+— the instance could have been sold/fused/re-equipped, or another dispatch could have raced in, in
+the time the button sat on screen. That eligibility check (owned? not the active companion? nothing
+else already scavenging?) was previously inlined only in `companionScavenge.js`'s own callback;
+it's now `companionFactory.validateScavengeDispatch(userDetails, instanceId)`, a shared pure
+function both call sites use, returning structured `{ ok, reason, ... }` data rather than a
+pre-formatted string (the factory has no Discord-formatting concerns — `convertSecondstoMinutes`
+stays in the command files). `companionScavenge.js` itself was refactored to call the new shared
+function too, replacing its own inline copy of the same checks — extracting this now, rather than
+letting the button add a SECOND hand-written copy of the exact same logic, was the direct
+motivation; the two would only have drifted apart the way this codebase's own history repeatedly
+warns about otherwise.
+
+**Tests.** `regrade.test.js`: the 3 existing tests updated to simulate the new confirm click (a
+mocked `awaitMessageComponent` resolving a confirm), plus 6 new tests — the preview embed shows
+before anything is spent, Cancel spends nothing, timeout behaves identically to Cancel, a
+confirm-time re-fetch showing insufficient potatoes blocks the spend even though the preview passed,
+and the `view-tiers` option renders the ladder without touching potatoes or `Math.random`.
+`companionFactory.test.js` gained a `validateScavengeDispatch` describe block (5 tests: the success
+case plus each of the four rejection reasons). A new
+`companionScavengeCollectScavengeAgain.test.js` covers the button end-to-end: it's attached to the
+reply, a timeout clears it with no second dispatch, a real click re-sends the same instance and
+reports the new return time, and a click that fails fresh validation (the instance now equipped as
+active) reports the error instead of dispatching. Two pre-existing test files
+(`nonWorkCompanionLeveling.test.js`, `companionScavengeMultiBonus.test.js`) needed their own
+`fakeInteraction` helpers updated to mock the new reply-with-collector shape `editReply` now
+returns for both commands — straightforward mechanical updates, no behavior assertions changed.
+Full suite: **113 suites / 2092 tests, all passing** (net +14 new tests, 0 broken).
+
+**Docs.** `systems/economy-and-work.md`'s Regrade section gained two paragraphs (the confirm-preview
+step and the `view-tiers` option). `systems/companions.md`'s Scavenging command-list bullet for
+`/companion-scavenge-collect` gained a sub-bullet for the new button and the `validateScavengeDispatch`
+extraction.
+
+**Cross-repo note.** All three changes are Discord-side presentation only (embeds, buttons,
+pagination) — no formula, balance number, or data-shape change. `financial-project`'s `/gromp` page
+has its own entirely separate React UI for regrading and scavenging (not Discord embeds), so there
+is nothing to port here.
+
+## Stale UI text: the 10-hit Poison/Mimic milestone still claimed a bigger reduction after the 90% jump was removed (player-reported: "it still says huge loss reduction for rest of week but that changed to just stick to the 60%")
+
+**What was asked.** A UI-copy check after the earlier 2026-09-24 fix that removed the 90% Poison/
+Mimic milestone reduction entirely (everyone now caps at 60%, milestone crossed or not) — the
+10-hit milestone fields were never updated to match, still promising a bigger discount that no
+longer exists in the underlying math.
+
+**What was found.** Three player-facing strings, all written when hit-10 genuinely jumped
+`reduction` to 90%, none touched by the 2026-09-24 fix (which only changed `workFactory.js`'s
+actual math, not any of the copy describing it):
+- `embedFactory.js`'s Poison Potato result embed ("🏅 Toxic Tolerance") — "the loss and lockout
+  are cut way down for the rest of this week!"
+- `embedFactory.js`'s Mimic Potato result embed ("🏅 Mimic-Proofed") — "the bank loss is cut way
+  down for the rest of this week!"
+- `constants.js`'s `/help topic:poison-mimic` content string — literally spelled out "capped -60%
+  through hit 9, then a -90% break from hit 10 on," describing math that hasn't been true since
+  2026-09-24.
+
+All three implied hitting the milestone unlocks additional relief beyond the 60% cap. In reality
+`reduction` is already sitting at the 60% cap by hit 4 (`REDUCTION_PER_HIT` 15% × 4), so by hit 10
+the milestone fires purely as an achievement trigger with zero effect on `reduction` — exactly as
+`constants.js`'s own `PoisonMitigation`/`MimicMitigation` comments already say, the UI just never
+caught up to that.
+
+**What changed.** All three reworded to state plainly that the reduction was already capped at 60%
+before the milestone, and that hitting 10 doesn't soften it any further — it's a badge for a rough
+week, not a bigger discount. The 20-hit milestone fields ("Immune to Venom"/"The Mimic's Best
+Customer") were already worded as flavor-only with no claimed mechanical effect, so those were left
+untouched.
+
+**Tests.** No test asserted the exact field/content text in any of the three spots (`embedFactory.test.js`'s
+Mimic-Proofed check only asserts the field NAME exists, not its value), so nothing needed updating.
+Full suite: **113 suites / 2092 tests, all passing**, unaffected by a text-only change.
+
+**Docs.** None needed — `.claude/systems/companions.md`/`economy-and-work.md`'s own existing
+references to the 90% removal are already correctly worded in past tense as history, not current
+behavior; this fix only touched player-facing copy that had never been swept in the first place.
+
+## Base-vs-shop-tier drift: hunted down every remaining source, added a general self-heal instead of another one-off manual fix (2026-09-26, direct instruction: "Hunt down in my code base how some people's user-stats keeps showing their base - sweet amounts having the base drift from the shop tier upgrades... have these self healing... or fixing wherever it's happening")
+
+**What was asked.** The same player from `systems/tower.md`'s 2026-09-23 root-cause entry was
+reported broken again for work multiplier and bank capacity (`/user-stats` "N/A" tier names, base
+sitting above/between real shop tiers) — direct instruction to find every place this can still
+happen and either self-heal it (converting the drifted excess into `sweetPotatoBuffs`) or fix it at
+the source, since it was already "causing issues with buy commands and probably will cause issues
+for the regrade commands too."
+
+**What was found.** Two separate findings, not one:
+1. **Not a new bug — the manual fix was never applied.** The 2026-09-23 entry's code fix (batching
+   Tower's payout into one atomic write) was confirmed still in place and correct. Every other
+   stat-granting path in the codebase was re-audited from scratch — `questFactory`'s weekly reward
+   write, `raidFactory.handleStatSplit`/`handlePercentStatSplit`, `workFactory.js`'s
+   `handleMetalPotato`/`handleSweetPotato`/`handleAncientPotato`, `admin.js`'s reset-tower full-wipe
+   reversal, every write in `shopFactory.js`, `rebirthFactory.computeRebirthState` — and every single
+   one bundles the raw stat and `sweetPotatoBuffs` into one atomic `updateUserFields` call already. A
+   grep for `updateUserDatabase`/`addUserDatabase` (the single-field, error-swallowing functions that
+   caused the original bug) against any of `workMultiplierAmount`/`bankCapacity`/`passiveAmount`/
+   `sweetPotatoBuffs` came back with zero hits anywhere in the codebase. What was showing was simply
+   the SAME pre-fix damage from before 2026-09-23 — the 2026-09-23 entry's own "not fixed by this
+   pass... being handled directly" manual correction had evidently never actually been applied.
+2. **A real, independent bug in `/buy`'s own tier lookup.** `shopFactory.js`'s `getNextItemFromShop`
+   used a strict `item.currentAmount == currentAmount` — any base sitting even slightly off a real
+   tier (from ANY cause, old float noise or a genuine drifted account) reads as "no next tier found,"
+   returning `-1`, which `/buy`/`/shop`'s "Buy Next Tier" button renders as "already maxed out!" for a
+   player who hasn't finished the shop at all. `workFactory.js`'s `getNextShopTier` had already been
+   given an epsilon-tolerant fix for this exact class of drift (its own comment diagnosing float
+   noise from repeated additions), but that fix was never propagated to `shopFactory.js`'s copy of
+   the same lookup — confirming the player's report that this "is causing issues with buy commands."
+
+**What changed.** Two fixes, matching the two findings:
+1. **General self-heal, not another manual account fix.** New `rebirthFactory.healBaseDrift(userDetails)`
+   — for each of the three tracked stats, reconstructs `base` the same way `getBaseValue` always has,
+   finds the highest real checkpoint (account default, or a shop tier's post-purchase `amount`) at or
+   below it, and folds the difference into `sweetPotatoBuffs` if `base` doesn't land there exactly.
+   The live total is never touched — this only recategorizes an already-earned amount, it can never
+   grant or remove anything. Wired into `dynamoHandler.findUser` (every command's own read path)
+   right after the existing companion-instance migration self-heal, same shape: heal once, persist
+   via one atomic `updateUserFields({ sweetPotatoBuffs })` call, tolerate a failed write by leaving
+   the account unhealed for the next lookup. Runs on every single `findUser` call in the game, so it
+   has to be (and is) a cheap no-op for the overwhelmingly common already-clean account.
+2. **Hardened `getNextItemFromShop`/`getShopTierStatus`** in `shopFactory.js` with the same `1e-6`
+   epsilon tolerance `getNextShopTier` already used, closing the specific `/buy` failure mode
+   directly — defense in depth for the rare case a heal write itself fails transiently.
+   `embedFactory.js`'s `findShopItemName` (the "N/A" display) was deliberately left alone — its
+   existing `.toFixed(1)` loose match already tolerates ordinary noise, it's display-only, and the
+   self-heal fixes the actual number it reads regardless.
+
+**Tests.** `rebirthFactory.test.js` gained a `healBaseDrift` describe block (9 tests) covering: no
+healing needed at the default, mid-ladder, or top tier; the exact reported work-multi (0.80 above the
+top tier) and bank-capacity (between two tiers) cases each heal correctly with the total unchanged;
+both drifting together in one account; float noise (~1e-10) below tolerance triggers nothing; a base
+impossibly below the account floor (the opposite problem) is left alone; `passiveAmount` heals the
+same way. `dynamoHandler.test.js` gained 3 tests confirming `findUser` calls `healBaseDrift`,
+persists and returns the correction, makes no write for a clean account, and tolerates a failed heal
+write without throwing. `shopFactory.test.js` gained 4 regression tests for the epsilon-tolerance fix
+(float-noise drift, a stringified base value from `getUserBaseShopValue`'s workShop branch,
+`getShopTierStatus`'s NEXT threshold). Full suite: **113 suites / 2108 tests, all passing** (net +16
+new tests, 0 broken).
+
+**Docs.** `.claude/systems/tower.md`'s existing 2026-09-23 root-cause entry got a "Follow-up
+(2026-09-26)" continuation documenting this investigation and fix, rather than a disconnected new
+section for the same underlying issue. `.claude/systems/economy-and-work.md`'s Personal Shops section
+gained a paragraph on the epsilon-tolerance fix and the self-heal mechanism.
+
+**Cross-repo note.** This is a shared-data-model concern, not bot-specific — `financial-project`'s
+`/gromp` page reads the same DynamoDB row, and if it has its own base-reconstruction logic for
+shop/regrade progress, an affected account would show the identical symptom there until the bot's
+self-heal happens to run for that player first (which now happens automatically the next time they
+touch ANY bot command, but not before). Flagging rather than silently deciding whether to port
+`healBaseDrift`'s equivalent (or at least the epsilon-tolerance hardening) into `financial-project`'s
+own Lambda(s) — not yet checked this session.
+
+## Follow-up, same session: the "every other path is already atomic" audit above was wrong — `regrade.js` itself had the exact same vulnerability (player-reported: "I fixed her before but it seems like it still broke afterwards")
+
+**What was asked.** The player confirmed the earlier entry's assumption was mistaken: the manual
+one-off correction genuinely HAD been applied once already, and the account broke again anyway after
+that — meaning there had to be a live, still-active source of drift, not just leftover pre-2026-09-23
+damage as the entry above concluded. Direct follow-up: "any way to build a self healing function for
+these stats" (already built, above) plus an implicit "then why did it still break."
+
+**What was found.** The audit above checked every reward-*granting* path for the sweetPotatoBuffs
+pairing, but never re-checked `regrade.js` itself — the one command the player specifically named as
+broken. `executeRegrade`'s success path made the exact same class of mistake `enter-tower.js` was
+root-caused for on 2026-09-23: **two separate, sequential, unconditional single-field
+`updateUserDatabase` calls** — one for `regrades` (recording the regradeAmount increase), a second
+right after it for the stat field itself (`workMultiplierAmount`/`passiveAmount`/`bankCapacity`).
+Both silently swallow DynamoDB errors. If the `regrades` write landed but the stat-field write failed
+transiently right after (or landed out of order under any concurrent access to the same account), the
+raw stat and `regradeAmount` permanently desync from each other — the exact same failure shape as the
+original bug, just via `regrades` instead of `sweetPotatoBuffs` as the desynced half. `/regrade` is a
+far more frequently-run command than a full Tower run, which fits a recurrence on the same veteran
+account better than waiting on more Tower runs would.
+
+**What changed.** `executeRegrade` rewritten to batch `companions`, `regrades`, and (on success) the
+stat field into ONE `dynamoHandler.updateUserFields(userId, setFields, { potatoes: -cost })` call —
+`potatoes` moves from a separate `addUserDatabase` call into the same call's atomic ADD, matching
+`enter-tower.js`'s own fix shape exactly. A failed regrade attempt was already single-field
+(`regrades` only), so only the success path needed restructuring; the whole function now makes
+exactly one database round trip regardless of outcome, versus the original's up to four.
+
+**Tests.** `regrade.test.js` gained an "atomic write" describe block (2 tests): a success writes
+`regrades`/the stat field/`companions` in one `updateUserFields` call with potatoes as an atomic ADD,
+and confirms `updateUserDatabase`/`addUserDatabase` are never called; a failure writes in one call too,
+with no stat-field key present at all (nothing to desync when nothing changed). Three pre-existing
+tests across `regrade.test.js` and `nonWorkCompanionLeveling.test.js` that asserted against the old
+separate `updateUserDatabase(userId, "companions", ...)` call were updated to read the same data off
+the new combined `updateUserFields` call instead — mechanical updates, no behavior assertions changed.
+Full suite: **113 suites / 2110 tests, all passing** (net +2 new tests, 0 broken).
+
+**Docs.** `regrade.js`'s own `executeRegrade` comment rewritten to document the fix and point at this
+entry and `systems/tower.md`'s original root-cause entry, matching the density this file's history
+sections already expect from a fix comment like this.
+
+**Cross-repo note.** `financial-project`'s own regrade port (if one exists) hasn't been checked yet
+this session — worth a follow-up look for the identical two-separate-writes shape before assuming
+it's bot-only.
+
+## Same-day addendum: hardened `/regrade` against a drifted `regradeAmount` crashing the command outright (direct instruction: "Would it ever drift and say they can't regrade?")
+
+**What was asked.** Whether the drift class fixed above could also make `/regrade` wrongly refuse a
+player, or otherwise misbehave, given the atomic-write fix only prevents NEW drift — it doesn't touch
+any `regradeAmount` that's already sitting off a real tier checkpoint from before that fix landed.
+
+**What was found.** Two distinct exposures, one worse than "wrongly refuses":
+1. `findCurrentRegradeTier` matched a player's `regradeAmount` against each tier's own
+   `currentRegradeAmount` with strict `==`. A `regradeAmount` that doesn't land exactly on one (any
+   leftover pre-fix drift, or a future bug of the same shape) makes it return `undefined` — and
+   `checkEligibility`'s very next line reads `.chance`/`.cost` off that result with **no null check**,
+   throwing an uncaught `TypeError` and crashing the whole command rather than showing any message at
+   all.
+2. `hasRequiredBaseAmount`'s `base < shopMax` gate genuinely CAN false-refuse a player who has truly
+   finished the shop, if their `base` is under-counted from old drift (the direction the self-heal
+   deliberately doesn't touch — see `healBaseDrift`'s own "below the account's own floor" guard,
+   which is this same problem generalized). This is now closed **going forward** by the atomic-write
+   fix above (regradeAmount and the stat field can no longer desync from each other on a fresh
+   attempt), but an account that already has this specific old damage would still see it until
+   manually corrected — there's no safe way to "add back" a lost regrade credit automatically, since
+   the exact amount that should have landed isn't recoverable from the current state alone (unlike
+   the "excess" case, which is safe to heal because the correct destination is unambiguous).
+
+**What changed.** `findCurrentRegradeTier` rewritten to find the **highest tier whose
+`currentRegradeAmount` has been reached or surpassed**, not a strict match — always resolves to a
+real tier (the first tier's `currentRegradeAmount` is 0, so it can never fall through to nothing),
+degrading gracefully to "whichever tier you've actually reached" instead of crashing. The
+false-refusal risk (`hasRequiredBaseAmount`) is not separately patched — it's structurally closed for
+all NEW regrades by the earlier atomic-write fix, and there's no safe automatic fix for pre-existing
+under-counted accounts; flagged rather than built, since guessing at a correction here risks being
+wrong in a way the excess-side heal isn't.
+
+**Tests.** `regrade.test.js` gained a test reproducing the exact crash: a `regradeAmount` of 25 (no
+tier's `currentRegradeAmount` equals 25) now resolves to tier 3 (`currentRegradeAmount` 20, the
+highest one reached) instead of throwing, verified via the actual cost/increase passed to the preview
+embed. Full suite: **113 suites / 2111 tests, all passing** (net +1 new test, 0 broken).

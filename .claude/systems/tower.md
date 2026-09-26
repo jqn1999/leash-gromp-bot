@@ -2718,3 +2718,102 @@ it's a one-time data fix for one account, not a repeatable mechanism.
 `financial-project` has no Tower gameplay port at all (no `/enter-tower` equivalent, no
 `towerFactory`, no reward-crediting logic) — confirmed via the same grep this file's other
 cross-repo notes already used. Nothing to port.
+
+## Follow-up (2026-09-26, direct instruction): the manual one-off correction never got applied, and a self-heal was added so this never needs one again
+
+The same player was reported broken again for work multiplier and bank capacity — `/user-stats`
+showing "N/A" on both, with a "base" figure sitting neither on nor below the shop's own highest
+tier (work multi: 100.80 vs. the shop's real max of 100; bank: 55,000,000, between the real
+50,000,000 and 250,000,000 tiers). Investigation confirmed this is the SAME root cause as the
+2026-09-23 entry above, not a new occurrence: the code fix (batching Tower's payout into one atomic
+write) had already shipped and was confirmed to be the only place in the codebase using the
+vulnerable six-separate-writes pattern (grepped every `updateUserDatabase`/`addUserDatabase` call
+against `workMultiplierAmount`/`bankCapacity`/`passiveAmount`/`sweetPotatoBuffs` — zero hits outside
+the already-fixed `enter-tower.js`). What was showing was simply pre-fix damage that the
+"not fixed by this pass" manual correction noted above was never actually applied to fix.
+
+**Every other stat-*granting* path was re-audited and confirmed correctly atomic**: `questFactory`'s
+weekly reward write, `raidFactory.handleStatSplit`/`handlePercentStatSplit`, `workFactory.js`'s
+`handleMetalPotato`/`handleSweetPotato`/`handleAncientPotato`, `admin.js`'s reset-tower full-wipe
+reversal, and every shop-purchase write in `shopFactory.js` — all bundle the raw stat and
+`sweetPotatoBuffs` into one `updateUserFields` call, none exhibit the vulnerability class.
+**This audit was incomplete** — it missed `regrade.js` itself, which had the identical vulnerability
+via `regrades.<track>.regradeAmount` desyncing from the raw stat instead of `sweetPotatoBuffs`
+desyncing from it. Found the same day once the player reported the fix hadn't actually held — see
+`roadmap.md`'s "Follow-up, same session" entry for the full second root-cause and fix; not repeated
+here since it's the same mechanism, a different call site.
+
+**What changed — a general self-heal, not another one-off manual fix.** Per direct instruction ("have
+these self healing by having that base convert to sweet potato"), `rebirthFactory.js` gained
+`healBaseDrift(userDetails)`: for each of the three tracked stats, it reconstructs `base` the same
+way `getBaseValue` always has, finds the highest real checkpoint (the account default, or a shop
+tier's post-purchase `amount`) at or below it, and — if `base` doesn't land exactly there — folds the
+difference into `sweetPotatoBuffs` for that stat. The live total is never touched, so this can never
+grant or remove anything; it only recategorizes an already-earned amount into the bucket it should
+have landed in to begin with. Wired into `dynamoHandler.findUser` (every command's own read path)
+right after the existing companion-instance migration self-heal, same shape: heal once, persist via
+one atomic `updateUserFields({ sweetPotatoBuffs })` call, tolerate a failed write by leaving the
+account unhealed for the next lookup rather than throwing. This means ANY account carrying leftover
+drift — this player's, or anyone else's from before the 2026-09-23 fix, or from any future bug of
+this same shape nobody's found yet — self-corrects the moment they run their next command, with zero
+admin/manual intervention.
+
+**Hardening `/buy` directly, not just relying on the heal.** `shopFactory.js`'s `getNextItemFromShop`
+(the exact function `/buy`'s "already maxed out!" false-positive traces back to) and
+`getShopTierStatus` were both switched from a strict `==` to the same `1e-6` epsilon-tolerant match
+`workFactory.js`'s `getNextShopTier` already used for this identical class of float-noise drift (see
+that function's own comment, which had already diagnosed the general problem but only fixed its own
+one caller). This is defense in depth for the rare case a heal write itself fails transiently — `/buy`
+now degrades gracefully instead of falsely reporting "maxed out" even on an still-unhealed account.
+`embedFactory.js`'s `findShopItemName` (the "N/A" display specifically) was deliberately left as-is —
+its existing `.toFixed(1)` loose match already tolerates ordinary float noise, it's a display-only
+concern, and the self-heal fixes the actual underlying number it reads regardless.
+
+**Tests.** `rebirthFactory.test.js` gained a `healBaseDrift` describe block (9 tests): a clean account
+at the default, at a mid-ladder tier, and at the top tier all need no healing; the exact reported
+work-multi case (0.80 above the top tier) and bank-capacity case (between two tiers) each heal
+correctly with the total left unchanged; both drift together in one account; tiny float noise
+(~1e-10) does not trigger a heal; a base impossibly below the account's own floor (the opposite
+problem) is left alone rather than made worse; `passiveAmount` heals the same way as the other two
+tracks. `dynamoHandler.test.js` gained 3 tests confirming `findUser` actually calls `healBaseDrift`,
+persists and returns the corrected `sweetPotatoBuffs`, makes no write at all for an already-clean
+account, and tolerates a failed heal write without throwing. `shopFactory.test.js` gained 4
+regression tests for the epsilon-tolerance fix (float-noise drift, a stringified base value,
+`getShopTierStatus`'s own NEXT threshold). Full suite: **113 suites / 2108 tests, all passing** (net
++16 new tests, 0 broken).
+
+**Docs.** This section extended with the follow-up investigation and fix (in place of a separate new
+section, since it's a direct continuation of the same root cause). `.claude/systems/economy-and-work.md`'s
+shop/regrade section gained a paragraph describing the self-heal and its trigger point.
+
+**Cross-repo note.** This is a shared-data-model concern, not Tower-specific — `financial-project`'s
+`/gromp` page reads the SAME DynamoDB row and, if it has its own base-reconstruction/shop-tier logic
+for its UI, would show the identical "N/A"/broken-tier symptom for an affected account until the
+bot's self-heal happens to run for that player first. Flagging this rather than silently deciding —
+worth checking whether `financial-project` needs the equivalent `healBaseDrift` (or at least the same
+epsilon-tolerance hardening) ported into its own Lambda(s) that compute shop/regrade progress.
+
+### Same-session addendum: the reward-failure notice made visually loud, not just present (direct instruction: "have tower fail more obviously if any writes fail to go through but still let the user know what stats they gained")
+
+The 2026-09-23 same-day follow-up above already sends a failure notice with the exact reward numbers
+in a copy-pasteable JSON block the moment `processRewardPayouts`'s write fails — that part of the ask
+was already built. What wasn't: the run's own results embed (`createResult`) is sent FIRST, in the
+same yellow, celebratory style every successful run gets, showing the rewards as if they landed
+regardless of whether the later write actually succeeds. The failure notice that follows it was
+plain text only — easy to skim past as more of the same good news rather than a warning, especially
+since Discord renders a plain-text followUp far less prominently than an embed.
+
+`sendRewardFailureNotice` now also attaches a new `createRewardFailureEmbed` — red, titled "⚠️ Tower
+Reward NOT Saved", with the floor/outcome/potatoes/work multiplier/passive income/bank capacity each
+broken into their own real fields (not just buried in the JSON block) — alongside the exact same
+`content` string as before (JSON block included, still ephemeral, still the same wording). This is
+purely additive: the existing JSON-block behavior every admin correction already relies on is
+untouched, this just makes the failure state visually impossible to mistake for the success it sits
+right next to. Visibility (ephemeral vs. public so a mod could see it without the player forwarding
+anything) was deliberately left as-is rather than changed unasked — a real design tradeoff (channel
+noise, exposing a userId publicly) worth a separate decision if wanted.
+
+**Tests.** `enter-tower.test.js` gained a test confirming the failure followUp carries exactly one Red
+embed with the actual floor/potatoes/work-multiplier values present in its fields, alongside (not
+instead of) the pre-existing JSON-block assertion. Full suite: **113 suites / 2112 tests, all
+passing** (net +1 new test, 0 broken).

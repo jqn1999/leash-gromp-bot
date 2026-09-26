@@ -2023,7 +2023,7 @@ class EmbedFactory {
             if (milestoneJustReached) {
                 fields.push({
                     name: `🏅 Toxic Tolerance:`,
-                    value: `10 Poison hits in one week — the loss and lockout are cut way down for the rest of this week!`,
+                    value: `10 Poison hits in one week — your loss/lockout reduction was already capped at 60%, so this milestone doesn't soften it any further. Just a badge for a rough week.`,
                     inline: false,
                 });
             }
@@ -2115,7 +2115,7 @@ class EmbedFactory {
             if (milestoneJustReached) {
                 fields.push({
                     name: `🏅 Mimic-Proofed:`,
-                    value: `10 Mimic hits in one week — the bank loss is cut way down for the rest of this week!`,
+                    value: `10 Mimic hits in one week — your bank-loss reduction was already capped at 60%, so this milestone doesn't soften it any further. Just a badge for a rough week.`,
                     inline: false,
                 });
             }
@@ -4544,6 +4544,56 @@ class EmbedFactory {
             .setTimestamp(Date.now())
             .setFields(fields)
         return embed;
+    }
+
+    // /regrade's preview step (direct instruction: "show an embed with the regrade info
+    // and buttons for regrading or not") — shown BEFORE anything is spent/rolled, unlike
+    // createRegradeEmbed above which only ever narrates a completed attempt. Mirrors that
+    // one's field shape/labels (typeText, Success Chance formatting) so the preview and the
+    // result it leads into read as the same screen, not two different designs.
+    createRegradePreviewEmbed(userDisplayName, userId, userAvatar, userPotatoes, regradeType, currentBaseAmount, cost, increaseAmount, successChance, failStack) {
+        const avatarUrl = getUserAvatar(userId, userAvatar);
+        const typeText = regradeType === 'Work Multiplier' ? 'work multi' : 'potatoes';
+        const canAfford = userPotatoes >= cost;
+        const fields = [
+            { name: 'Current Potatoes:', value: `${userPotatoes.toLocaleString()} potatoes`, inline: true },
+            { name: 'Cost:', value: `${cost.toLocaleString()} potatoes`, inline: true },
+            { name: '\n', value: '\n', inline: false },
+            { name: `Current ${regradeType}:`, value: `${currentBaseAmount.toLocaleString()} ${typeText}`, inline: true },
+            { name: 'Increase On Success:', value: `+${increaseAmount.toLocaleString()} ${typeText}`, inline: true },
+            { name: 'Success Chance:', value: `${(successChance * 100).toFixed(2)}% (+${(failStack * 100).toFixed(2)}%)`, inline: false },
+        ];
+        if (!canAfford) {
+            fields.push({ name: '⚠️ Not enough potatoes:', value: `You need ${(cost - userPotatoes).toLocaleString()} more.`, inline: false });
+        }
+        return new EmbedBuilder()
+            .setTitle(`${userDisplayName}, regrade your ${regradeType}?`)
+            .setDescription(canAfford ? 'Confirm below to spend the cost and roll for the increase.' : 'You can still view this, but you can\'t confirm until you have enough potatoes.')
+            .setColor(canAfford ? 'Blue' : 'Red')
+            .setThumbnail(avatarUrl)
+            .setFooter({ text: "Made by Beggar" })
+            .setTimestamp(Date.now())
+            .setFields(fields);
+    }
+
+    // /regrade's "view all tiers" option (direct instruction) — read-only ladder browse,
+    // paginated exactly like createAchievementsPageEmbed/createShopPageEmbed. tierRows is
+    // this page's slice of {tier, index, isCurrent} (index is the tier's 1-based rung on
+    // the FULL ladder, not just this page, and isCurrent marks the rung the player's own
+    // regradeAmount currently sits on) — built by the caller so this stays a pure render.
+    createRegradeTiersPageEmbed(regradeType, tierRows, pageIndex, totalPages, unit) {
+        const fields = tierRows.map(({ tier, index, isCurrent }) => ({
+            name: `${isCurrent ? '➡️ ' : ''}Tier ${index}${isCurrent ? ' (current)' : ''}`,
+            value: `Cost: ${tier.cost.toLocaleString()} potatoes\nIncrease: +${tier.increase.toLocaleString()} ${unit}\nChance: ${(tier.chance * 100).toFixed(2)}%`,
+            inline: true,
+        }));
+        return new EmbedBuilder()
+            .setTitle(`${regradeType} Regrade Tiers`)
+            .setDescription(`Page ${pageIndex + 1} / ${totalPages}`)
+            .setColor('Gold')
+            .setFooter({ text: "Made by Beggar" })
+            .setTimestamp(Date.now())
+            .setFields(fields);
     }
 
     // companionXpGained/companionName (new, optional, default 0/null) — only ever nonzero

@@ -15,10 +15,17 @@ jest.mock('../../../utils/dynamoHandler');
 const dynamoHandler = require('../../../utils/dynamoHandler');
 const companionFactory = require('../../../utils/companionFactory');
 
+// "Scavenge Again" button (added to the collect reply's components) needs editReply to
+// resolve a reply object a collector can attach to — these tests don't exercise that
+// button themselves, so the mocked collector just times out (resolves null) immediately.
 function fakeInteraction() {
+    const replyObj = {
+        edit: jest.fn().mockResolvedValue(),
+        awaitMessageComponent: jest.fn().mockResolvedValue(null),
+    };
     return {
         deferReply: jest.fn().mockResolvedValue(),
-        editReply: jest.fn().mockResolvedValue(),
+        editReply: jest.fn().mockResolvedValue(replyObj),
         followUp: jest.fn().mockResolvedValue(),
         user: { id: 'user-1', username: 'User', displayName: 'User' },
     };

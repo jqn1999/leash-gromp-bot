@@ -1268,6 +1268,20 @@ value in parallel the way `sweetPotatoBuffs` deliberately doesn't.
   Also runs an `achievementFactory.checkAndUnlock` pass afterward (against the just-written counts,
   not a re-fetch — same shortcut `work.js`'s own check takes) for the Legendary Legwork/Mythic
   Milestones achievements below.
+  - **"Scavenge Again" button** (2026-09-26, direct instruction: "Have companion scavenge
+    collection embed have a button to resend the same companion out to scavenge again") — the
+    return embed carries one button that re-dispatches that SAME instance without a separate
+    `/companion-scavenge` round trip. Re-validated against a **fresh** `findUser` read at click
+    time (not the userDetails the collect reply was built from) via a new
+    `companionFactory.validateScavengeDispatch(userDetails, instanceId)` — extracted out of
+    `companionScavenge.js`'s own inline checks (owned? not the active companion? nothing else
+    already scavenging?) so this button and that command can't drift out of sync the way two
+    independently hand-maintained copies of the exact same eligibility check eventually would.
+    Returns structured `{ ok, reason, ... }` data rather than a pre-formatted message — this
+    factory has no Discord-formatting concerns — so each caller still writes its own wording
+    (`convertSecondstoMinutes` for a remaining-time message lives in the command files, not the
+    factory). One click only: the button is cleared afterward whether the re-dispatch succeeded,
+    failed validation (e.g. the instance was re-equipped or sold in the meantime), or timed out.
 - **`/companion-scavenge-cancel`** (no args) — early recall. Unlike `/companion-cancel` (market —
   recovers a listing with nothing lost, so it skips a confirm step), an early recall forfeits a
   real, already-accruing reward, so this **does** use the same `buildConfirmCancelRow` flow

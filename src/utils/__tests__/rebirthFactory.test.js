@@ -1,4 +1,4 @@
-const { checkRebirthEligibility, getRebirthBonusPercent, getLiveRebirthPercent, previewRebirthBonus, computeRebirthState } = require('../rebirthFactory');
+const { checkRebirthEligibility, getRebirthBonusPercent, getLiveRebirthPercent, previewRebirthBonus, computeRebirthState, healBaseDrift } = require('../rebirthFactory');
 const { Rebirth, Bank, Starch } = require('../constants');
 
 function maxedUser(overrides = {}) {
@@ -203,5 +203,117 @@ describe('computeRebirthState', () => {
         expect(getLiveRebirthPercent(before)).toBeCloseTo(getRebirthBonusPercent(1));
         expect(getLiveRebirthPercent({ ...before, rebirthCount: after.rebirthCount })).toBeCloseTo(getRebirthBonusPercent(2));
         expect(getRebirthBonusPercent(2)).toBeGreaterThan(getRebirthBonusPercent(1));
+    });
+});
+
+// dynamoHandler.findUser's own base-vs-shop-tier drift self-heal (root-caused 2026-09-23 —
+// see that entry in roadmap.md and healBaseDrift's own comment) — a reward path that ever
+// credited a stat's raw total without symmetrically crediting sweetPotatoBuffs strands the
+// excess in getBaseValue's reconstruction forever, breaking /buy's and /regrade's exact-
+// match tier lookups. These tests exercise healBaseDrift as the pure function it is;
+// dynamoHandler.test.js covers that findUser actually calls it and persists the result.
+describe('healBaseDrift', () => {
+    function cleanUser(overrides = {}) {
+        return {
+            workMultiplierAmount: 1, passiveAmount: 0, bankCapacity: Bank.STARTING_CAPACITY,
+            sweetPotatoBuffs: { workMultiplierAmount: 0, passiveAmount: 0, bankCapacity: 0 },
+            regrades: {
+                workMulti: { regradeAmount: 0, failStack: 0 },
+                passiveAmount: { regradeAmount: 0, failStack: 0 },
+                bankCapacity: { regradeAmount: 0, failStack: 0 }
+            },
+            ...overrides,
+        };
+    }
+
+    test('a brand-new account (base sitting exactly at the pre-purchase default) needs no healing', () => {
+        expect(healBaseDrift(cleanUser())).toBeNull();
+    });
+
+    test('a base sitting exactly on a real shop tier (mid-ladder) needs no healing', () => {
+        // workShop tier 5 (currentAmount 10) -> amount 15; sitting exactly at 15 is clean.
+        const user = cleanUser({ workMultiplierAmount: 15 });
+        expect(healBaseDrift(user)).toBeNull();
+    });
+
+    test('a fully maxed account (base exactly at the top tier) needs no healing', () => {
+        const user = cleanUser({ workMultiplierAmount: 100, bankCapacity: 1000000000 });
+        expect(healBaseDrift(user)).toBeNull();
+    });
+
+    // Reproduces the exact reported case: work multi base sitting 0.8 ABOVE the top real
+    // tier (100), from some past reward crediting the raw total without also crediting
+    // sweetPotatoBuffs by the same amount.
+    test('work multi base drifted above the top tier: folds the excess into sweetPotatoBuffs, total unchanged', () => {
+        // Reported base 100.80 + sweetPotatoBuffs 47.60 + regrade 0 = total 148.40.
+        const user = cleanUser({ workMultiplierAmount: 148.40, sweetPotatoBuffs: { workMultiplierAmount: 47.60, passiveAmount: 0, bankCapacity: 0 } });
+        const healed = healBaseDrift(user);
+        expect(healed).not.toBeNull();
+        expect(healed.workMultiplierAmount).toBeCloseTo(48.40);
+        // Reconstructing base off the healed sweetPotatoBuffs now lands exactly on tier 100.
+        const newBase = user.workMultiplierAmount - healed.workMultiplierAmount - user.regrades.workMulti.regradeAmount;
+        expect(newBase).toBeCloseTo(100);
+    });
+
+    // Reproduces the bank-capacity half of the exact reported case: base sitting between
+    // two real tiers (50,000,000 and 250,000,000) rather than on either one.
+    test('bank capacity base drifted between two tiers: folds the excess into sweetPotatoBuffs, total unchanged', () => {
+        // Reported base 55,000,000 + sweetPotatoBuffs 565,471,986 + regrade 0 = total 620,471,986.
+        const user = cleanUser({ bankCapacity: 620471986, sweetPotatoBuffs: { workMultiplierAmount: 0, passiveAmount: 0, bankCapacity: 565471986 } });
+        const healed = healBaseDrift(user);
+        expect(healed).not.toBeNull();
+        expect(healed.bankCapacity).toBe(570471986);
+        const newBase = user.bankCapacity - healed.bankCapacity - user.regrades.bankCapacity.regradeAmount;
+        expect(newBase).toBe(50000000);
+    });
+
+    test('heals multiple drifted stats in the same account in one call', () => {
+        const user = cleanUser({
+            workMultiplierAmount: 148.40,
+            bankCapacity: 620471986,
+            sweetPotatoBuffs: { workMultiplierAmount: 47.60, passiveAmount: 0, bankCapacity: 565471986 },
+        });
+        const healed = healBaseDrift(user);
+        expect(healed.workMultiplierAmount).toBeCloseTo(48.40);
+        expect(healed.bankCapacity).toBe(570471986);
+    });
+
+    test('the live total is byte-for-byte unchanged by healing — this only recategorizes, never grants or removes anything', () => {
+        const user = cleanUser({ workMultiplierAmount: 148.40, sweetPotatoBuffs: { workMultiplierAmount: 47.60, passiveAmount: 0, bankCapacity: 0 } });
+        const totalBefore = user.workMultiplierAmount;
+        const healed = healBaseDrift(user);
+        // healBaseDrift never touches workMultiplierAmount itself, only sweetPotatoBuffs —
+        // reconstructing (new base + healed sweet + regrade) must land back on the exact
+        // same total the account already had.
+        const newBase = user.workMultiplierAmount - healed.workMultiplierAmount - user.regrades.workMulti.regradeAmount;
+        const totalAfter = newBase + healed.workMultiplierAmount + user.regrades.workMulti.regradeAmount;
+        expect(totalAfter).toBeCloseTo(totalBefore);
+        expect(user.workMultiplierAmount).toBe(totalBefore); // untouched
+    });
+
+    // Tiny float noise (~1e-10, the realistic magnitude after many grants — see
+    // workFactory.js's own SHOP_TIER_MATCH_TOLERANCE comment) must NOT trigger a heal on
+    // every single findUser call for essentially every account in the game.
+    test('does not heal float noise below the tolerance threshold', () => {
+        const user = cleanUser({ workMultiplierAmount: 100 + 1e-10 });
+        expect(healBaseDrift(user)).toBeNull();
+    });
+
+    // A base BELOW the account's own floor is the opposite problem (sweetPotatoBuffs/
+    // regrade overcounted relative to the total) — healBaseDrift must never "fix" this by
+    // folding MORE into sweetPotatoBuffs, which would only make the shortfall worse.
+    test('does not touch an account whose base is impossibly below the pre-purchase default', () => {
+        const user = cleanUser({ workMultiplierAmount: 10, sweetPotatoBuffs: { workMultiplierAmount: 20, passiveAmount: 0, bankCapacity: 0 } });
+        expect(healBaseDrift(user)).toBeNull();
+    });
+
+    test('passiveAmount drift is healed the same way as the other two tracks', () => {
+        // passiveIncomeShop tier 1 amount, per constants.js — drift it up by 12,345.
+        const shops = require('../constants').shops;
+        const passiveShop = shops.find(s => s.shopId === 'passiveIncomeShop');
+        const tier1Amount = passiveShop.items[0].amount;
+        const user = cleanUser({ passiveAmount: tier1Amount + 12345 });
+        const healed = healBaseDrift(user);
+        expect(healed.passiveAmount).toBe(12345);
     });
 });
