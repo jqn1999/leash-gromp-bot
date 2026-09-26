@@ -2444,18 +2444,31 @@ const Raid = {
 
     // Sort raiders by their own power (getMemberRaidPower) descending; the top raider
     // counts at full weight, each next-strongest raider counts at RAID_TEAM_DECAY (50%)
-    // of the rank above them (geometric, not harmonic) — teamPower = sum(power_i *
-    // RAID_TEAM_DECAY^rank). Replaces a straight arithmetic mean, which let a below-average
-    // new member drag the roster's average down by more than RAID_HEADCOUNT_BONUS_PER_MEMBER
-    // could offset, making the single strongest guild member soloing every raid strictly
-    // dominant over real multi-member participation. This shape guarantees adding any
-    // member at any power never decreases teamPower (see raidFactory.js's
-    // getEffectiveRaidPowerBreakdown for the proof) and converges to a hard ceiling of
-    // 1/(1-RAID_TEAM_DECAY) = 2.0x the top raider's own power as roster size grows,
-    // regardless of how high memberCap gets upgraded (see guildBuy.js's memberCap shop) —
-    // n=1 is an exact identity with the old formula (teamPower = power_0, headcountBonus
-    // = 0), so solo Bounty math (mercenaryFactory.js) is completely unaffected.
+    // of the rank above them (geometric, not harmonic), floored at RAID_TEAM_DECAY_FLOOR —
+    // teamPower = sum(power_i * max(RAID_TEAM_DECAY^rank, RAID_TEAM_DECAY_FLOOR)). Replaces
+    // a straight arithmetic mean, which let a below-average new member drag the roster's
+    // average down by more than RAID_HEADCOUNT_BONUS_PER_MEMBER could offset, making the
+    // single strongest guild member soloing every raid strictly dominant over real
+    // multi-member participation. This shape guarantees adding any member at any power
+    // never decreases teamPower (see raidFactory.js's getEffectiveRaidPowerBreakdown for
+    // the proof — the floor doesn't change that, since max(x, floor) is still non-decreasing
+    // in x, and the same insertion argument holds rank-by-rank).
+    //
+    // Floored 2026-09-27 (direct instruction: "don't strictly do 100% then 50% then 25%
+    // then 12.5% etc, floor it at 25% power contribution") — every rank from 2 onward
+    // (0-indexed: rank 0 = 100%, rank 1 = 50%, rank 2 = 25% exactly, the floor's own value)
+    // now stays at a flat 25% forever instead of continuing to halve toward 0. This
+    // deliberately REMOVES the old formula's asymptotic ceiling: the un-floored version
+    // converged to a hard cap of 1/(1-RAID_TEAM_DECAY) = 2.0x the top raider's own power
+    // as roster size grew, regardless of memberCap — with every member beyond rank 2 now
+    // contributing a flat, non-decaying 25%, teamPower instead grows WITHOUT BOUND as
+    // roster size increases (roughly +0.25x the average tail member's power per additional
+    // raider past rank 2). A large, well-populated guild's effective raid/Spud Keep power is
+    // now genuinely unbounded by roster size, not just diminishing-but-capped — n=1 is still
+    // an exact identity with the old formula (teamPower = power_0, headcountBonus = 0), so
+    // solo Bounty math (mercenaryFactory.js) is completely unaffected either way.
     RAID_TEAM_DECAY: 0.5,
+    RAID_TEAM_DECAY_FLOOR: 0.25,
 
     // A deliberate alternate path to T3/T4-caliber effective power: pay a flat upfront
     // potato cost (win or lose) instead of grinding toward the shop/regrade currency

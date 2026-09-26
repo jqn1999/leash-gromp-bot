@@ -128,7 +128,7 @@ raider stats — `raidFactory.js`'s `getEffectiveRaidPower`:
 ```
 memberPower = workMultiplierAmount * (1 + liveRebirthPercent + companionWorkMultiplierPercent)   // getMemberRaidPower
 sortedPowers = [memberPower, ...] sorted descending
-teamPower = sum(sortedPowers[rank] * RAID_TEAM_DECAY^rank)   // rank 0 = strongest raider
+teamPower = sum(sortedPowers[rank] * max(RAID_TEAM_DECAY^rank, RAID_TEAM_DECAY_FLOOR))   // rank 0 = strongest raider
 headcountBonus = min(RAID_HEADCOUNT_BONUS_CAP, RAID_HEADCOUNT_BONUS_PER_MEMBER * (rosterSize - 1))
 effectiveRaidPower = teamPower * (1 + headcountBonus)
 ```
@@ -141,7 +141,9 @@ effectiveRaidPower = teamPower * (1 + headcountBonus)
   `/work` reward size.
 - **Rank-weighted `teamPower`, not an arithmetic mean (2026-08-26 rework).** Sort the roster by each
   member's own power descending; the strongest raider counts at full weight, each next-strongest
-  counts at `RAID_TEAM_DECAY` (50%) of the rank above them — geometric, not harmonic. This replaced a
+  counts at `RAID_TEAM_DECAY` (50%) of the rank above them — geometric, not harmonic — floored at
+  `RAID_TEAM_DECAY_FLOOR` (25%, added 2026-09-27) so rank 2 onward never decays below a flat 25% per
+  member. This replaced a
   straight average, which had a real, player-diagnosed bug: adding a below-average roster member could
   drag the average down by MORE than the capped `+3%/member` headcount bonus could offset, making the
   single strongest guild member soloing every raid (via `/join-raid`'s `autoJoinRaids` toggle)
@@ -153,26 +155,32 @@ effectiveRaidPower = teamPower * (1 + headcountBonus)
   its own 2026-09-10 level-scaling rework, see `systems/guilds.md`) are **unchanged**,
   now applied on top of `teamPower` instead of the old average.
 
-**Correctness guarantee, not just a usually-true heuristic**: for geometric weights `w_i = r^i`
-(`0 < r < 1`), inserting a new member at ANY power `p_new >= 0` at its correctly-sorted rank `k`
-changes `teamPower` by exactly `p_new * r^n >= 0` (`n` = roster size before insertion) — every
-existing member at rank `>= k` gets demoted one slot and loses `p_i * r^i * (1-r)`, but since
-insertion at rank `k` requires `p_new >= p_i` for every demoted member, the total loss is bounded
-above by the gain. So adding any active roster member can never lower `teamPower` — independent of
-`RAID_TEAM_DECAY`'s actual value, which is a pure balance knob (fuzz-tested numerically in
-`raidFactory.test.js`, 0 violations across thousands of random trials).
+**Correctness guarantee, not just a usually-true heuristic**: for weights `w_i = max(r^i, floor)`
+(`0 < r < 1`, `0 <= floor <= 1`), `max(x, floor)` is non-decreasing in `x`, so the same rank-by-rank
+insertion argument the pure geometric shape used still holds — inserting a new member at ANY power
+`p_new >= 0` at its correctly-sorted rank `k` can never lower `teamPower`, independent of
+`RAID_TEAM_DECAY`/`RAID_TEAM_DECAY_FLOOR`'s actual values, which are pure balance knobs (fuzz-tested
+numerically in `raidFactory.test.js`, 0 violations across thousands of random trials).
 
 `getEffectiveRaidPowerBreakdown` returns `{ teamPower, headcountBonus, effectivePower }` (not just the
 final number) so `current-raid`'s embed can show what the Total Multiplier is made of.
 `getEffectiveRaidPower` is a thin wrapper over it returning just `.effectivePower`. **n=1 is an exact
-identity with the old formula** (`teamPower = power_0 * r^0 = power_0`, `headcountBonus = 0`), so
-Bounty's solo "roster" (`mercenaryFactory.js`'s `getEffectiveRaidPower([userDetails])`) needed zero
-changes and produces byte-identical numbers to before. The geometric shape converges to a hard
-ceiling of `1/(1-RAID_TEAM_DECAY) = 2.0x` the top raider's own power as roster size grows, regardless
-of how high `memberCap` gets upgraded (`guildBuy.js`'s `memberCap` shop) — at the extreme (a
-maxed-`memberCap`, all-equal-power 25-member roster), `effectivePower` reaches `3.0x` a single
-raider's own power (`2.0x` `teamPower` ceiling × `1.5x` `headcountBonus` ceiling), vs. the old
-formula's `1.5x` ceiling for the same roster.
+identity with the old formula** (`teamPower = power_0 * max(r^0, floor) = power_0`, `headcountBonus =
+0`), so Bounty's solo "roster" (`mercenaryFactory.js`'s `getEffectiveRaidPower([userDetails])`) needed
+zero changes and produces byte-identical numbers to before.
+
+**`RAID_TEAM_DECAY_FLOOR` (2026-09-27, direct instruction: "don't strictly do 100% then 50% then 25%
+then 12.5% etc, floor it at 25% power contribution") deliberately removes the old ceiling.** Before
+this, the geometric shape converged to a hard ceiling of `1/(1-RAID_TEAM_DECAY) = 2.0x` the top
+raider's own power no matter how large the roster got. With every rank from 2 onward now floored at a
+flat 25% instead of continuing to halve, `teamPower` instead grows *without bound* as roster size
+grows (each additional member past rank 2 adds exactly `memberPower * 0.25` — no more diminishing
+returns once the floor is reached). At the same documented extreme (a maxed-`memberCap`,
+all-equal-power 25-member roster), `effectivePower` now reaches `~10.875x` a single raider's own power
+(vs. the pre-floor formula's `3.0x` for the same roster) — a deliberate reward for a large,
+well-populated guild's raid/Spud Keep power, not a bug. This is a shared formula: `spudKeepFactory.js`
+calls the same `getEffectiveRaidPowerBreakdown` (via `getSpudKeepMemberPower`), so Spud Keep's entrant
+power is affected identically — see `systems/spud-keep.md`.
 
 Every `*_RAID_DIFFICULTY`/`METAL_KING_DIFFICULTY` constant is **unchanged** by this rework — solo
 calibration is untouched (the n=1 identity above), and `getMinGuildLevelForTier`'s Elite/Legendary

@@ -17810,3 +17810,58 @@ wrong in a way the excess-side heal isn't.
 tier's `currentRegradeAmount` equals 25) now resolves to tier 3 (`currentRegradeAmount` 20, the
 highest one reached) instead of throwing, verified via the actual cost/increase passed to the preview
 embed. Full suite: **113 suites / 2111 tests, all passing** (net +1 new test, 0 broken).
+
+## Guild raid / Spud Keep power: floored the rank decay at 25% instead of halving forever (direct instruction: "don't strictly do 100% then 50% then 25% then 12.5% etc, floor it at 25% power contribution")
+
+**What was asked.** `raidFactory.getEffectiveRaidPowerBreakdown`'s `teamPower` — the shared,
+rank-weighted power formula behind both Guild Raid and Spud Keep entrant power — weights each
+successive raider (sorted by power, descending) at `RAID_TEAM_DECAY^rank` (100%, 50%, 25%, 12.5%,
+6.25%, ...). Direct instruction to stop the decay from continuing past 25% — every rank from there on
+should keep contributing at least a quarter of its own power.
+
+**What changed.** Added `Raid.RAID_TEAM_DECAY_FLOOR: 0.25`; the weight computation changed from
+`Math.pow(RAID_TEAM_DECAY, rank)` to `Math.max(Math.pow(RAID_TEAM_DECAY, rank), RAID_TEAM_DECAY_FLOOR)`
+in `getEffectiveRaidPowerBreakdown` — the ONE function both Guild Raid (`getMemberRaidPower`) and
+Spud Keep (`getSpudKeepMemberPower`, passed in as `powerFn`) already share, so this one change covers
+both as asked. Rank 0/1 are unaffected (100%/50%, both above the floor); rank 2 was already exactly
+25%; rank 3 onward now stays at a flat 25% forever instead of continuing to halve toward 0.
+
+**Flagging the side effect this necessarily causes, since it's non-obvious and the formula's own
+existing comment called out the opposite property as a deliberate design guarantee**: the pre-floor
+formula was proven to converge to a hard ceiling of `1/(1-RAID_TEAM_DECAY) = 2.0x` the top raider's
+own power as roster size grows, REGARDLESS of how large the roster gets — a deliberate anti-runaway
+guarantee independent of `memberCap` upgrades. Flooring removes that ceiling entirely: since every
+member past rank 2 now contributes a flat, non-decaying 25% instead of an ever-shrinking share,
+`teamPower` grows WITHOUT BOUND as roster size grows (exactly `+0.25 × memberPower` per additional
+raider past rank 2, forever). At the same documented extreme case (a maxed-`memberCap`,
+all-equal-power 25-member roster), `effectivePower` jumps from the old formula's `3.0x` a single
+raider's power to `~10.875x` under the floor. This is an intentional, deliberate reward for a large,
+well-populated guild now, not a bug — but it's a genuinely different balance shape (unbounded vs.
+diminishing-but-capped) than what shipped with the original 2026-08-26 rank-weighted rework, so it's
+called out explicitly here and in the formula's own updated comments rather than left implicit.
+
+**The correctness guarantee (adding any member can never lower `teamPower`) still holds** — `max(x,
+floor)` is non-decreasing in `x`, so the same rank-by-rank insertion argument the pure geometric shape
+used carries over unchanged; this was re-verified by the fuzz test (2,000 random-roster trials) still
+passing unmodified.
+
+**Tests.** `raidFactory.test.js`: three tests that had locked in the old convergent-ceiling behavior
+with exact numeric expectations were rewritten to reflect the new floored math (a huge 100-member
+roster's exact `teamPower`, the "large roster now EXCEEDS the old 2.0x ceiling" case replacing the old
+"never exceeds" assertion, and the 25-member documented-extreme case updated from `3.0x` to
+`~10.875x`) — plus a new test confirming `teamPower` grows exactly linearly (`+power × 0.25` per
+member) once every added rank is past the floor. Full suite: **113 suites / 2113 tests, all passing**
+(net +2 new tests, 0 broken; Spud Keep's own test file needed no changes — it doesn't hardcode
+ceiling-dependent numeric expectations the way `raidFactory.test.js` did).
+
+**Docs.** `systems/raids-and-world-events.md`'s Guild Raid power-formula section rewritten to describe
+the floor, correct the now-false "converges to a hard ceiling of 2.0x" claim with the new unbounded-
+growth behavior and updated `~10.875x` extreme-case number, and cross-reference `systems/spud-keep.md`
+for why Spud Keep is affected identically (shared function).
+
+**Cross-repo note.** `financial-project` has two separate mirrored copies of this exact formula —
+`gromp-guilds/handler.ts`'s own `getEffectiveRaidPowerBreakdown` (guild raids) and
+`gromp-economy/handler.ts`'s separately-mirrored `SpudKeepRaid`-scoped copy (Spud Keep) — confirmed
+via grep, both still using the un-floored `Math.pow` formula. Ported the identical
+`RAID_TEAM_DECAY_FLOOR: 0.25` fix into both in the same session; see that repo's own
+`NOTES_GROMP_WEB_INTEGRATION.md` entry.
