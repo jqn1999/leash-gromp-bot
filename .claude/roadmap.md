@@ -17548,3 +17548,71 @@ singleton is still intact.
 `maybeAwardGuildCompanion`, confirmed via grep — same `if (!won || guild.guildCompanion != null)
 return false;` gate). Ported the identical fix there in the same session; see that repo's own
 `NOTES_GROMP_WEB_INTEGRATION.md` entry.
+
+## `/regrade` gets a confirm-preview embed + a `view-tiers` pagination option; `/companion-scavenge-collect` gets a "Scavenge Again" button (direct instruction: "Update regrade command to show an embed with the regrade info and buttons for regrading or not. Also add option to see all regrade tiers with pagination. Have companion scavenge collection embed have a button to resend the same companion out to scavenge again")
+
+**What was asked.** Three Discord UX additions, no balance/formula changes: (1) `/regrade` should
+show a preview embed with Confirm/Cancel buttons instead of spending and rolling the instant it's
+called; (2) a new option to browse the full tier ladder for a track, paginated; (3)
+`/companion-scavenge-collect`'s return embed should carry a button to immediately re-send the same
+companion instance scavenging, without a separate `/companion-scavenge` round trip.
+
+**What changed — `/regrade`.** The command previously executed everything (spend, roll, write) the
+instant it was called, across three near-identical `switch`/`case` blocks (work-multi/passive-
+income/bank-capacity, differing only in which `userDetails` field/shop/`regrades` key they read).
+Adding a confirm step on top of three separately-maintained copies would have tripled that
+duplication, so the three tracks were first consolidated into one `TRACK_CONFIGS`-driven code path
+(`getBaseAmount`/`checkEligibility`/`executeRegrade` all read the config instead of being repeated
+per track) — behavior-preserving, not a rebalance. The command now: shows
+`embedFactory.createRegradePreviewEmbed` (current base amount, this tier's cost/success chance/
+potential increase) with a `buildConfirmCancelRow` (the same helper `/rob`/`/start-raid`/Rebirth
+already use) once the shop-tier precondition is met; on Confirm, **re-fetches `userDetails` fresh**
+and re-validates before spending — the button can sit on screen up to 60s, long enough for potatoes
+or `regradeAmount` to have genuinely moved since the preview was built, and the pre-existing
+Rebirth confirm flow already established re-checking eligibility at commit time as this repo's
+precedent for exactly that risk. Cancel or a timeout clears the buttons and changes nothing. A new
+`view-tiers` boolean option skips the preview/confirm flow entirely and instead pages through that
+track's full tier ladder (`embedFactory.createRegradeTiersPageEmbed`, current rung marked) using the
+existing generic `buildPaginationRow`/`runPaginatedReply` helpers `/achievements`/`/quests`/`/shop`
+already share — a pure read, nothing spent or rolled.
+
+**What changed — `/companion-scavenge-collect`.** The return embed now carries a "Scavenge Again"
+button that re-dispatches the SAME instance that just came home. Rather than trust the userDetails
+the reply was originally rendered with, a click re-validates against a fresh `findUser` read first
+— the instance could have been sold/fused/re-equipped, or another dispatch could have raced in, in
+the time the button sat on screen. That eligibility check (owned? not the active companion? nothing
+else already scavenging?) was previously inlined only in `companionScavenge.js`'s own callback;
+it's now `companionFactory.validateScavengeDispatch(userDetails, instanceId)`, a shared pure
+function both call sites use, returning structured `{ ok, reason, ... }` data rather than a
+pre-formatted string (the factory has no Discord-formatting concerns — `convertSecondstoMinutes`
+stays in the command files). `companionScavenge.js` itself was refactored to call the new shared
+function too, replacing its own inline copy of the same checks — extracting this now, rather than
+letting the button add a SECOND hand-written copy of the exact same logic, was the direct
+motivation; the two would only have drifted apart the way this codebase's own history repeatedly
+warns about otherwise.
+
+**Tests.** `regrade.test.js`: the 3 existing tests updated to simulate the new confirm click (a
+mocked `awaitMessageComponent` resolving a confirm), plus 6 new tests — the preview embed shows
+before anything is spent, Cancel spends nothing, timeout behaves identically to Cancel, a
+confirm-time re-fetch showing insufficient potatoes blocks the spend even though the preview passed,
+and the `view-tiers` option renders the ladder without touching potatoes or `Math.random`.
+`companionFactory.test.js` gained a `validateScavengeDispatch` describe block (5 tests: the success
+case plus each of the four rejection reasons). A new
+`companionScavengeCollectScavengeAgain.test.js` covers the button end-to-end: it's attached to the
+reply, a timeout clears it with no second dispatch, a real click re-sends the same instance and
+reports the new return time, and a click that fails fresh validation (the instance now equipped as
+active) reports the error instead of dispatching. Two pre-existing test files
+(`nonWorkCompanionLeveling.test.js`, `companionScavengeMultiBonus.test.js`) needed their own
+`fakeInteraction` helpers updated to mock the new reply-with-collector shape `editReply` now
+returns for both commands — straightforward mechanical updates, no behavior assertions changed.
+Full suite: **113 suites / 2092 tests, all passing** (net +14 new tests, 0 broken).
+
+**Docs.** `systems/economy-and-work.md`'s Regrade section gained two paragraphs (the confirm-preview
+step and the `view-tiers` option). `systems/companions.md`'s Scavenging command-list bullet for
+`/companion-scavenge-collect` gained a sub-bullet for the new button and the `validateScavengeDispatch`
+extraction.
+
+**Cross-repo note.** All three changes are Discord-side presentation only (embeds, buttons,
+pagination) — no formula, balance number, or data-shape change. `financial-project`'s `/gromp` page
+has its own entirely separate React UI for regrading and scavenging (not Discord embeds), so there
+is nothing to port here.

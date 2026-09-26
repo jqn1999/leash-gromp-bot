@@ -266,10 +266,17 @@ describe('/regrade levels an equipped regradeChanceBoostPercent companion (Elder
         };
     }
 
+    // /regrade's confirm-preview step — editReply now resolves a reply object a
+    // confirm/cancel collector attaches to; these tests all want the confirmed path, so
+    // the mocked collector always resolves a confirm click.
     function fakeInteraction(regradeSelect) {
+        const replyObj = {
+            edit: jest.fn().mockResolvedValue(),
+            awaitMessageComponent: jest.fn().mockResolvedValue({ customId: 'regrade_confirm', deferUpdate: jest.fn().mockResolvedValue() }),
+        };
         return {
             deferReply: jest.fn().mockResolvedValue(),
-            editReply: jest.fn().mockResolvedValue(),
+            editReply: jest.fn().mockResolvedValue(replyObj),
             user: { id: 'user-1', username: 'User', displayName: 'User' },
             options: { get: (name) => (name === 'regrade-select' ? { value: regradeSelect } : undefined) },
         };
@@ -487,9 +494,13 @@ describe('Elder Rootbeard levels independently via /rob, /sell-starch, AND /regr
             },
             companions: companionsWith('elder_rootbeard', 'elder-a'),
         });
+        const regradeReply = {
+            edit: jest.fn().mockResolvedValue(),
+            awaitMessageComponent: jest.fn().mockResolvedValue({ customId: 'regrade_confirm', deferUpdate: jest.fn().mockResolvedValue() }),
+        };
         const regradeInteraction = {
             deferReply: jest.fn().mockResolvedValue(),
-            editReply: jest.fn().mockResolvedValue(),
+            editReply: jest.fn().mockResolvedValue(regradeReply),
             user: { id: 'user-1', username: 'User', displayName: 'User' },
             options: { get: (name) => (name === 'regrade-select' ? { value: 'work-multi' } : undefined) },
         };

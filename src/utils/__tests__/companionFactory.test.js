@@ -34,6 +34,7 @@ const {
     getRivalConfrontationWorkCountGrant,
     isScavenging,
     getScavengeSpeedBonus,
+    validateScavengeDispatch,
     buildScavengeDispatch,
     resolveScavengeReward,
     getScavengeMultiplierBonus,
@@ -518,6 +519,54 @@ describe('isScavenging', () => {
 
     test('does not throw when userDetails.companions is entirely absent', () => {
         expect(isScavenging({}, 'sprout-a')).toBe(false);
+    });
+});
+
+describe('validateScavengeDispatch', () => {
+    test('ok: true for an owned, unequipped instance with nothing already scavenging', () => {
+        const user = freshUser({ companions: { owned: [{ instanceId: 'sprout-a', id: 'sprout', workCount: 0 }], active: null, ownedCount: 1, mythicOwnedCount: 0 } });
+        const result = validateScavengeDispatch(user, 'sprout-a');
+        expect(result.ok).toBe(true);
+        expect(result.companion.id).toBe('sprout');
+        expect(result.ownedEntry.instanceId).toBe('sprout-a');
+    });
+
+    test('not-owned: instance id not in owned', () => {
+        const user = freshUser({ companions: { owned: [], active: null, ownedCount: 0, mythicOwnedCount: 0 } });
+        expect(validateScavengeDispatch(user, 'sprout-a')).toEqual({ ok: false, reason: 'not-owned' });
+    });
+
+    test('is-active: the instance is the player\'s currently-equipped companion', () => {
+        const user = freshUser({ companions: { owned: [{ instanceId: 'sprout-a', id: 'sprout', workCount: 0 }], active: 'sprout-a', ownedCount: 1, mythicOwnedCount: 0 } });
+        const result = validateScavengeDispatch(user, 'sprout-a');
+        expect(result).toEqual({ ok: false, reason: 'is-active', companion: expect.objectContaining({ id: 'sprout' }) });
+    });
+
+    test('ready-to-collect: a DIFFERENT instance is already scavenging and its return time has passed', () => {
+        const user = freshUser({
+            companions: {
+                owned: [{ instanceId: 'sprout-a', id: 'sprout', workCount: 0 }, { instanceId: 'mole-a', id: 'mole', workCount: 0 }],
+                active: null, ownedCount: 2, mythicOwnedCount: 0,
+                scavenging: { instanceId: 'mole-a', rarity: 'rare', returnsAt: Date.now() - 1000 },
+            }
+        });
+        const result = validateScavengeDispatch(user, 'sprout-a');
+        expect(result).toEqual({ ok: false, reason: 'ready-to-collect', scavengingName: expect.stringContaining('Mole') });
+    });
+
+    test('already-scavenging: a different instance is out and not back yet', () => {
+        const returnsAt = Date.now() + 60_000;
+        const user = freshUser({
+            companions: {
+                owned: [{ instanceId: 'sprout-a', id: 'sprout', workCount: 0 }, { instanceId: 'mole-a', id: 'mole', workCount: 0 }],
+                active: null, ownedCount: 2, mythicOwnedCount: 0,
+                scavenging: { instanceId: 'mole-a', rarity: 'rare', returnsAt },
+            }
+        });
+        const result = validateScavengeDispatch(user, 'sprout-a');
+        expect(result.ok).toBe(false);
+        expect(result.reason).toBe('already-scavenging');
+        expect(result.returnsAt).toBe(returnsAt);
     });
 });
 

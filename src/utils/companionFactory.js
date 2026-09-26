@@ -757,6 +757,39 @@ function getBreakpointFuel(workCount) {
 }
 
 // The { instanceId, rarity, returnsAt } record /companion-scavenge writes on dispatch —
+// Shared eligibility check for sending an instance out scavenging — extracted so
+// companionScavenge.js's own command and companionScavengeCollect.js's "scavenge again"
+// button (added so a player doesn't have to re-run /companion-scavenge on the same
+// instance right after collecting it) can't drift out of sync the way two independently
+// hand-maintained copies of this exact check eventually would. Returns structured data
+// rather than a pre-formatted message — this file has no Discord-formatting concerns
+// (see convertSecondstoMinutes usage at every call site instead), it just reports WHY,
+// via `reason`, and leaves wording to the caller.
+function validateScavengeDispatch(userDetails, instanceId) {
+    const ownedEntry = getOwnedEntry(userDetails, instanceId);
+    if (!ownedEntry) {
+        return { ok: false, reason: 'not-owned' };
+    }
+    const companion = getCompanionById(ownedEntry.id);
+    if (!companion) {
+        return { ok: false, reason: 'not-a-companion' };
+    }
+    if (userDetails.companions?.active === instanceId) {
+        return { ok: false, reason: 'is-active', companion };
+    }
+    const existingScavenge = userDetails.companions?.scavenging;
+    if (existingScavenge) {
+        const scavengingEntry = getOwnedEntry(userDetails, existingScavenge.instanceId);
+        const scavengingCompanion = scavengingEntry ? getCompanionById(scavengingEntry.id) : null;
+        const scavengingName = scavengingCompanion?.name ?? 'A companion';
+        if (existingScavenge.returnsAt <= Date.now()) {
+            return { ok: false, reason: 'ready-to-collect', scavengingName };
+        }
+        return { ok: false, reason: 'already-scavenging', scavengingName, returnsAt: existingScavenge.returnsAt };
+    }
+    return { ok: true, companion, ownedEntry };
+}
+
 // instanceId (not companionId) identifies exactly which owned copy is away, since a
 // player can own more than one of the same companion. rarity is denormalized straight
 // onto the record (not re-derived from the instance's companion id at collect/cancel
@@ -992,6 +1025,7 @@ module.exports = {
     getRivalConfrontationWorkCountGrant,
     isScavenging,
     getScavengeSpeedBonus,
+    validateScavengeDispatch,
     buildScavengeDispatch,
     resolveScavengeReward,
     getScavengeMultiplierBonus,

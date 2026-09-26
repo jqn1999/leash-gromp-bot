@@ -57,33 +57,30 @@ module.exports = {
         const userDetails = await requireUserDetails(interaction, userId, username, userDisplayName);
         if (!userDetails) return;
 
-        const ownedEntry = companionFactory.getOwnedEntry(userDetails, instanceId);
-        if (!ownedEntry) {
-            interaction.editReply(`${userDisplayName}, you don't own that companion.`);
-            return;
-        }
-        const companion = companionFactory.getCompanionById(ownedEntry.id);
-        if (!companion) {
-            interaction.editReply(`${userDisplayName}, that's not a real companion.`);
-            return;
-        }
-        if (userDetails.companions?.active === instanceId) {
-            interaction.editReply(`${userDisplayName}, ${companion.name} is your active companion — equip a different one first (or leave it equipped) before sending it scavenging.`);
-            return;
-        }
-        const existingScavenge = userDetails.companions?.scavenging;
-        if (existingScavenge) {
-            const scavengingEntry = companionFactory.getOwnedEntry(userDetails, existingScavenge.instanceId);
-            const scavengingCompanion = scavengingEntry ? companionFactory.getCompanionById(scavengingEntry.id) : null;
-            const scavengingName = scavengingCompanion?.name ?? 'A companion';
-            if (existingScavenge.returnsAt <= Date.now()) {
-                interaction.editReply(`${userDisplayName}, ${scavengingName} is already out scavenging and is ready to come home — run /companion-scavenge-collect first!`);
-            } else {
-                const remainingSeconds = Math.max(0, Math.ceil((existingScavenge.returnsAt - Date.now()) / 1000));
-                interaction.editReply(`${userDisplayName}, ${scavengingName} is already out scavenging — it returns in ${convertSecondstoMinutes(remainingSeconds)}. Only one companion can scavenge at a time.`);
+        const validation = companionFactory.validateScavengeDispatch(userDetails, instanceId);
+        if (!validation.ok) {
+            switch (validation.reason) {
+                case 'not-owned':
+                    interaction.editReply(`${userDisplayName}, you don't own that companion.`);
+                    break;
+                case 'not-a-companion':
+                    interaction.editReply(`${userDisplayName}, that's not a real companion.`);
+                    break;
+                case 'is-active':
+                    interaction.editReply(`${userDisplayName}, ${validation.companion.name} is your active companion — equip a different one first (or leave it equipped) before sending it scavenging.`);
+                    break;
+                case 'ready-to-collect':
+                    interaction.editReply(`${userDisplayName}, ${validation.scavengingName} is already out scavenging and is ready to come home — run /companion-scavenge-collect first!`);
+                    break;
+                case 'already-scavenging': {
+                    const remainingSeconds = Math.max(0, Math.ceil((validation.returnsAt - Date.now()) / 1000));
+                    interaction.editReply(`${userDisplayName}, ${validation.scavengingName} is already out scavenging — it returns in ${convertSecondstoMinutes(remainingSeconds)}. Only one companion can scavenge at a time.`);
+                    break;
+                }
             }
             return;
         }
+        const { companion, ownedEntry } = validation;
 
         // Plain unconditional write, deliberately not race-guarded — same low/no-stakes
         // race /companion's equip button already tolerates. A raced double-dispatch just means

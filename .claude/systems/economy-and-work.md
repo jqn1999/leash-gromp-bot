@@ -662,6 +662,25 @@ chance rather than adding a flat amount (2026-09-04, direct instruction) —
 `currentTier.chance * (1 + boost) + failStack` — so Elder Rootbeard's 50% base value turns a 50%
 tier into 75%, a 10% tier into 15%, etc.
 
+**Confirm-preview step** (2026-09-26, direct instruction: "show an embed with the regrade info
+and buttons for regrading or not") — `/regrade` no longer spends/rolls the instant it's called.
+It first shows `createRegradePreviewEmbed` (current base amount, this tier's cost/success
+chance/potential increase) with a Confirm/Cancel row (`buildConfirmCancelRow`, the same helper
+`/rob`/`/start-raid`/Rebirth already use), and only executes the actual spend+roll on a Confirm
+click — re-validated against a **fresh** `findUser` read at that point (not the read the preview
+was built from), since the confirm button can sit on screen for up to 60s. A Cancel click or a
+timeout clears the buttons and changes nothing. The three tracks' near-identical spend+roll logic
+(previously three separate `switch`/`case` blocks) was consolidated into one `TRACK_CONFIGS`-driven
+code path as part of this change — adding the confirm step on top of three separately-maintained
+copies would have tripled the duplication instead of just adding it once.
+
+**`view-tiers` option** (same direct instruction: "add option to see all regrade tiers with
+pagination") — a boolean option on `/regrade` that, when true, skips the preview/confirm flow
+entirely and instead shows that track's full tier ladder (cost/increase/chance per rung, current
+rung marked) via `createRegradeTiersPageEmbed`, paginated with the same generic
+`buildPaginationRow`/`runPaginatedReply` helpers `/achievements`/`/quests`/`/shop` already use.
+Purely a read: no potatoes touched, nothing rolled.
+
 ## Rebirth (prestige reset)
 
 [rebirth.js](../../src/commands/buying/rebirth.js) +
