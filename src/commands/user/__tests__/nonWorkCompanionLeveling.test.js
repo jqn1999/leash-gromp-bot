@@ -282,9 +282,12 @@ describe('/regrade levels an equipped regradeChanceBoostPercent companion (Elder
         };
     }
 
+    // /regrade now batches companions/regrades/stat-field into ONE updateUserFields call
+    // (2026-09-26 fix — see regrade.js's own comment on executeRegrade) rather than a
+    // separate updateUserDatabase(userId, "companions", ...) call.
     function companionsWrite() {
-        const call = dynamoHandler.updateUserDatabase.mock.calls.find(([id, field]) => id === 'user-1' && field === 'companions');
-        return call[2];
+        const call = dynamoHandler.updateUserFields.mock.calls.find(([id, setFields]) => id === 'user-1' && setFields?.companions !== undefined);
+        return call[1].companions;
     }
 
     test('a success bumps Elder Rootbeard by the cost-ratio-scaled grant (work-multi track, cheapest tier)', async () => {
@@ -392,8 +395,7 @@ describe('/regrade levels an equipped regradeChanceBoostPercent companion (Elder
         } finally {
             randomSpy.mockRestore();
         }
-        const write = dynamoHandler.updateUserDatabase.mock.calls.find(([id, field]) => id === 'user-1' && field === 'companions');
-        expect(write[2].owned[0].workCount).toBe(10);
+        expect(companionsWrite().owned[0].workCount).toBe(10);
     });
 
     test('nothing equipped is a no-op', async () => {
@@ -413,9 +415,8 @@ describe('/regrade levels an equipped regradeChanceBoostPercent companion (Elder
         } finally {
             randomSpy.mockRestore();
         }
-        const write = dynamoHandler.updateUserDatabase.mock.calls.find(([id, field]) => id === 'user-1' && field === 'companions');
-        expect(write[2].owned).toEqual([]);
-        expect(write[2].active).toBeNull();
+        expect(companionsWrite().owned).toEqual([]);
+        expect(companionsWrite().active).toBeNull();
     });
 });
 
@@ -510,7 +511,9 @@ describe('Elder Rootbeard levels independently via /rob, /sell-starch, AND /regr
         } finally {
             randomSpy.mockRestore();
         }
-        const regradeWrite = dynamoHandler.updateUserDatabase.mock.calls.find(([id, field]) => id === 'user-1' && field === 'companions')[2];
+        // /regrade batches companions into updateUserFields now (2026-09-26 fix), not a
+        // separate updateUserDatabase(userId, "companions", ...) call.
+        const regradeWrite = dynamoHandler.updateUserFields.mock.calls.find(([id, setFields]) => id === 'user-1' && setFields?.companions !== undefined)[1].companions;
         expect(regradeWrite.owned[0].workCount).toBe(10 + companionFactory.getRegradeWorkCountGrant(tier.cost, workRegradeTiers[0].cost));
     });
 });

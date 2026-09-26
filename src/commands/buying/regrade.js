@@ -91,10 +91,22 @@ function checkEligibility(userDetails, config, interaction, userDisplayName) {
 // The actual spend+roll+write, unchanged in substance from the pre-confirm-step version
 // of this command — only ever called once a Confirm click has re-validated eligibility
 // against a fresh read.
+//
+// Batched into ONE dynamoHandler.updateUserFields call (2026-09-26 fix) — this used to be
+// FOUR separate, sequential, unconditional single-field updateUserDatabase/addUserDatabase
+// calls (potatoes, companions, regrades, then the stat field on success). Both of those
+// helpers swallow DynamoDB errors via a bare .catch (console.debug only, never thrown), and
+// nothing here checked their return values. If the "regrades" write landed but the stat
+// field's write failed transiently right after, regradeAmount would show the increase while
+// the raw stat never reflected it (or vice versa) — permanently desyncing base
+// (statField - sweetPotatoBuffs - regradeAmount) from any real shop tier. This is the exact
+// same anti-pattern class root-caused for enter-tower.js's processRewardPayouts on
+// 2026-09-23 (see systems/tower.md), just never swept here — found while re-auditing every
+// stat-granting path after that same desync recurred for a player whose account had
+// already been manually corrected once (see roadmap.md's 2026-09-26 entry).
 async function executeRegrade(userId, userDetails, config, currentTier, chanceOfSuccess, failStack, userDisplayName, userAvatar) {
-    await dynamoHandler.addUserDatabase(userId, "potatoes", -currentTier.cost);
     // Non-work-focused companion leveling (Elder Rootbeard's regradeChanceBoostPercent) —
-    // the cost above is a guaranteed sunk cost regardless of outcome, so this grant is
+    // the cost is a guaranteed sunk cost regardless of outcome, so this grant is
     // unconditional on success/fail too. Scales by this attempt's cost relative to this
     // TRACK's own cheapest tier. Restricted by PERK TYPE, not a specific companion id.
     const leveledCompanions = companionFactory.levelActiveCompanion(
@@ -103,24 +115,27 @@ async function executeRegrade(userId, userDetails, config, currentTier, chanceOf
         null,
         "regradeChanceBoostPercent"
     );
-    await dynamoHandler.updateUserDatabase(userId, "companions", leveledCompanions);
     const companionXpGained = companionFactory.getAppliedCompanionXpGain(userDetails.companions, leveledCompanions);
     const companionName = companionFactory.getActiveCompanion(userDetails)?.name || null;
 
     const userRegrades = userDetails.regrades;
-    if (Math.random() < chanceOfSuccess) {
-        userRegrades[config.regradeKey].regradeAmount += currentTier.increase;
-        userRegrades[config.regradeKey].failStack = 0;
-        await dynamoHandler.updateUserDatabase(userId, "regrades", userRegrades);
+    const setFields = { companions: leveledCompanions, regrades: userRegrades };
 
-        const newAmount = userDetails[config.statField] + currentTier.increase;
-        await dynamoHandler.updateUserDatabase(userId, config.statField, newAmount);
-        return embedFactory.createRegradeEmbed(userDisplayName, userId, userAvatar, userDetails.potatoes - currentTier.cost, config.label, newAmount, currentTier.increase, chanceOfSuccess, failStack, -currentTier.cost, companionXpGained, companionName);
+    let newAmount = userDetails[config.statField];
+    let increase = 0;
+    if (Math.random() < chanceOfSuccess) {
+        increase = currentTier.increase;
+        userRegrades[config.regradeKey].regradeAmount += increase;
+        userRegrades[config.regradeKey].failStack = 0;
+        newAmount = userDetails[config.statField] + increase;
+        setFields[config.statField] = newAmount;
+    } else {
+        userRegrades[config.regradeKey].failStack += currentTier.failStackIncrease;
     }
 
-    userRegrades[config.regradeKey].failStack += currentTier.failStackIncrease;
-    await dynamoHandler.updateUserDatabase(userId, "regrades", userRegrades);
-    return embedFactory.createRegradeEmbed(userDisplayName, userId, userAvatar, userDetails.potatoes - currentTier.cost, config.label, userDetails[config.statField], 0, chanceOfSuccess, failStack, -currentTier.cost, companionXpGained, companionName);
+    await dynamoHandler.updateUserFields(userId, setFields, { potatoes: -currentTier.cost });
+
+    return embedFactory.createRegradeEmbed(userDisplayName, userId, userAvatar, userDetails.potatoes - currentTier.cost, config.label, newAmount, increase, chanceOfSuccess, failStack, -currentTier.cost, companionXpGained, companionName);
 }
 
 // tier N's own 1-based rung on the FULL ladder (not per-page) + whether the player's own

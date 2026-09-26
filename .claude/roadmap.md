@@ -17728,3 +17728,48 @@ self-heal happens to run for that player first (which now happens automatically 
 touch ANY bot command, but not before). Flagging rather than silently deciding whether to port
 `healBaseDrift`'s equivalent (or at least the epsilon-tolerance hardening) into `financial-project`'s
 own Lambda(s) — not yet checked this session.
+
+## Follow-up, same session: the "every other path is already atomic" audit above was wrong — `regrade.js` itself had the exact same vulnerability (player-reported: "I fixed her before but it seems like it still broke afterwards")
+
+**What was asked.** The player confirmed the earlier entry's assumption was mistaken: the manual
+one-off correction genuinely HAD been applied once already, and the account broke again anyway after
+that — meaning there had to be a live, still-active source of drift, not just leftover pre-2026-09-23
+damage as the entry above concluded. Direct follow-up: "any way to build a self healing function for
+these stats" (already built, above) plus an implicit "then why did it still break."
+
+**What was found.** The audit above checked every reward-*granting* path for the sweetPotatoBuffs
+pairing, but never re-checked `regrade.js` itself — the one command the player specifically named as
+broken. `executeRegrade`'s success path made the exact same class of mistake `enter-tower.js` was
+root-caused for on 2026-09-23: **two separate, sequential, unconditional single-field
+`updateUserDatabase` calls** — one for `regrades` (recording the regradeAmount increase), a second
+right after it for the stat field itself (`workMultiplierAmount`/`passiveAmount`/`bankCapacity`).
+Both silently swallow DynamoDB errors. If the `regrades` write landed but the stat-field write failed
+transiently right after (or landed out of order under any concurrent access to the same account), the
+raw stat and `regradeAmount` permanently desync from each other — the exact same failure shape as the
+original bug, just via `regrades` instead of `sweetPotatoBuffs` as the desynced half. `/regrade` is a
+far more frequently-run command than a full Tower run, which fits a recurrence on the same veteran
+account better than waiting on more Tower runs would.
+
+**What changed.** `executeRegrade` rewritten to batch `companions`, `regrades`, and (on success) the
+stat field into ONE `dynamoHandler.updateUserFields(userId, setFields, { potatoes: -cost })` call —
+`potatoes` moves from a separate `addUserDatabase` call into the same call's atomic ADD, matching
+`enter-tower.js`'s own fix shape exactly. A failed regrade attempt was already single-field
+(`regrades` only), so only the success path needed restructuring; the whole function now makes
+exactly one database round trip regardless of outcome, versus the original's up to four.
+
+**Tests.** `regrade.test.js` gained an "atomic write" describe block (2 tests): a success writes
+`regrades`/the stat field/`companions` in one `updateUserFields` call with potatoes as an atomic ADD,
+and confirms `updateUserDatabase`/`addUserDatabase` are never called; a failure writes in one call too,
+with no stat-field key present at all (nothing to desync when nothing changed). Three pre-existing
+tests across `regrade.test.js` and `nonWorkCompanionLeveling.test.js` that asserted against the old
+separate `updateUserDatabase(userId, "companions", ...)` call were updated to read the same data off
+the new combined `updateUserFields` call instead — mechanical updates, no behavior assertions changed.
+Full suite: **113 suites / 2110 tests, all passing** (net +2 new tests, 0 broken).
+
+**Docs.** `regrade.js`'s own `executeRegrade` comment rewritten to document the fix and point at this
+entry and `systems/tower.md`'s original root-cause entry, matching the density this file's history
+sections already expect from a fix comment like this.
+
+**Cross-repo note.** `financial-project`'s own regrade port (if one exists) hasn't been checked yet
+this session — worth a follow-up look for the identical two-separate-writes shape before assuming
+it's bot-only.

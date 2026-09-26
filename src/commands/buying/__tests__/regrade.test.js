@@ -110,6 +110,57 @@ test('the boost changes a real roll outcome, not just the displayed number', asy
     expect(withRootbeard[6]).toBe(TIER.increase);
 });
 
+// Atomic write (2026-09-26 fix) — a successful/failed regrade used to write potatoes,
+// companions, regrades, and (on success) the stat field via FOUR separate sequential
+// updateUserDatabase/addUserDatabase calls, the exact anti-pattern root-caused for
+// enter-tower.js's own reward payout on 2026-09-23. A regradeAmount write landing while the
+// stat field's own write failed transiently (or vice versa) permanently desyncs base
+// (statField - sweetPotatoBuffs - regradeAmount) from any real shop tier — exactly the bug
+// that kept recurring for a player even after a manual account correction.
+describe('atomic write (2026-09-26 fix — regrades/stat/companions/potatoes in one call)', () => {
+    test('a success writes everything in exactly one updateUserFields call, never touches updateUserDatabase/addUserDatabase', async () => {
+        dynamoHandler.findUser.mockResolvedValue(baseUser({ owned: [], active: null }));
+        const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0); // guarantees success
+        try {
+            await callback({}, fakeInteraction());
+        } finally {
+            randomSpy.mockRestore();
+        }
+
+        expect(dynamoHandler.updateUserFields).toHaveBeenCalledTimes(1);
+        const [userId, setFields, addFields] = dynamoHandler.updateUserFields.mock.calls[0];
+        expect(userId).toBe('user-1');
+        expect(setFields.regrades.workMulti.regradeAmount).toBe(TIER.increase);
+        expect(setFields.workMultiplierAmount).toBe(REQUIRED_WORK_BASE + TIER.increase);
+        expect(setFields).toHaveProperty('companions');
+        expect(addFields).toEqual({ potatoes: -TIER.cost });
+
+        expect(dynamoHandler.updateUserDatabase).not.toHaveBeenCalled();
+        expect(dynamoHandler.addUserDatabase).not.toHaveBeenCalled();
+    });
+
+    test('a failure also writes everything in exactly one call, with no stat-field key at all', async () => {
+        dynamoHandler.findUser.mockResolvedValue(baseUser({ owned: [], active: null }));
+        const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.999999); // guarantees failure
+        try {
+            await callback({}, fakeInteraction());
+        } finally {
+            randomSpy.mockRestore();
+        }
+
+        expect(dynamoHandler.updateUserFields).toHaveBeenCalledTimes(1);
+        const [, setFields, addFields] = dynamoHandler.updateUserFields.mock.calls[0];
+        expect(setFields.regrades.workMulti.regradeAmount).toBe(0);
+        expect(setFields.regrades.workMulti.failStack).toBeGreaterThan(0);
+        // The stat field is never included in setFields on a fail — nothing to desync.
+        expect(setFields).not.toHaveProperty('workMultiplierAmount');
+        expect(addFields).toEqual({ potatoes: -TIER.cost });
+
+        expect(dynamoHandler.updateUserDatabase).not.toHaveBeenCalled();
+        expect(dynamoHandler.addUserDatabase).not.toHaveBeenCalled();
+    });
+});
+
 describe('confirm-preview step (direct instruction: show an embed with buttons for regrading or not)', () => {
     test('shows a preview embed with a Confirm/Cancel row before spending anything', async () => {
         dynamoHandler.findUser.mockResolvedValue(baseUser({ owned: [], active: null }));
@@ -121,7 +172,9 @@ describe('confirm-preview step (direct instruction: show an embed with buttons f
         expect(previewSpy).toHaveBeenCalledTimes(1);
         const firstEditReplyCall = interaction.editReply.mock.calls[0][0];
         expect(firstEditReplyCall.components).toHaveLength(1);
-        expect(dynamoHandler.addUserDatabase).toHaveBeenCalled(); // confirmed -> actually spent
+        // confirmed -> actually spent (the cost is now an atomic ADD inside the same
+        // updateUserFields call as the regrade write, not a separate addUserDatabase call).
+        expect(dynamoHandler.updateUserFields).toHaveBeenCalledWith('user-1', expect.anything(), { potatoes: -TIER.cost });
         previewSpy.mockRestore();
     });
 

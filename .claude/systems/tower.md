@@ -2732,11 +2732,16 @@ against `workMultiplierAmount`/`bankCapacity`/`passiveAmount`/`sweetPotatoBuffs`
 the already-fixed `enter-tower.js`). What was showing was simply pre-fix damage that the
 "not fixed by this pass" manual correction noted above was never actually applied to fix.
 
-**Every other stat-granting path was re-audited and confirmed correctly atomic**: `questFactory`'s
+**Every other stat-*granting* path was re-audited and confirmed correctly atomic**: `questFactory`'s
 weekly reward write, `raidFactory.handleStatSplit`/`handlePercentStatSplit`, `workFactory.js`'s
 `handleMetalPotato`/`handleSweetPotato`/`handleAncientPotato`, `admin.js`'s reset-tower full-wipe
 reversal, and every shop-purchase write in `shopFactory.js` — all bundle the raw stat and
 `sweetPotatoBuffs` into one `updateUserFields` call, none exhibit the vulnerability class.
+**This audit was incomplete** — it missed `regrade.js` itself, which had the identical vulnerability
+via `regrades.<track>.regradeAmount` desyncing from the raw stat instead of `sweetPotatoBuffs`
+desyncing from it. Found the same day once the player reported the fix hadn't actually held — see
+`roadmap.md`'s "Follow-up, same session" entry for the full second root-cause and fix; not repeated
+here since it's the same mechanism, a different call site.
 
 **What changed — a general self-heal, not another one-off manual fix.** Per direct instruction ("have
 these self healing by having that base convert to sweet potato"), `rebirthFactory.js` gained
