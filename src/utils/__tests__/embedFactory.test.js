@@ -44,6 +44,31 @@ describe('createPoisonPotatoEmbed', () => {
         expect(cooldownField.value).toContain('15% softer');
     });
 
+    // Immune to Venom's own benefit (2026-09-27) — a flat lockout regardless of this week's
+    // hit count, so the usual reduction/hit-count phrasing shouldn't appear at all here.
+    test('venomImmuneLockout shows the flat lockout and an Immune to Venom callout, not the reduction/hit-count phrasing', () => {
+        const result = {
+            potatoesGained: -500,
+            immune: false,
+            mitigationInfo: {
+                reduction: 0.60,
+                lockoutSeconds: 300,
+                venomImmuneLockout: true,
+                hitNumberThisWeek: 12,
+                milestoneJustReached: false,
+                rebatePercent: null,
+                escalationMultiplier: null,
+            },
+        };
+
+        const embed = embedFactory.createPoisonPotatoEmbed('User', 42, result, poisonMob);
+
+        const cooldownField = embed.data.fields.find(f => f.name === 'Cooldown:');
+        expect(cooldownField.value).toContain('Immune to Venom');
+        expect(cooldownField.value).not.toContain('hit #12 this week');
+        expect(cooldownField.value).not.toContain('softer');
+    });
+
     test('first hit of the week (no reduction yet) does not throw', () => {
         const result = {
             potatoesGained: -500,

@@ -118,6 +118,38 @@ always evaluates current state rather than a delta, not a specific trigger event
 into `regrade.js`/raid resolution for *instant* unlock feedback there is a natural fast-follow, not
 yet done.
 
+## Achievement-tied gameplay benefits (2026-09-27, direct instruction — first of a kind)
+
+Every achievement above is purely cosmetic (a badge + a line in `/achievements`) — none of them
+change any actual game mechanic once unlocked. `immune_to_venom` is the first exception: once
+unlocked, it now **permanently changes a real formula** for that player, not just their profile
+page. See [economy-and-work.md](economy-and-work.md#poison-potato) for the full mechanism
+(`Work.POISON_IMMUNE_LOCKOUT_SECONDS`, checked in `workFactory.js`'s `handlePoisonPotato`). The
+achievement's own `description` field doubles as the in-game documentation of the benefit (shown
+verbatim in `/achievements` and the unlock embed) — when a future achievement gains a real benefit
+the same way, keep that same convention rather than describing the benefit somewhere the player
+would have to go looking for it separately.
+
+Raising this achievement's `SECOND_MILESTONE_HIT_THRESHOLD` from 20 to 40 (same pass, direct
+instruction) surfaced a real gap in `checkAndUnlock`'s design: **unlocking is one-directional by
+construction** (`checkAndUnlock` only ever appends to `userDetails.achievements`, `getProgress`'s
+`isUnlocked` just reads that persisted array — neither ever re-validates or removes an entry against
+current stats/thresholds). That's fine for a purely cosmetic badge, but here it meant every player
+who'd legitimately earned `immune_to_venom` under the OLD 20-hit bar would keep BOTH the
+achievement AND its new 5-minute-lockout benefit forever, even though most of them never reached the
+new, harder 40-hit bar. Since `totalPoisonMilestones20Reached` is a lifetime counter with no stored
+per-week history, there's no way to check "would this player's best week have ALSO hit 40" after the
+fact — so this was resolved with an unconditional one-time revoke: `/admin revoke-immune-to-venom`
+(`admin.js`) scans every user, strips `immune_to_venom` from `achievements` and resets
+`totalPoisonMilestones20Reached` to 0 for every current holder. Anyone truly capable of a 40-hit week
+just re-earns it honestly going forward. This is a manually-triggered, run-once tool — not wired into
+any hot path or self-heal chain, since the underlying threshold-change event is itself one-time (see
+`admin.js`'s own comment on why this isn't a permanent migration like `rebirthFactory.healBaseDrift`).
+**Any future achievement that gets a real benefit tied to it, especially if its threshold might ever
+change again, should budget for this same problem up front** — either accept that raising a bar
+requires a manual revoke pass like this one, or design the achievement's persisted state to be
+re-validatable from the start.
+
 ## UX
 
 - **On unlock**: `work.js` sends a separate `interaction.followUp` with

@@ -679,7 +679,22 @@ class WorkFactory {
         // that branch's own comment for why).
         const { reduction, nextPoisonMitigation, milestoneJustReached, milestone20JustReached } = computePoisonMitigation(userDetails.poisonMitigation);
         const rawLoss = await calculateGainAmount(workGainAmount * 10, Work.MAX_POISON_POTATO, multiplier, effectiveMultiplier);
-        const lockoutSeconds = Math.floor(Work.POISON_POTATO_TIMER_INCREASE_SECONDS * (1 - reduction));
+        let lockoutSeconds = Math.floor(Work.POISON_POTATO_TIMER_INCREASE_SECONDS * (1 - reduction));
+
+        // Immune to Venom's own benefit (2026-09-27, direct instruction — the first
+        // achievement tied to a real gameplay perk, not just a badge). Checked off the
+        // achievements array as it stood BEFORE this hit, so the exact hit that just
+        // crossed the new 40-in-a-week threshold (milestone20JustReached, below) still gets
+        // the normal reduction-based lockout — the benefit kicks in starting with the NEXT
+        // Poison hit, once checkAndUnlock has actually persisted the achievement. Guinea
+        // Pig's own immune branch already skips the lockout entirely (a strictly bigger
+        // perk), so this flat override is deliberately scoped to the non-immune branch only
+        // — checking it here would be a no-op for Guinea Pig anyway, but this keeps the
+        // reasoning explicit rather than relying on that fact silently.
+        const venomImmuneLockout = !immune && (userDetails.achievements || []).includes('immune_to_venom');
+        if (venomImmuneLockout) {
+            lockoutSeconds = Work.POISON_IMMUNE_LOCKOUT_SECONDS;
+        }
 
         let potatoesGained, workTimer, updateFields, escalationMultiplier = null;
 
@@ -727,7 +742,7 @@ class WorkFactory {
         // Surfaced on the embed (see embedFactory.createPoisonPotatoEmbed) so the
         // reduction — and, for Guinea Pig, the rebate and escalation — are actually
         // visible to the player, not just felt indirectly.
-        const mitigationInfo = { reduction, lockoutSeconds, hitNumberThisWeek: nextPoisonMitigation.weeklyHitCount, milestoneJustReached, milestone20JustReached, rebatePercent: immune ? guineaPig.rebatePercent : null, escalationMultiplier };
+        const mitigationInfo = { reduction, lockoutSeconds, venomImmuneLockout, hitNumberThisWeek: nextPoisonMitigation.weeklyHitCount, milestoneJustReached, milestone20JustReached, rebatePercent: immune ? guineaPig.rebatePercent : null, escalationMultiplier };
         if (milestoneJustReached) {
             updateFields.totalPoisonMilestonesReached = (userDetails.totalPoisonMilestonesReached || 0) + 1;
         }

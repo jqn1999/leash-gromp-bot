@@ -18,7 +18,7 @@ jest.mock('../../../utils/festivalFactory', () => ({
 const dynamoHandler = require('../../../utils/dynamoHandler');
 const { addChatChannelIndexEntry, removeChatChannelIndexEntry } = require('../../guilds/guildChat');
 const festivalFactory = require('../../../utils/festivalFactory');
-const { resetTowerCallback, setActivityChannelCallback, setMercChatChannelCallback, startFestivalCallback } = require('../admin');
+const { resetTowerCallback, setActivityChannelCallback, setMercChatChannelCallback, startFestivalCallback, revokeImmuneToVenomCallback } = require('../admin');
 
 beforeEach(() => {
     jest.clearAllMocks();
@@ -559,5 +559,54 @@ describe('/admin start-festival', () => {
 
         expect(client.channels.fetch).not.toHaveBeenCalled();
         expect(interaction.editReply).toHaveBeenCalledWith(expect.stringContaining('no announcement sent'));
+    });
+});
+
+// ---------------------------------------------------------------------------------------
+// /admin revoke-immune-to-venom — one-time correction (2026-09-27, direct instruction: "make
+// sure any users that had it before wouldnt have it complete now") for raising
+// immune_to_venom's threshold from 20 to 40 hits/week. Achievements are permanent once
+// unlocked, so every past holder needs an explicit revoke + counter reset, not just the
+// constant bump, to actually lose the achievement (and its new lockout benefit).
+// ---------------------------------------------------------------------------------------
+describe('/admin revoke-immune-to-venom', () => {
+    function fakeInteraction() {
+        return {
+            deferReply: jest.fn().mockResolvedValue(),
+            editReply: jest.fn().mockResolvedValue(),
+        };
+    }
+
+    test('revokes the achievement and resets the counter for every current holder, leaves everyone else untouched', async () => {
+        dynamoHandler.getUsers.mockResolvedValue([
+            { userId: 'holder-1', achievements: ['immune_to_venom', 'some_other'] },
+            { userId: 'holder-2', achievements: ['immune_to_venom'] },
+            { userId: 'never-had-it', achievements: ['some_other'] },
+            { userId: 'no-achievements-field' },
+        ]);
+        const interaction = fakeInteraction();
+
+        await revokeImmuneToVenomCallback({}, interaction);
+
+        expect(dynamoHandler.updateUserFields).toHaveBeenCalledTimes(2);
+        expect(dynamoHandler.updateUserFields).toHaveBeenCalledWith('holder-1', {
+            achievements: ['some_other'],
+            totalPoisonMilestones20Reached: 0,
+        });
+        expect(dynamoHandler.updateUserFields).toHaveBeenCalledWith('holder-2', {
+            achievements: [],
+            totalPoisonMilestones20Reached: 0,
+        });
+        expect(interaction.editReply).toHaveBeenCalledWith(expect.stringContaining('Revoked Immune to Venom from 2 players'));
+    });
+
+    test('no holders: reports nothing to revoke and writes nothing', async () => {
+        dynamoHandler.getUsers.mockResolvedValue([{ userId: 'u1', achievements: ['some_other'] }]);
+        const interaction = fakeInteraction();
+
+        await revokeImmuneToVenomCallback({}, interaction);
+
+        expect(dynamoHandler.updateUserFields).not.toHaveBeenCalled();
+        expect(interaction.editReply).toHaveBeenCalledWith(expect.stringContaining('nothing to revoke'));
     });
 });

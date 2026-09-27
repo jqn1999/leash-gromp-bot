@@ -1994,7 +1994,7 @@ class EmbedFactory {
         });
 
         if (mitigationInfo) {
-            const { reduction, lockoutSeconds, hitNumberThisWeek, milestoneJustReached, milestone20JustReached, rebatePercent, escalationMultiplier } = mitigationInfo;
+            const { reduction, lockoutSeconds, venomImmuneLockout, hitNumberThisWeek, milestoneJustReached, milestone20JustReached, rebatePercent, escalationMultiplier } = mitigationInfo;
 
             if (immune) {
                 // Guinea Pig's own rebate is deliberately NOT built off the mitigated
@@ -2007,6 +2007,15 @@ class EmbedFactory {
                 fields.push({
                     name: `Guinea Pig:`,
                     value: `Turned ${(rebatePercent * 100).toFixed(1)}% of the raw loss into a gain instead${escalationContext} — no cooldown lockout.`,
+                    inline: true,
+                });
+            } else if (venomImmuneLockout) {
+                // Immune to Venom's own benefit (2026-09-27) — a flat lockout regardless of
+                // this week's hit count, so the usual reduction/hit-count phrasing doesn't
+                // apply here at all.
+                fields.push({
+                    name: `Cooldown:`,
+                    value: `${convertSecondstoMinutes(lockoutSeconds)} lockout (🏅 Immune to Venom)`,
                     inline: true,
                 });
             } else {
@@ -2031,7 +2040,7 @@ class EmbedFactory {
             if (milestone20JustReached) {
                 fields.push({
                     name: `🏅 Immune to Venom:`,
-                    value: `20 Poison hits in one week — you've truly built up a tolerance now.`,
+                    value: `40 Poison hits in one week — from your next Poison Potato hit onward, your lockout is a flat 5 minutes, no matter how the weekly count resets.`,
                     inline: false,
                 });
             }
@@ -4551,7 +4560,7 @@ class EmbedFactory {
     // createRegradeEmbed above which only ever narrates a completed attempt. Mirrors that
     // one's field shape/labels (typeText, Success Chance formatting) so the preview and the
     // result it leads into read as the same screen, not two different designs.
-    createRegradePreviewEmbed(userDisplayName, userId, userAvatar, userPotatoes, regradeType, currentBaseAmount, cost, increaseAmount, successChance, failStack) {
+    createRegradePreviewEmbed(userDisplayName, userId, userAvatar, userPotatoes, regradeType, currentStatAmount, cost, increaseAmount, successChance, failStack) {
         const avatarUrl = getUserAvatar(userId, userAvatar);
         const typeText = regradeType === 'Work Multiplier' ? 'work multi' : 'potatoes';
         const canAfford = userPotatoes >= cost;
@@ -4559,7 +4568,7 @@ class EmbedFactory {
             { name: 'Current Potatoes:', value: `${userPotatoes.toLocaleString()} potatoes`, inline: true },
             { name: 'Cost:', value: `${cost.toLocaleString()} potatoes`, inline: true },
             { name: '\n', value: '\n', inline: false },
-            { name: `Current ${regradeType}:`, value: `${currentBaseAmount.toLocaleString()} ${typeText}`, inline: true },
+            { name: `Current ${regradeType}:`, value: `${currentStatAmount.toLocaleString()} ${typeText}`, inline: true },
             { name: 'Increase On Success:', value: `+${increaseAmount.toLocaleString()} ${typeText}`, inline: true },
             { name: 'Success Chance:', value: `${(successChance * 100).toFixed(2)}% (+${(failStack * 100).toFixed(2)}%)`, inline: false },
         ];

@@ -234,23 +234,31 @@ describe('computePoisonMitigation', () => {
         expect(milestoneJustReached).toBe(false);
     });
 
-    // Second, achievement-only tier (2026-09-10) — never changed `reduction` at all, even
-    // before the 10-hit milestone's own reduction bump was removed for everyone.
-    test('the 20th hit this week flags milestone20JustReached, reduction still at MAX_REDUCTION', () => {
+    // Second, achievement-only tier (2026-09-10, raised 20 -> 40 on 2026-09-27) — never
+    // changed `reduction` at all, even before the 10-hit milestone's own reduction bump was
+    // removed for everyone.
+    test('the 40th hit this week flags milestone20JustReached, reduction still at MAX_REDUCTION', () => {
         const { reduction, milestoneJustReached, milestone20JustReached, nextPoisonMitigation } = computePoisonMitigation(
-            { weekTag: getCurrentWeekTag(now), weeklyHitCount: 19 }, now
+            { weekTag: getCurrentWeekTag(now), weeklyHitCount: 39 }, now
         );
         expect(reduction).toBe(PoisonMitigation.MAX_REDUCTION);
         expect(milestoneJustReached).toBe(false);
         expect(milestone20JustReached).toBe(true);
-        expect(nextPoisonMitigation.weeklyHitCount).toBe(20);
+        expect(nextPoisonMitigation.weeklyHitCount).toBe(40);
     });
 
-    test('hits past the 20th stay at MAX_REDUCTION without re-flagging milestone20JustReached', () => {
+    test('hits past the 40th stay at MAX_REDUCTION without re-flagging milestone20JustReached', () => {
         const { reduction, milestone20JustReached } = computePoisonMitigation(
-            { weekTag: getCurrentWeekTag(now), weeklyHitCount: 25 }, now
+            { weekTag: getCurrentWeekTag(now), weeklyHitCount: 45 }, now
         );
         expect(reduction).toBe(PoisonMitigation.MAX_REDUCTION);
+        expect(milestone20JustReached).toBe(false);
+    });
+
+    test('a hit between the old 20-hit threshold and the new 40-hit threshold does NOT flag milestone20JustReached', () => {
+        const { milestone20JustReached } = computePoisonMitigation(
+            { weekTag: getCurrentWeekTag(now), weeklyHitCount: 19 }, now
+        );
         expect(milestone20JustReached).toBe(false);
     });
 
@@ -450,20 +458,81 @@ describe('handlePoisonPotato', () => {
         expect(setFields).not.toHaveProperty('totalPoisonMilestonesReached');
     });
 
-    // Second, achievement-only tier (2026-09-10) — layered on top of the existing 10-hit
-    // milestone above, doesn't change the reduction math at all.
-    test('the 20th hit this week bumps totalPoisonMilestones20Reached without re-bumping the 10-hit counter', async () => {
+    // Second, achievement-only tier (2026-09-10, raised 20 -> 40 on 2026-09-27) — layered
+    // on top of the existing 10-hit milestone above, doesn't change the reduction math at all.
+    test('the 40th hit this week bumps totalPoisonMilestones20Reached without re-bumping the 10-hit counter', async () => {
         const userDetails = baseUser({
-            poisonMitigation: { weekTag: getCurrentWeekTag(), weeklyHitCount: 19 },
+            poisonMitigation: { weekTag: getCurrentWeekTag(), weeklyHitCount: 39 },
             totalPoisonMilestonesReached: 1,
             totalPoisonMilestones20Reached: 0
         });
         const result = await workFactory.handlePoisonPotato(userDetails, 1000, 1);
         const [, setFields] = dynamoHandler.updateUserFields.mock.calls[0];
-        expect(setFields.poisonMitigation.weeklyHitCount).toBe(20);
+        expect(setFields.poisonMitigation.weeklyHitCount).toBe(40);
         expect(setFields.totalPoisonMilestones20Reached).toBe(1);
         expect(setFields).not.toHaveProperty('totalPoisonMilestonesReached');
         expect(result.mitigationInfo.milestone20JustReached).toBe(true);
+    });
+
+    // Immune to Venom's own benefit (2026-09-27, direct instruction — the first
+    // achievement tied to a real gameplay perk). Checked off userDetails.achievements as it
+    // stood BEFORE this hit, so it never applies to the exact hit that crosses the 40-hit
+    // threshold itself (see workFactory.js's own comment) — only to hits after the
+    // achievement was already persisted.
+    describe('Immune to Venom benefit (flat 5-minute lockout)', () => {
+        test('a player without the achievement gets the normal reduction-based lockout, unaffected', async () => {
+            const userDetails = baseUser({
+                poisonMitigation: { weekTag: getCurrentWeekTag(), weeklyHitCount: 4 },
+                achievements: ['some_other_achievement'],
+            });
+            await workFactory.handlePoisonPotato(userDetails, 1000, 1);
+            expect(dynamoHandler.calculateWorkTimerValue).toHaveBeenCalledWith(
+                userDetails,
+                Math.floor(Work.POISON_POTATO_TIMER_INCREASE_SECONDS * (1 - PoisonMitigation.MAX_REDUCTION)),
+                false
+            );
+        });
+
+        test('a player who already holds immune_to_venom gets a flat POISON_IMMUNE_LOCKOUT_SECONDS lockout instead, regardless of weekly hit count', async () => {
+            const userDetails = baseUser({
+                poisonMitigation: { weekTag: getCurrentWeekTag(), weeklyHitCount: 0 }, // would normally be 0% reduction
+                achievements: ['immune_to_venom'],
+            });
+            const result = await workFactory.handlePoisonPotato(userDetails, 1000, 1);
+            expect(dynamoHandler.calculateWorkTimerValue).toHaveBeenCalledWith(
+                userDetails,
+                Work.POISON_IMMUNE_LOCKOUT_SECONDS,
+                false
+            );
+            expect(result.mitigationInfo.venomImmuneLockout).toBe(true);
+            expect(result.mitigationInfo.lockoutSeconds).toBe(Work.POISON_IMMUNE_LOCKOUT_SECONDS);
+        });
+
+        test('does NOT apply on the very hit that crosses the 40-hit threshold — achievements is read from before this hit', async () => {
+            const userDetails = baseUser({
+                poisonMitigation: { weekTag: getCurrentWeekTag(), weeklyHitCount: 39 },
+                achievements: [], // not unlocked yet as of this hit
+            });
+            const result = await workFactory.handlePoisonPotato(userDetails, 1000, 1);
+            expect(result.mitigationInfo.milestone20JustReached).toBe(true);
+            expect(result.mitigationInfo.venomImmuneLockout).toBe(false);
+            expect(dynamoHandler.calculateWorkTimerValue).toHaveBeenCalledWith(
+                userDetails,
+                Math.floor(Work.POISON_POTATO_TIMER_INCREASE_SECONDS * (1 - PoisonMitigation.MAX_REDUCTION)),
+                false
+            );
+        });
+
+        test('Guinea Pig still skips the lockout entirely even with immune_to_venom unlocked', async () => {
+            const userDetails = baseUser({
+                companions: { owned: [{ instanceId: 'guinea_pig-a', id: 'guinea_pig', workCount: 0 }], active: 'guinea_pig-a' },
+                achievements: ['immune_to_venom'],
+            });
+            const result = await workFactory.handlePoisonPotato(userDetails, 1000, 1);
+            expect(result.immune).toBe(true);
+            expect(result.mitigationInfo.venomImmuneLockout).toBe(false);
+            expect(dynamoHandler.calculateWorkTimerValue).toHaveBeenCalledWith(userDetails, Work.WORK_TIMER_SECONDS, false);
+        });
     });
 
     describe('with Guinea Pig equipped', () => {

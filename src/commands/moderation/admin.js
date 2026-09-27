@@ -594,6 +594,41 @@ async function runStartFestival(client, interaction) {
     }
 }
 
+// One-time correction (2026-09-27, direct instruction — "make sure any users that had it
+// before wouldnt have it complete now") for raising immune_to_venom's threshold from 20 to
+// 40 Poison hits in a week (see constants.js's own comment on that change). Achievements are
+// purely additive/permanent once unlocked (achievementFactory.checkAndUnlock only ever
+// APPENDS to the achievements array, never re-validates or removes an existing entry), so
+// every player who legitimately earned this under the OLD 20-hit standard would otherwise
+// keep it forever even though they may never have reached the new, harder 40-hit bar — and
+// would keep getting immune_to_venom's new 5-minute-lockout benefit despite that. There's no
+// stored per-week history to check "did they ALSO happen to hit 40 that same week" against,
+// so this revokes it unconditionally for every current holder — anyone who was truly capable
+// of a 40-hit week can just earn it again, going forward, honestly. Scans the whole user
+// table (same precedent as set-merc-chat-channel's own allUsers retroactive-grant scan
+// above), so this only needs to be run once, manually, after this fix deploys — not wired
+// into any hot path, since the underlying threshold-change event is itself one-time.
+async function runRevokeImmuneToVenom(client, interaction) {
+    await interaction.deferReply({ ephemeral: true });
+
+    const allUsers = await dynamoHandler.getUsers();
+    const holders = allUsers.filter(u => Array.isArray(u.achievements) && u.achievements.includes('immune_to_venom'));
+
+    let fixedCount = 0;
+    for (const holder of holders) {
+        const updatedAchievements = holder.achievements.filter(id => id !== 'immune_to_venom');
+        await dynamoHandler.updateUserFields(holder.userId, {
+            achievements: updatedAchievements,
+            totalPoisonMilestones20Reached: 0,
+        });
+        fixedCount++;
+    }
+
+    interaction.editReply(fixedCount > 0
+        ? `Revoked Immune to Venom from ${fixedCount} player${fixedCount === 1 ? '' : 's'} who'd earned it under the old 20-hit standard, and reset their weekly-milestone counter to 0 — they'll need a genuine 40-hit week to re-earn it (and its 5-minute-lockout benefit) under the new bar.`
+        : `No players currently hold Immune to Venom — nothing to revoke.`);
+}
+
 module.exports = {
     name: "admin",
     description: "Admin/moderation tools (subcommands)",
@@ -764,6 +799,11 @@ module.exports = {
                 }
             ],
         },
+        {
+            name: 'revoke-immune-to-venom',
+            description: 'One-time fix: revoke Immune to Venom earned under the old 20-hit threshold (now 40)',
+            type: ApplicationCommandOptionType.Subcommand,
+        },
     ],
     callback: async (client, interaction) => {
         const subcommand = interaction.options.getSubcommand();
@@ -795,6 +835,9 @@ module.exports = {
             case 'start-festival':
                 await runStartFestival(client, interaction);
                 break;
+            case 'revoke-immune-to-venom':
+                await runRevokeImmuneToVenom(client, interaction);
+                break;
         }
     },
     // Exported individually for direct unit testing, same "export the inner logic, not just
@@ -808,4 +851,5 @@ module.exports = {
     setActivityChannelCallback: runSetActivityChannel,
     setMercChatChannelCallback: runSetMercChatChannel,
     startFestivalCallback: runStartFestival,
+    revokeImmuneToVenomCallback: runRevokeImmuneToVenom,
 }

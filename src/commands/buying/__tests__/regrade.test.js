@@ -196,6 +196,35 @@ describe('atomic write (2026-09-26 fix — regrades/stat/companions/potatoes in 
     });
 });
 
+// 2026-09-27 direct instruction: "make the current (stat) take base + regrades instead of
+// just base" — the preview embed's "Current" field used to show getBaseAmount's raw base
+// (statField - sweetPotatoBuffs - regradeAmount), stripping out regrade progress a player had
+// already earned. sweetPotatoBuffs (Bonus) stays excluded deliberately — that bucket comes
+// from unrelated sources (Tower, World Boss, etc.), not shop/regrade grinding.
+describe('preview embed "Current" field is base + regrades, not just base (2026-09-27)', () => {
+    test('with nonzero regrade progress and a nonzero Bonus, Current = base + regrades, excluding Bonus', async () => {
+        const user = {
+            ...baseUser({ owned: [], active: null }),
+            workMultiplierAmount: REQUIRED_WORK_BASE + 50 + 7, // base + regradeAmount + sweetPotatoBuffs
+            sweetPotatoBuffs: { workMultiplierAmount: 7, passiveAmount: 0, bankCapacity: 0 },
+            regrades: {
+                workMulti: { regradeAmount: 50, failStack: 0 },
+                passiveAmount: { regradeAmount: 0, failStack: 0 },
+                bankCapacity: { regradeAmount: 0, failStack: 0 },
+            },
+        };
+        dynamoHandler.findUser.mockResolvedValue(user);
+        const previewSpy = jest.spyOn(EmbedFactory.prototype, 'createRegradePreviewEmbed').mockReturnValue({});
+
+        await callback({}, fakeInteraction());
+
+        // (userDisplayName, userId, userAvatar, potatoes, label, currentStatAmount, cost, ...)
+        const [, , , , , currentStatAmount] = previewSpy.mock.calls[0];
+        expect(currentStatAmount).toBe(REQUIRED_WORK_BASE + 50);
+        previewSpy.mockRestore();
+    });
+});
+
 describe('confirm-preview step (direct instruction: show an embed with buttons for regrading or not)', () => {
     test('shows a preview embed with a Confirm/Cancel row before spending anything', async () => {
         dynamoHandler.findUser.mockResolvedValue(baseUser({ owned: [], active: null }));
