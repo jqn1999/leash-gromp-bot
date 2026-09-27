@@ -18014,3 +18014,63 @@ front. `economy-and-work.md`'s Poison Potato mitigation section gained a follow-
 handling (if any exists there) would need the equivalent lockout-override and threshold change to
 stay in parity, but this wasn't audited in this session; flagged here rather than silently assumed
 fine.
+
+## Titles gains a 4th condition type (`manualGrant`) and its first one-off honor, `champion_of_the_fallen_realm` — a new `/admin grant-title` command
+
+**What was asked.** After a walkthrough of where Titles currently show up (answer: only `/profile`,
+by deliberate v1 design — see `titles.md` section 8), direct instruction for "a new unique title for
+3 players that finished in the top 3 of my last server playing this game."
+
+**What changed.** Every existing Title condition (`stat`, `guildLevel`, `festivalCosmetic`) resolves
+against something already tracked on `userDetails` — a lifetime counter, a live guild fetch, an
+owned cosmetic. "Who finished top 3 on a previous server" has no such backing data at all, so a
+fourth condition type, `manualGrant`, was added: `isTitleUnlocked` for it is a pure
+`permanentTitles.includes(titleId)` check, never live-checked, no opportunistic persistence path —
+`permanentTitles` is the ONLY source of truth for this type, unlike `guildLevel`'s use of the same
+field as a fallback for a condition that could otherwise regress. New title:
+`champion_of_the_fallen_realm` ("Champion of the Fallen Realm") — one shared title for all 3
+finishers, not three separate rank-specific ones (kept simple: a single "you were among the best"
+honor, product-owner call after weighing it against a gold/silver/bronze set). New `/admin
+grant-title` subcommand (devOnly + Administrator) hands it out: takes a player + a title (choices
+statically filtered to `condition.type === 'manualGrant'` only, so this command can never be used to
+bypass a REAL milestone's requirements), checks `titleFactory.isTitleUnlocked` first so a repeat
+grant is a harmless no-op, then appends to `permanentTitles`. Once granted, the title needs zero
+special-casing anywhere else — `/titles`, `/set-title`, `/profile` all already treat every title
+uniformly regardless of condition type, which is exactly the payoff of the condition-type
+abstraction from the original design.
+
+**Not done in this pass — waiting on the actual player identities.** This machinery lets the title be
+granted, but nobody's been granted it yet; the user needs to run `/admin grant-title` themselves for
+each of the 3 players once this ships, since granting requires live Discord/DB access this session
+doesn't have.
+
+**Also answered, not yet acted on: where else Titles could show up.** Audited every embed call site
+for whether `userDetails`/`equippedTitle` is already in memory (no new query) vs. needs a fresh
+fetch:
+- **Free**: guild raid result embeds and World Boss result embeds (`raidMemberDetails`/
+  `worldMemberDetails` are already fetched for the power/multiplier math before either embed is
+  built — this is the exact phase-2 candidate `titles.md` section 8 already flagged), the
+  leaderboard (`getSortedUsers()` returns full docs, `equippedTitle` included), and every Big
+  Events channel post (the winner's full `userDetails` is already in scope at every trigger site).
+- **Small added cost**: the guild member list (`/guild members`) and Tower's daily leaderboard only
+  have `{id, username, role}`-shaped rosters today, so showing a title there means a new per-member
+  fetch — cheap at typical roster sizes, but not free.
+- **Bigger lift, not recommended yet**: a "new title unlocked" nudge would need the same
+  recompute-and-diff logic Achievements' own unlock embed uses, which Titles' v1 design explicitly
+  deferred (decision point #3).
+- Not yet implemented — the plan was presented and the user hasn't confirmed which batch to build.
+
+**Tests.** `titleFactory.test.js` gained a `manualGrant` describe block (3 tests: locked with zero DB
+calls, unlocked once persisted, missing `permanentTitles` degrades to locked not a crash) plus a
+`getTitleProgress` binary-progress case. `admin.test.js` gained a `grant-title` describe block (5
+tests: grants and persists, preserves other existing manual grants rather than overwriting the
+array, already-granted is a no-op, rejects a non-`manualGrant` title id, rejects an unresolvable
+player). Full suite: **114 suites / 2143 tests, all passing** (net +9 new tests, 0 broken).
+
+**Docs.** `systems/titles.md` gained a new "§12 `manualGrant` condition type" section covering the
+mechanism, the granting command, and why it's deliberately scoped to only `manualGrant`-type titles.
+
+**Cross-repo note.** Not ported to `financial-project` — Titles as a whole was already flagged
+missing from the web port entirely (see the earlier parity-audit roadmap entry), so this new
+condition type has nothing to port INTO yet. If/when Titles ships on web, `manualGrant` should be
+included in that port from the start rather than added as its own follow-up.

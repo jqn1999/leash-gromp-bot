@@ -363,3 +363,52 @@ coverage. Full suite: 110 suites / 1962 tests passing after this change.
 this build happened in an isolated git worktree where Seasonal Festivals' own files don't exist
 yet (built concurrently by a different session against the same base branch); that wiring is a
 follow-up once both branches merge.
+
+## 12. `manualGrant` condition type — one-off, admin-granted honors (2026-09-27)
+
+Direct instruction: a new title for the 3 players who finished top 3 on the player's PREVIOUS
+server. This is the first Title with genuinely nothing to check against — every condition type
+before this resolves off something already tracked on `userDetails` (a stat, a live guild fetch,
+an owned cosmetic). "Which 3 people were top 3 on a server this game wasn't even tracking at the
+time" isn't derivable from any counter this codebase has, so a fourth condition type was added:
+
+```js
+{ type: "manualGrant" }   // no statPath, no threshold, nothing live-checkable at all
+```
+
+**Resolution is intentionally the simplest of the four**: `isTitleUnlocked` for `manualGrant`
+just returns `(userDetails.permanentTitles || []).includes(titleId)` — full stop, no live check
+ever attempted, no opportunistic persistence path like `guildLevel`'s. This is a meaningfully
+different use of `permanentTitles` than section 2/3 originally described: `guildLevel` persists
+an otherwise-live-checkable condition once it's been true at least once (a fallback for a
+condition that COULD regress); `manualGrant` has no live check to fall back FROM in the first
+place — `permanentTitles` is the sole, only-ever source of truth from the moment the title exists.
+
+**Granting mechanism: `/admin grant-title`** (`admin.js`), devOnly + Administrator-gated like
+every other `/admin` subcommand. Takes a `player` (Mentionable) and a `title` (String, static
+`choices` built at module-load time by filtering `Titles` down to `condition.type === 'manualGrant'`
+— currently just the one). Looks up the target via `dynamoHandler.findUser`, checks
+`titleFactory.isTitleUnlocked` first (so re-running the command on someone who already holds it
+is a harmless no-op, not a duplicate array entry), then appends to their `permanentTitles` via
+`updateUserFields`. Deliberately scoped to ONLY `manualGrant`-type titles — this command has no
+business overriding a title that's supposed to be earned through a real milestone; that's a
+one-line filter away from becoming a way to hand out `warlord_of_the_realm` or `iron_tuber`
+without actually earning them, which was never the intent.
+
+**The v1 title itself**: `champion_of_the_fallen_realm`, label "Champion of the Fallen Realm" —
+one shared title, not three separate rank-specific ones (product-owner call: a single "you were
+among the best" honor is simpler to grant/maintain than a gold/silver/bronze set, and reads just
+as well). Once granted, works through every existing surface unchanged — `/titles` shows it with
+binary `0/1` progress (same convention `festivalCosmetic` titles already use), `/set-title`
+validates and equips it exactly like any other title, `/profile` displays it exactly like any
+other title. No new player-facing surface was needed for this — the whole point of the
+condition-type abstraction paying off is that a title added this way is indistinguishable from
+any other title everywhere else in the game.
+
+**Tests.** `titleFactory.test.js` gained a `manualGrant` describe block (locked with no DB calls
+at all; unlocked once `permanentTitles` contains it; missing `permanentTitles` reads as locked,
+not a crash) plus a `getTitleProgress` binary-progress case. `admin.test.js` gained a `grant-title`
+describe block (grants and persists; preserves other existing `permanentTitles` entries rather
+than overwriting; already-granted is a no-op; rejects a non-`manualGrant` title id; rejects an
+unresolvable player). Full suite: **114 suites / 2143 tests, all passing** (net +9 new tests,
+0 broken).

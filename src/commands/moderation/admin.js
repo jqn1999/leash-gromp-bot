@@ -1,7 +1,9 @@
 const { ApplicationCommandOptionType, ChannelType, PermissionFlagsBits } = require("discord.js");
 const dynamoHandler = require("../../utils/dynamoHandler");
 const { getUserInteractionDetails, getRandomFromInterval, requireUserDetails } = require("../../utils/helperCommands");
-const { Work, Companions, Festival, FestivalTemplates } = require("../../utils/constants");
+const { Work, Companions, Festival, FestivalTemplates, Titles } = require("../../utils/constants");
+const { TitleFactory } = require("../../utils/titleFactory");
+const titleFactory = new TitleFactory();
 const { EventFactory, buildActiveEventPayload, WORK_SCENARIO_INDICES } = require("../../utils/eventFactory");
 const { AchievementFactory } = require("../../utils/achievementFactory");
 const { EmbedFactory } = require("../../utils/embedFactory");
@@ -594,6 +596,53 @@ async function runStartFestival(client, interaction) {
     }
 }
 
+// Titles with a manualGrant condition (systems/titles.md) — the only kind an admin can ever
+// hand out this way. Scoped deliberately: every other Title is earned by crossing a real
+// in-game milestone (checked live off userDetails or persisted the moment it's true), and
+// this command has no business overriding that — it exists ONLY for the one condition type
+// that has nothing to check against in the first place (a one-off historical honor, e.g. the
+// top 3 finishers of a player's previous server). Built as a static, name-only list rather
+// than autocomplete since it's expected to stay tiny (one-off grants are rare by design).
+const MANUAL_GRANT_TITLE_CHOICES = Titles
+    .filter(title => title.condition.type === 'manualGrant')
+    .map(title => ({ name: title.label, value: title.id }));
+
+async function runGrantTitle(client, interaction) {
+    await interaction.deferReply({ ephemeral: true });
+
+    const titleId = interaction.options.get('title')?.value;
+    const targetUserId = interaction.options.get('player')?.value;
+    const targetUser = await interaction.guild.members.fetch(targetUserId).catch(() => null);
+    if (!targetUser) {
+        interaction.editReply(`That user doesn't exist in this server.`);
+        return;
+    }
+    const targetUsername = targetUser.user.username;
+    const targetDisplayName = targetUser.displayName;
+
+    const title = Titles.find(t => t.id === titleId && t.condition.type === 'manualGrant');
+    if (!title) {
+        interaction.editReply(`"${titleId}" isn't a recognized manually-grantable title.`);
+        return;
+    }
+
+    const targetUserDetails = await dynamoHandler.findUser(targetUserId, targetUsername);
+    if (!targetUserDetails) {
+        interaction.editReply(`${targetDisplayName} could not be looked up due to a database error, please try again!`);
+        return;
+    }
+
+    const alreadyGranted = await titleFactory.isTitleUnlocked(targetUserDetails, title.id);
+    if (alreadyGranted) {
+        interaction.editReply(`${targetDisplayName} already holds **${title.label}** — nothing to grant.`);
+        return;
+    }
+
+    const permanentTitles = targetUserDetails.permanentTitles || [];
+    await dynamoHandler.updateUserFields(targetUserId, { permanentTitles: [...permanentTitles, title.id] });
+    interaction.editReply(`Granted **${title.label}** to ${targetDisplayName} — they can equip it now with /set-title.`);
+}
+
 // One-time correction (2026-09-27, direct instruction — "make sure any users that had it
 // before wouldnt have it complete now") for raising immune_to_venom's threshold from 20 to
 // 40 Poison hits in a week (see constants.js's own comment on that change). Achievements are
@@ -804,6 +853,26 @@ module.exports = {
             description: 'One-time fix: revoke Immune to Venom earned under the old 20-hit threshold (now 40)',
             type: ApplicationCommandOptionType.Subcommand,
         },
+        {
+            name: 'grant-title',
+            description: 'Grant a one-off, manually-earned Title to a player (e.g. a past-server honor)',
+            type: ApplicationCommandOptionType.Subcommand,
+            options: [
+                {
+                    name: 'player',
+                    description: 'Which player to grant the title to',
+                    required: true,
+                    type: ApplicationCommandOptionType.Mentionable,
+                },
+                {
+                    name: 'title',
+                    description: 'Which title to grant',
+                    required: true,
+                    type: ApplicationCommandOptionType.String,
+                    choices: MANUAL_GRANT_TITLE_CHOICES,
+                }
+            ],
+        },
     ],
     callback: async (client, interaction) => {
         const subcommand = interaction.options.getSubcommand();
@@ -838,6 +907,9 @@ module.exports = {
             case 'revoke-immune-to-venom':
                 await runRevokeImmuneToVenom(client, interaction);
                 break;
+            case 'grant-title':
+                await runGrantTitle(client, interaction);
+                break;
         }
     },
     // Exported individually for direct unit testing, same "export the inner logic, not just
@@ -852,4 +924,5 @@ module.exports = {
     setMercChatChannelCallback: runSetMercChatChannel,
     startFestivalCallback: runStartFestival,
     revokeImmuneToVenomCallback: runRevokeImmuneToVenom,
+    grantTitleCallback: runGrantTitle,
 }
