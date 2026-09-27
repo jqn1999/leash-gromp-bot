@@ -18115,3 +18115,57 @@ new tests, +1 new suite, 0 broken).
 on the web port yet at all (see the earlier parity-audit entry), so there's a full feature port
 needed before any of these display surfaces have an equivalent to extend. Tracked as its own
 follow-up, in progress.
+
+## Four rosters now sort by power, not join/roster order (Spud Keep roster, guild raid list, World Boss list, guild member list)
+
+**What was asked.** Direct instruction: "order spud keep players in each guild and in merc list in
+order of power they're contributing. Same for raid list and world boss list and guild list (guild
+list by role first then sorted within each role so leader then coleaders etc)."
+
+**What changed.** All four are presentation-only reorders — no payout math, success-chance
+calculation, or stored data shape changed anywhere in this pass:
+- **`/current-spud-keep`'s roster page** (`currentSpudKeep.js`'s `flattenRoster`) — each entrant's
+  `roster` is now sorted by its matched `memberContributions[].contribution` value, descending,
+  before being flattened into rows. `memberContributions` itself was already sorted this way
+  (`raidFactory.getEffectiveRaidPowerBreakdown`), but `entrant.roster` never inherited that order on
+  its own, so this sorts a copy of the roster explicitly rather than assuming it does. A roster
+  member somehow missing from `memberContributions` sorts to the back instead of an arbitrary spot.
+- **Guild raid result's "Members In Raid:" field** (`startRaid.js`'s `resolveRaid`) — `raidList`/
+  `raidMemberDetails` sorted together by `getMemberRaidPower` descending, right after the
+  `raidMemberDetails` fetch and right before the pre-existing Titles `equippedTitle` enrichment
+  step (both arrays reordered in lockstep via an in-place `.splice()`, since they're `const`-bound
+  and read by reference throughout the rest of the function). `raidListByMulti`, built later from
+  these same two arrays, inherits the order for free.
+- **World Boss result's member list** (`worldFactory.js`'s `startWorldBoss`) — `raidListByMulti`
+  sorted by `.multiplier` descending, right after the `raidShare` computation loop and before it's
+  handed to `handlePotatoSplitByShare`/`createWorldResultEmbed`/`buildParticipantsField`.
+- **`/guild-members`** (`guildMembers.js`) — `guild.memberList` sorted by `getMemberRaidPower`
+  (computed off `memberDetails`, already fetched for the Titles enrichment, no new queries) BEFORE
+  `createGuildMemberListEmbed` runs. That embed function already bucketed by role via one Leader
+  `.find()` plus Co-Leader/Elder/Member `.filter()` calls — since `.find()`/`.filter()` preserve
+  relative order, pre-sorting by power makes each role bucket come out power-sorted for free
+  (role first, power within role — exactly what was asked), with zero changes needed inside the
+  embed function itself.
+
+**Why each reorder is safe** (traced before implementing, not assumed): every downstream consumer
+of the reordered arrays is either a flat, identical per-member operation dispatched via its own
+`Promise.all` (`handleStatSplit`, `handlePotatoSplit`, `handlePotatoSplitByShare`,
+`incrementCounter` — order-independent by construction), or, for `getEffectiveRaidPower`,
+internally re-sorts its OWN copy of the roster by power before computing the team-power total — so
+an external pre-sort for display can never change the actual power/success-chance math or who gets
+paid what, only what order names print in.
+
+**Tests.** 5 new tests across 4 files, each roster deliberately constructed weakest-member-first so
+a pass can only be explained by an explicit sort, never by coincidental join/roster order:
+`currentSpudKeep.test.js` (+2: sorts by contribution descending, and a missing-from-
+`memberContributions` member sorts to the back), `startRaidPowerSort.test.js` (new file, +1: a real
+`runStartRaidFlow` integration test asserting "Members In Raid:" lists strongest-first),
+`worldFactory.test.js` (+1: `raidListByMulti` passed to `createWorldResultEmbed` is sorted by
+`.multiplier` descending), `guildMembersPowerSort.test.js` (new file, +1: each role's own filtered
+bucket comes out power-sorted). Full suite: **117 suites / 2167 tests, all passing** (net +5 new
+tests, +2 new suites, 0 broken).
+
+**Cross-repo note.** Not raised as a request for this pass, and not ported — `financial-project`'s
+own Spud Keep roster view (`gromp-economy/handler.ts`'s `doCurrentSpudKeep`) and any guild-member
+list it has would need the equivalent sort for full parity if the web UI shows these same rosters,
+but the user didn't ask for the web side this turn. Worth flagging next time web parity is audited.

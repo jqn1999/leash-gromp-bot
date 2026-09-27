@@ -71,6 +71,13 @@ async function startWorldBoss(world, mob){
         for (const element of raidListByMulti) {
             element.raidShare = totalMultiplier > 0 ? element.multiplier / totalMultiplier : 0;
         }
+        // Ordered by each member's own power, descending (direct instruction, 2026-09-27:
+        // "order ... world boss list ... in order of power they're contributing"). Safe to
+        // reorder here: handlePotatoSplitByShare below mutates each member object in place
+        // and never depends on array order for the actual payout math (per-member, via its
+        // own Promise.all), so this only changes DISPLAY order in the result embed/Big
+        // Events post, not who gets paid what.
+        raidListByMulti.sort((a, b) => b.multiplier - a.multiplier);
     }
     // World Boss's own workMulti buff (2026-09-04, direct instruction) — applied ONLY to
     // the aggregate totalMultiplier that drives successChance, never to each participant's

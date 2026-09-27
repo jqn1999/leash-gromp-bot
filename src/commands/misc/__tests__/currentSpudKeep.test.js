@@ -75,3 +75,41 @@ test('an entrant with no memberContributions field at all (defensive) does not c
 test('an empty entrants list produces an empty flat list', () => {
     expect(flattenRoster([])).toEqual([]);
 });
+
+// Ordered by each member's own power contribution, descending (direct instruction,
+// 2026-09-27: "order spud keep players in each guild and in merc list in order of power
+// they're contributing"). roster is deliberately weakest-first here, so a passing test can
+// only be explained by an explicit sort, never by roster's own stored order.
+test('sorts each entrant\'s roster by contribution descending, regardless of roster order', () => {
+    const entrants = [
+        {
+            type: 'guild', name: 'Guild A',
+            roster: [{ id: 'weak', username: 'Weak' }, { id: 'strong', username: 'Strong' }, { id: 'mid', username: 'Mid' }],
+            breakdown: {
+                memberContributions: [
+                    contributionEntry('weak', 10, 1.0),
+                    contributionEntry('strong', 1000, 1.0),
+                    contributionEntry('mid', 500, 1.0),
+                ],
+            },
+        },
+    ];
+
+    const rows = flattenRoster(entrants);
+
+    expect(rows.map(r => r.username)).toEqual(['Strong', 'Mid', 'Weak']);
+});
+
+test('a roster member missing from memberContributions sorts to the back, not to an arbitrary spot', () => {
+    const entrants = [
+        {
+            type: 'guild', name: 'Guild A',
+            roster: [{ id: 'missing', username: 'Missing' }, { id: 'strong', username: 'Strong' }],
+            breakdown: { memberContributions: [contributionEntry('strong', 1000, 1.0)] },
+        },
+    ];
+
+    const rows = flattenRoster(entrants);
+
+    expect(rows.map(r => r.username)).toEqual(['Strong', 'Missing']);
+});
