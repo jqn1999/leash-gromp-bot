@@ -1,6 +1,6 @@
 const { ApplicationCommandOptionType } = require("discord.js");
 const { getUserInteractionDetails, requireUserDetails, buildConfirmCancelRow, buildPaginationRow, runPaginatedReply } = require("../../utils/helperCommands")
-const { shops, workRegradeTiers, passiveRegradeTiers, bankRegradeTiers } = require("../../utils/constants");
+const { shops, workRegradeTiers, passiveRegradeTiers, bankRegradeTiers, REGRADE_CAPS } = require("../../utils/constants");
 const dynamoHandler = require("../../utils/dynamoHandler");
 const companionFactory = require("../../utils/companionFactory");
 const { EmbedFactory } = require("../../utils/embedFactory");
@@ -67,6 +67,18 @@ function hasRequiredBaseAmount(currentAmount, requiredBaseAmount, interaction, u
 // sees whichever tier they've actually reached (or surpassed), not a thrown error.
 function findCurrentRegradeTier(regradeTiers, currentRegradeAmount) {
     return [...regradeTiers].reverse().find((tier) => tier.currentRegradeAmount <= currentRegradeAmount) || regradeTiers[0];
+}
+
+// Bank Capacity's own final tier jumps regradeAmount straight to REGRADE_CAPS.bankCapacity
+// (103,000,000,000) — the point at which bank.js/embedFactory's formatBankCapacityField
+// start treating the player's bank as literally Infinite (2026-09-27, direct instruction —
+// the raw "+100,000,000,000" increase this tier shows otherwise reads as an oddly specific
+// number, not the "never worry about bank space again" milestone it actually is). Scoped to
+// bankCapacity only — workMulti/passiveAmount also have a completion cap, but neither gets
+// special Infinity/Unlimited treatment anywhere else, so generalizing this would be showing
+// a "maxed" message nothing else in the game backs up.
+function completesBankCapacity(config, regradeAmountAfterAttempt) {
+    return config.regradeKey === 'bankCapacity' && regradeAmountAfterAttempt >= REGRADE_CAPS.bankCapacity;
 }
 
 function getBaseAmount(userDetails, config) {
@@ -142,14 +154,24 @@ async function executeRegrade(userId, userDetails, config, currentTier, chanceOf
 
     await dynamoHandler.updateUserFields(userId, setFields, { potatoes: -currentTier.cost });
 
-    return embedFactory.createRegradeEmbed(userDisplayName, userId, userAvatar, userDetails.potatoes - currentTier.cost, config.label, newAmount, increase, chanceOfSuccess, failStack, -currentTier.cost, companionXpGained, companionName);
+    // Checked against the POST-increase regradeAmount (userRegrades was mutated in place
+    // above on success) — a failed attempt leaves increase at 0, so this is always false
+    // for a fail regardless of how close regradeAmount already sits to the cap.
+    const willMaxBankCapacity = increase > 0 && completesBankCapacity(config, userRegrades[config.regradeKey].regradeAmount);
+
+    return embedFactory.createRegradeEmbed(userDisplayName, userId, userAvatar, userDetails.potatoes - currentTier.cost, config.label, newAmount, increase, chanceOfSuccess, failStack, -currentTier.cost, companionXpGained, companionName, willMaxBankCapacity);
 }
 
 // tier N's own 1-based rung on the FULL ladder (not per-page) + whether the player's own
 // regradeAmount currently sits there — used by createRegradeTiersPageEmbed to mark "you
 // are here" regardless of which page that tier lands on.
 function buildTierRows(config, currentRegradeAmount) {
-    return config.tiers.map((tier, i) => ({ tier, index: i + 1, isCurrent: tier.currentRegradeAmount === currentRegradeAmount }));
+    return config.tiers.map((tier, i) => ({
+        tier,
+        index: i + 1,
+        isCurrent: tier.currentRegradeAmount === currentRegradeAmount,
+        willMaxBankCapacity: completesBankCapacity(config, tier.currentRegradeAmount + tier.increase),
+    }));
 }
 
 function chunkArray(array, size) {
@@ -164,6 +186,8 @@ module.exports = {
     name: "regrade",
     description: "Regrades your gear in the selected category",
     devOnly: false,
+    buildTierRows, // exported for direct unit testing of willMaxBankCapacity's per-row flag
+    TRACK_CONFIGS, // exported so tests can build a real config without duplicating its shape
     options: [
         {
             name: 'regrade-select',
@@ -231,8 +255,9 @@ module.exports = {
         // World Boss, etc.), not shop/regrade grinding, so it stays out of this command's own
         // number the same way baseAmount already did.
         const currentStatAmount = baseAmount + userDetails.regrades[config.regradeKey].regradeAmount;
+        const willMaxBankCapacity = completesBankCapacity(config, userDetails.regrades[config.regradeKey].regradeAmount + currentTier.increase);
 
-        const previewEmbed = embedFactory.createRegradePreviewEmbed(userDisplayName, userId, userAvatar, userDetails.potatoes, config.label, currentStatAmount, currentTier.cost, currentTier.increase, chanceOfSuccess, failStack);
+        const previewEmbed = embedFactory.createRegradePreviewEmbed(userDisplayName, userId, userAvatar, userDetails.potatoes, config.label, currentStatAmount, currentTier.cost, currentTier.increase, chanceOfSuccess, failStack, willMaxBankCapacity);
         const canAffordNow = userDetails.potatoes >= currentTier.cost;
         const components = canAffordNow ? [buildConfirmCancelRow(CONFIRM_ID, 'Regrade')] : [];
         const reply = await interaction.editReply({ embeds: [previewEmbed], components });

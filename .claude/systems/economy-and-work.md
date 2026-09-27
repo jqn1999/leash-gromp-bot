@@ -728,6 +728,34 @@ rung marked) via `createRegradeTiersPageEmbed`, paginated with the same generic
 `buildPaginationRow`/`runPaginatedReply` helpers `/achievements`/`/quests`/`/shop` already use.
 Purely a read: no potatoes touched, nothing rolled.
 
+**Bank Capacity's final tier shows "Unlimited," not its literal +100,000,000,000 increase**
+(2026-09-27, direct instruction, following a question about whether a mercenary can safely
+reach that final attempt). `bankRegradeTiers`' last rung (`currentRegradeAmount: 3,000,000,000`,
+`increase: 100,000,000,000`) lands exactly on `REGRADE_CAPS.bankCapacity` (103,000,000,000) — the
+same threshold `embedFactory.isBankCapacityMaxed`/`formatBankCapacityField` use to switch `/bank`
+and `/profile` over to showing "Unlimited" instead of a number (see "Capacity becomes genuinely
+unlimited" below). `/regrade`'s own three embeds never had that special-casing, so a player
+looking at the preview, the result, or the `view-tiers` ladder would just see a plain, oddly
+specific 100-billion number with no indication it's actually the "never worry about bank space
+again" milestone.
+
+Fixed by a new `regrade.js` helper, `completesBankCapacity(config, regradeAmountAfterAttempt)` —
+scoped to the `bankCapacity` track only (`workMulti`/`passiveAmount` also have a completion cap in
+`REGRADE_CAPS`, but neither gets Infinity/Unlimited treatment anywhere else in the game, so
+generalizing this would show a "maxed" message nothing else backs up). Threaded through as a new,
+backward-compatible trailing `willMaxBankCapacity` parameter (default `false`) on all three
+embeds:
+- `createRegradePreviewEmbed` — checked against `regradeAmount + currentTier.increase` (the
+  attempt hasn't happened yet, so this is a prediction, not a fact).
+- `createRegradeEmbed` (the result) — checked against the POST-increase `regradeAmount` right after
+  `executeRegrade`'s in-place mutation, and only when `increase > 0` — a failed attempt leaves
+  `regradeAmount` untouched and never shows "Unlimited" no matter how close to the cap it already
+  sits.
+- `createRegradeTiersPageEmbed` — `buildTierRows` now stamps a `willMaxBankCapacity` flag onto
+  each row (`tier.currentRegradeAmount + tier.increase >= REGRADE_CAPS.bankCapacity`), so only the
+  ladder's actual final rung shows "Unlimited (maxes Bank Capacity!)" instead of its own literal
+  increase — every other row, and every row on the other two tracks, is unaffected.
+
 ## Rebirth (prestige reset)
 
 [rebirth.js](../../src/commands/buying/rebirth.js) +

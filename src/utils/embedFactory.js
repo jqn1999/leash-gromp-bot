@@ -4511,7 +4511,7 @@ class EmbedFactory {
 
     // companionXpGained/companionName (new, optional, default 0/null) — see
     // createBountyResultEmbed's own comment on the same pair.
-    createRegradeEmbed(userDisplayName, userId, userAvatar, userPotatoes, regradeType, newBaseAmount, increaseAmount, successChance, failStack, cost, companionXpGained = 0, companionName = null) {
+    createRegradeEmbed(userDisplayName, userId, userAvatar, userPotatoes, regradeType, newBaseAmount, increaseAmount, successChance, failStack, cost, companionXpGained = 0, companionName = null, willMaxBankCapacity = false) {
         const avatarUrl = getUserAvatar(userId, userAvatar);
         const color = increaseAmount > 0 ? 'Green' : 'Red';
         const succeededOrFailed = increaseAmount > 0 ? 'Succeeded' : 'Failed';
@@ -4540,14 +4540,18 @@ class EmbedFactory {
             inline: false
         })
         if (increaseAmount > 0) {
+            // Bank Capacity's final tier jumps regradeAmount straight to the completion cap
+            // (REGRADE_CAPS.bankCapacity), the same threshold that makes /bank and /profile
+            // start showing "Unlimited" instead of a number — shown the same way here rather
+            // than the literal, oddly-specific +100,000,000,000 increase this tier carries.
             fields.push({
                 name: `New ${regradeType}:`,
-                value: `${newBaseAmount.toLocaleString()} ${typeText}`,
+                value: willMaxBankCapacity ? `Unlimited potatoes` : `${newBaseAmount.toLocaleString()} ${typeText}`,
                 inline: true,
             })
             fields.push({
                 name: `Increase Amount:`,
-                value: `${increaseAmount.toLocaleString()}`,
+                value: willMaxBankCapacity ? `Unlimited (Bank Capacity Maxed!)` : `${increaseAmount.toLocaleString()}`,
                 inline: true,
             })
         }
@@ -4580,7 +4584,7 @@ class EmbedFactory {
     // createRegradeEmbed above which only ever narrates a completed attempt. Mirrors that
     // one's field shape/labels (typeText, Success Chance formatting) so the preview and the
     // result it leads into read as the same screen, not two different designs.
-    createRegradePreviewEmbed(userDisplayName, userId, userAvatar, userPotatoes, regradeType, currentStatAmount, cost, increaseAmount, successChance, failStack) {
+    createRegradePreviewEmbed(userDisplayName, userId, userAvatar, userPotatoes, regradeType, currentStatAmount, cost, increaseAmount, successChance, failStack, willMaxBankCapacity = false) {
         const avatarUrl = getUserAvatar(userId, userAvatar);
         const typeText = regradeType === 'Work Multiplier' ? 'work multi' : 'potatoes';
         const canAfford = userPotatoes >= cost;
@@ -4589,7 +4593,10 @@ class EmbedFactory {
             { name: 'Cost:', value: `${cost.toLocaleString()} potatoes`, inline: true },
             { name: '\n', value: '\n', inline: false },
             { name: `Current ${regradeType}:`, value: `${currentStatAmount.toLocaleString()} ${typeText}`, inline: true },
-            { name: 'Increase On Success:', value: `+${increaseAmount.toLocaleString()} ${typeText}`, inline: true },
+            // Same "Unlimited" framing as createRegradeEmbed's own result-embed fields —
+            // Bank Capacity's final tier's real +100,000,000,000 increase is the "never
+            // worry about bank space again" milestone, not just a big number.
+            { name: 'Increase On Success:', value: willMaxBankCapacity ? `Unlimited (fully maxes Bank Capacity!)` : `+${increaseAmount.toLocaleString()} ${typeText}`, inline: true },
             { name: 'Success Chance:', value: `${(successChance * 100).toFixed(2)}% (+${(failStack * 100).toFixed(2)}%)`, inline: false },
         ];
         if (!canAfford) {
@@ -4611,9 +4618,12 @@ class EmbedFactory {
     // the FULL ladder, not just this page, and isCurrent marks the rung the player's own
     // regradeAmount currently sits on) — built by the caller so this stays a pure render.
     createRegradeTiersPageEmbed(regradeType, tierRows, pageIndex, totalPages, unit) {
-        const fields = tierRows.map(({ tier, index, isCurrent }) => ({
+        // willMaxBankCapacity (per row, from regrade.js's buildTierRows) — Bank Capacity's
+        // own final rung shows the same "Unlimited" framing as the preview/result embeds
+        // instead of its literal +100,000,000,000 increase.
+        const fields = tierRows.map(({ tier, index, isCurrent, willMaxBankCapacity }) => ({
             name: `${isCurrent ? '➡️ ' : ''}Tier ${index}${isCurrent ? ' (current)' : ''}`,
-            value: `Cost: ${tier.cost.toLocaleString()} potatoes\nIncrease: +${tier.increase.toLocaleString()} ${unit}\nChance: ${(tier.chance * 100).toFixed(2)}%`,
+            value: `Cost: ${tier.cost.toLocaleString()} potatoes\nIncrease: ${willMaxBankCapacity ? 'Unlimited (maxes Bank Capacity!)' : `+${tier.increase.toLocaleString()} ${unit}`}\nChance: ${(tier.chance * 100).toFixed(2)}%`,
             inline: true,
         }));
         return new EmbedBuilder()

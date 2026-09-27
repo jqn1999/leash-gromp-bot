@@ -1368,6 +1368,20 @@ no `misc/`/`guilds/` category fits a Mercenary-track command):
 | `/rob-npc heist-type:<Market Stall\|Merchant's Wagon\|Noble's Vault\|The Royal Treasury>` | Rejects if not a mercenary, if the picked tier isn't unlocked at your Mercenary Rank, or if `npcRobTimer` hasn't elapsed. No confirm step. Dedicated result embed (win/loss + tier + amount or penalty + rare stat-grant callout on The Royal Treasury + (on a win, Rank 2+) a cooldown-reduction callout). |
 | `/set-mercenary-buff buff:<rob-chance\|work-timer\|work-multi\|bounty-timer>` | See [Mercenary Buff](#mercenary-buff-set-mercenary-buff-2026-09-09-direct-instruction) above. Rejects if not a mercenary, rejects a same-category re-pick as a no-op, else rejects if the switch cooldown (15min) hasn't elapsed. On success, sets `mercenaryBuff`/`mercenaryBuffSwitchTimer`. |
 
+**`/bounty-board`'s per-tier reward is Rank-scaled and rounded (2026-09-27, direct instruction:
+"make bountyboard command take into account their merc level and calculate the gain number
+correctly rounded to a whole number").** The preview used to show each tier's raw, unscaled
+`Bounty.TIERS[i].reward` — understating what a win actually pays at any rank above 1, since
+`resolveBountyAttempt`'s own win branch multiplies by `rankInfo.rewardMultiplier` before rounding
+(see the 12-Tier Bounty Ladder above). `bountyBoard.js` now overrides each `weightedTiers[i].reward`
+with `Math.round(t.reward * rankInfo.rewardMultiplier)` before handing it to
+`createBountyBoardEmbed`. The `Math.round` isn't cosmetic — `rewardMultiplier` values like
+1.15/1.30/3.30 hit real floating-point imprecision against an integer base (`41000 * 1.15 ===
+47149.99999999999` in JS), which would otherwise render a decimal potato amount instead of a whole
+one. Penalty is deliberately left untouched — `resolveBountyAttempt`'s own comment already
+establishes that a loss is never discounted by `rewardMultiplier`, by design, so the risk/reward
+ratio genuinely improves as rank climbs rather than losses just mirroring a scaled-down gain.
+
 **Mercenary Leaderboard** (2026-08-31) lives on the existing `/leaderboard` command, not
 here — a fourth `mercenary-leaderboard` option alongside `user-leaderboard`/
 `guild-leaderboard`/`starch-leaderboard`. Ranked purely by `mercenaryBountyWinCount`
