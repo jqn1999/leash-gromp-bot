@@ -64,11 +64,20 @@ async function startWorldBoss(world, mob){
             // no separate Number.isFinite guard needed anymore.
             const memberMultiplier = getMemberRaidPower(userDetails);
             totalMultiplier += memberMultiplier;
-            raidListByMulti.push({id: element.id, username: element.username, multiplier: memberMultiplier})
+            // Titles (systems/titles.md, "more places titles show up" pass, 2026-09-27) —
+            // userDetails is already fetched above for the power calc, so this is free.
+            raidListByMulti.push({id: element.id, username: element.username, multiplier: memberMultiplier, equippedTitle: userDetails?.equippedTitle || null})
         })
         for (const element of raidListByMulti) {
             element.raidShare = totalMultiplier > 0 ? element.multiplier / totalMultiplier : 0;
         }
+        // Ordered by each member's own power, descending (direct instruction, 2026-09-27:
+        // "order ... world boss list ... in order of power they're contributing"). Safe to
+        // reorder here: handlePotatoSplitByShare below mutates each member object in place
+        // and never depends on array order for the actual payout math (per-member, via its
+        // own Promise.all), so this only changes DISPLAY order in the result embed/Big
+        // Events post, not who gets paid what.
+        raidListByMulti.sort((a, b) => b.multiplier - a.multiplier);
     }
     // World Boss's own workMulti buff (2026-09-04, direct instruction) — applied ONLY to
     // the aggregate totalMultiplier that drives successChance, never to each participant's

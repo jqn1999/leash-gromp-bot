@@ -61,6 +61,14 @@ class TitleFactory {
             return (userDetails.festivalCosmetics || []).includes(condition.cosmeticId);
         }
 
+        // manualGrant (2026-09-27) — a one-off historical honor with no stat/threshold to
+        // check at all (see constants.js's own comment on champion_of_the_fallen_realm).
+        // permanentTitles is the ONLY source of truth here — never live-checked, only ever
+        // set by an admin via /admin grant-title.
+        if (condition.type === "manualGrant") {
+            return (userDetails.permanentTitles || []).includes(titleId);
+        }
+
         return false;
     }
 
@@ -81,8 +89,8 @@ class TitleFactory {
                 currentValue = getStatValue(userDetails, title.condition.statPath) || 0;
             } else if (title.condition.type === "guildLevel") {
                 currentValue = isUnlocked ? title.condition.minLevel : await this.getCurrentGuildLevel(userDetails);
-            } else if (title.condition.type === "festivalCosmetic") {
-                // Binary, not a countable stat — "0 / 1" until purchased, same as a
+            } else if (title.condition.type === "festivalCosmetic" || title.condition.type === "manualGrant") {
+                // Binary, not a countable stat — "0 / 1" until purchased/granted, same as a
                 // guildLevel title reads "0 / minLevel" before it's ever been reached.
                 currentValue = isUnlocked ? 1 : 0;
             }
@@ -115,6 +123,15 @@ class TitleFactory {
         const title = Titles.find(t => t.id === titleId);
         if (!title) return null;
         return `${title.label} — ${title.description}`;
+    }
+
+    // Short form ("the Reborn", not the full "the Reborn — Shed one life's harvest...")
+    // for inline mentions where a full flavor sentence would be too long — a roster line,
+    // a Big Events post, a leaderboard row. See systems/titles.md's "more places titles
+    // show up" pass (2026-09-27). Same null-safety as getEquippedTitleLabel above.
+    getTitleLabel(titleId) {
+        const title = Titles.find(t => t.id === titleId);
+        return title ? title.label : null;
     }
 }
 

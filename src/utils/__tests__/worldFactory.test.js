@@ -234,6 +234,41 @@ describe('World power calc (2026-09-04 fix)', () => {
         expect(withRebirthChance).toBeGreaterThan(noRebirthChance);
     });
 
+    // Titles (systems/titles.md, "more places titles show up" pass, 2026-09-27) —
+    // userDetails is already fetched here for the power calc, so equippedTitle rides along
+    // onto raidListByMulti for free.
+    test('carries each participant\'s equippedTitle onto raidListByMulti for the result embed', async () => {
+        const spy = jest.spyOn(EmbedFactory.prototype, 'createWorldResultEmbed');
+        const griseousIndex = worldBossMobs.findIndex(m => m.name === 'Griseous, the Dragon Fruit');
+
+        mockWinnableRaid(griseousIndex, [{ id: 'a', workMultiplierAmount: 100, rebirthCount: 0, equippedTitle: 'reborn_spud' }]);
+        const factory = new worldFactory();
+        await factory.popWorldBoss();
+        const [raidListByMulti] = spy.mock.calls[0];
+
+        expect(raidListByMulti[0].equippedTitle).toBe('reborn_spud');
+    });
+
+    // Ordered by each member's own power, descending (direct instruction, 2026-09-27:
+    // "order ... world boss list ... in order of power they're contributing"). Participants
+    // are deliberately given weakest-first here, so a passing test can only be explained by
+    // an explicit sort, never by world_list's own join order happening to already match.
+    test('raidListByMulti is sorted by multiplier descending, not by world_list join order', async () => {
+        const spy = jest.spyOn(EmbedFactory.prototype, 'createWorldResultEmbed');
+        const griseousIndex = worldBossMobs.findIndex(m => m.name === 'Griseous, the Dragon Fruit');
+
+        mockWinnableRaid(griseousIndex, [
+            { id: 'weak', workMultiplierAmount: 100, rebirthCount: 0 },
+            { id: 'strong', workMultiplierAmount: 10_000_000, rebirthCount: 0 },
+            { id: 'mid', workMultiplierAmount: 5_000_000, rebirthCount: 0 },
+        ]);
+        const factory = new worldFactory();
+        await factory.popWorldBoss();
+        const [raidListByMulti] = spy.mock.calls[0];
+
+        expect(raidListByMulti.map(m => m.id)).toEqual(['strong', 'mid', 'weak']);
+    });
+
     test('a live workMulti World Boss buff raises totalMultiplier further, without changing any participant\'s own raidShare', async () => {
         const spy = jest.spyOn(EmbedFactory.prototype, 'createWorldResultEmbed');
         const griseousIndex = worldBossMobs.findIndex(m => m.name === 'Griseous, the Dragon Fruit');

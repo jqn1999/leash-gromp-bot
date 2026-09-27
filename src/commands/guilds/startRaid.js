@@ -1505,6 +1505,31 @@ async function resolveRaid(interaction, raidSelection, isChainedReply, chainDept
     }
 
     const raidMemberDetails = await Promise.all(raidList.map(element => dynamoHandler.findUser(element.id, element.username)));
+
+    // Ordered by each member's own power, descending (direct instruction, 2026-09-27: "order
+    // ... raid list ... in order of power they're contributing") — raidList and
+    // raidMemberDetails are re-ordered together, in place, so every later index-matched read
+    // of either (raidListByMulti's own `raidList.map((member, index) => ...
+    // raidMemberDetails[index])` below, createRaidEmbed's "Members In Raid:" field) sees the
+    // same power-descending order for free. Safe to reorder here: every raidList/
+    // raidMemberDetails consumer downstream is order-independent by construction —
+    // handleStatSplit/handlePotatoSplit apply an identical flat amount per member via their
+    // own Promise.all, and getEffectiveRaidPower (right below) already sorts its OWN copy
+    // internally, so externally pre-sorting doesn't change the power total it computes.
+    const rankedPairs = raidList
+        .map((member, i) => ({ member, details: raidMemberDetails[i] }))
+        .sort((a, b) => getMemberRaidPower(b.details) - getMemberRaidPower(a.details));
+    raidList.splice(0, raidList.length, ...rankedPairs.map(p => p.member));
+    raidMemberDetails.splice(0, raidMemberDetails.length, ...rankedPairs.map(p => p.details));
+
+    // Titles (systems/titles.md, "more places titles show up" pass, 2026-09-27) — enriched
+    // onto the SAME raidList objects (not a separate array) so the equipped title rides
+    // along through every scenario closure below and reaches createRaidEmbed's "Members In
+    // Raid:" field for free, with no signature changes anywhere in the raid-scenario dispatch
+    // chain. raidMemberDetails[i] can be null (a findUser failure) — equippedTitle just stays
+    // null for that entry, degrading to "no title shown" rather than a crash.
+    raidList.forEach((member, i) => { member.equippedTitle = raidMemberDetails[i]?.equippedTitle || null; });
+
     // Rank-weighted teamPower (top raider full weight, each next-strongest at
     // RAID_TEAM_DECAY of the rank above them) plus a headcount bonus for roster size —
     // see raidFactory.js's getEffectiveRaidPower, shared with currentRaid.js so the two
@@ -1722,7 +1747,7 @@ async function resolveRaid(interaction, raidSelection, isChainedReply, chainDept
     // Big Events post on its own.
     if (typeof finalSuccessChance === 'number' && finalSuccessChance < bigEventsChannel.BIG_EVENT_WIN_CHANCE_THRESHOLD) {
         const fields = [
-            bigEventsChannel.playerField(userDisplayName),
+            bigEventsChannel.playerField(userDisplayName, userDetails.equippedTitle),
             bigEventsChannel.oddsField(finalSuccessChance),
             bigEventsChannel.guildField(guildName),
         ];
@@ -1757,7 +1782,7 @@ async function resolveRaid(interaction, raidSelection, isChainedReply, chainDept
                 title: '🎉 Rare Companion!',
                 description: `**${userDisplayName}** brought back a rare companion for **${guildName}**!`,
                 fields: [
-                    bigEventsChannel.playerField(userDisplayName),
+                    bigEventsChannel.playerField(userDisplayName, userDetails.equippedTitle),
                     bigEventsChannel.companionField(def),
                     bigEventsChannel.guildField(guildName),
                     bigEventsChannel.sourceField('Guild Raid Reward'),

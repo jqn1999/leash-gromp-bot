@@ -247,7 +247,7 @@ module.exports = {
                     title: '🎉 Rare Companion!',
                     description: `**${userDisplayName}** earned a rare companion in the Tower!`,
                     fields: [
-                        bigEventsChannel.playerField(userDisplayName),
+                        bigEventsChannel.playerField(userDisplayName, userDetails.equippedTitle),
                         bigEventsChannel.companionField(bastionAward.companion),
                         bigEventsChannel.sourceField('Tower Reward'),
                     ],

@@ -234,7 +234,7 @@ async function runNpcRobAttempt(interaction, userId, username, userDisplayName, 
 
     if (result.won && result.successChance < bigEventsChannel.BIG_EVENT_WIN_CHANCE_THRESHOLD) {
         const fields = [
-            bigEventsChannel.playerField(userDisplayName),
+            bigEventsChannel.playerField(userDisplayName, userDetails.equippedTitle),
             bigEventsChannel.oddsField(result.successChance),
             bigEventsChannel.rewardField(result.amount),
         ];

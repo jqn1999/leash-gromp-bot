@@ -82,7 +82,7 @@ var workScenarios = [
             await bigEventsChannel.postBigEvent({
                 title: bigEventsChannel.BIG_EVENT_WORK_TITLES.golden,
                 description: `**${userDisplayName}** hit ${bigEventsChannel.BIG_EVENT_WORK_LABELS.golden} while working!`,
-                fields: [bigEventsChannel.playerField(userDisplayName), bigEventsChannel.rewardField(potatoesGained)],
+                fields: [bigEventsChannel.playerField(userDisplayName, userDetails.equippedTitle), bigEventsChannel.rewardField(potatoesGained)],
                 color: bigEventsChannel.SCENARIO_COLOR.golden,
             });
             return potatoesGained;
@@ -124,7 +124,7 @@ var workScenarios = [
                 await bigEventsChannel.postBigEvent({
                     title: bigEventsChannel.BIG_EVENT_WORK_TITLES.metalSuccess,
                     description: `**${userDisplayName}** hit ${bigEventsChannel.BIG_EVENT_WORK_LABELS.metalSuccess} while working!`,
-                    fields: [bigEventsChannel.playerField(userDisplayName), bigEventsChannel.rewardField(potatoesGained)],
+                    fields: [bigEventsChannel.playerField(userDisplayName, userDetails.equippedTitle), bigEventsChannel.rewardField(potatoesGained)],
                     color: bigEventsChannel.SCENARIO_COLOR.metalSuccess,
                 });
             } else {
@@ -171,7 +171,7 @@ var workScenarios = [
                     title: '🎉 Rare Companion!',
                     description: `**${userDisplayName}** crossed paths with a rare companion while working!`,
                     fields: [
-                        bigEventsChannel.playerField(userDisplayName),
+                        bigEventsChannel.playerField(userDisplayName, userDetails.equippedTitle),
                         bigEventsChannel.companionField(companionResult.companion),
                         bigEventsChannel.sourceField('Found while Working'),
                     ],
@@ -222,7 +222,7 @@ var workScenarios = [
             await bigEventsChannel.postBigEvent({
                 title: bigEventsChannel.BIG_EVENT_WORK_TITLES.ancient,
                 description: `**${userDisplayName}** hit ${bigEventsChannel.BIG_EVENT_WORK_LABELS.ancient} while working!`,
-                fields: [bigEventsChannel.playerField(userDisplayName), { name: 'Reward', value: ancientRewardFieldValue, inline: true }],
+                fields: [bigEventsChannel.playerField(userDisplayName, userDetails.equippedTitle), { name: 'Reward', value: ancientRewardFieldValue, inline: true }],
                 color: bigEventsChannel.SCENARIO_COLOR.ancient,
             });
             return ancientResult.potatoesGained;
@@ -254,7 +254,7 @@ var workScenarios = [
             await bigEventsChannel.postBigEvent({
                 title: bigEventsChannel.BIG_EVENT_WORK_TITLES.goldenYam,
                 description: `**${userDisplayName}** hit ${bigEventsChannel.BIG_EVENT_WORK_LABELS.goldenYam} while working!`,
-                fields: [bigEventsChannel.playerField(userDisplayName), bigEventsChannel.rewardField(starchesGained, 'starches')],
+                fields: [bigEventsChannel.playerField(userDisplayName, userDetails.equippedTitle), bigEventsChannel.rewardField(starchesGained, 'starches')],
                 color: bigEventsChannel.SCENARIO_COLOR.goldenYam,
             });
             return starchesGained;

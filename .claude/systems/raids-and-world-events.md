@@ -941,6 +941,22 @@ Cinderroot's sacrifice mechanic (`promptCompanionSacrifice`, only ever offered o
 unaffected by this conversion — a loss never chains under the new rule, so the sacrifice prompt can
 never be interrupted by (or itself trigger) a zero-click chained attempt.
 
+### Display order: "Members In Raid:" is power-sorted, strongest first (2026-09-27)
+
+Direct instruction: "order ... raid list ... in order of power they're contributing." `resolveRaid`
+sorts `raidList`/`raidMemberDetails` together, by `getMemberRaidPower(raidMemberDetails[i])`
+descending, immediately after the `raidMemberDetails` fetch and immediately before the pre-existing
+Titles `equippedTitle` enrichment step (both arrays are reordered in lockstep via an in-place
+`.splice()`, since they're `const`-bound and read/mutated by reference throughout the rest of
+`resolveRaid` and every scenario closure). This is a **display-only** reorder — every downstream
+consumer of these two arrays (`handleStatSplit`/`handlePotatoSplit`, `incrementCounter`, and
+`getEffectiveRaidPower` right below the sort) applies an identical, flat, per-member operation via
+its own `Promise.all`, or (for `getEffectiveRaidPower`) internally re-sorts its own copy by power
+before computing the team-power total — so pre-sorting here changes only what order the "Members In
+Raid:" field lists names in, never who gets paid what or the actual power/success-chance math.
+`raidListByMulti` (built later in the same function from the now-sorted `raidList`/
+`raidMemberDetails`) naturally inherits the sorted order for free.
+
 ## World raids
 
 Server-wide bosses (not guild-scoped), state stored in the stats table under the `world` doc
@@ -1030,6 +1046,15 @@ covered by `bigEventsChannel.test.js`. Full suite re-run clean: **1764/1764**.
 Raid (`world_active`/`world_index` reads); the fight itself is resolved exclusively by the bot's own
 hourly cron (`backgroundEvents.js`), with no Lambda-side equivalent to mirror this into. Confirmed
 via grep before concluding this — not assumed.
+
+**Display order: result embed is power-sorted, strongest first (2026-09-27)** — same instruction as
+the guild raid list above ("order ... world boss list ... in order of power they're contributing").
+`startWorldBoss` sorts `raidListByMulti` by `.multiplier` descending immediately after the
+`raidShare` computation loop, before it's handed to `handlePotatoSplitByShare`,
+`createWorldResultEmbed`, and `buildParticipantsField` for the Big Events post. Safe for the same
+reason as the guild raid sort: `handlePotatoSplitByShare` mutates each member object in place and
+never depends on array order for the actual payout math, so this changes only display order in the
+result embed and Big Events post, never who gets paid what.
 
 ### Server-wide buff
 

@@ -302,7 +302,16 @@ const Titles = [
     // itself an append-only owned-items array, already permanent by construction.
     { id: "harvest_laureate", label: "the Harvest Laureate", description: "Crowned with the rarest laurel of the Harvest Festival — every stall bested, every ladder cleared.", condition: { type: "festivalCosmetic", cosmeticId: "harvest_festival_grand_laurel" } },
     { id: "frost_fair_laureate", label: "the Frost Fair Laureate", description: "Earned the Frost Fair's grandest medallion before the last stall closed for the season.", condition: { type: "festivalCosmetic", cosmeticId: "frost_fair_grand_medallion" } },
-    { id: "bloom_laureate", label: "the Bloom Laureate", description: "Wears the Grand Bloom Laurel — Spring Planting's rarest wreath, earned only by the season's most dedicated planter.", condition: { type: "festivalCosmetic", cosmeticId: "spring_planting_grand_bloom" } }
+    { id: "bloom_laureate", label: "the Bloom Laureate", description: "Wears the Grand Bloom Laurel — Spring Planting's rarest wreath, earned only by the season's most dedicated planter.", condition: { type: "festivalCosmetic", cosmeticId: "spring_planting_grand_bloom" } },
+    // manualGrant (2026-09-27, direct instruction — a one-off historical honor for the top 3
+    // finishers of the player's PREVIOUS server, before this one) — the first Title with no
+    // statPath/threshold and no live-checkable condition at all, since "which 3 people" isn't
+    // derivable from any in-game counter. Resolved purely off `permanentTitles` (see
+    // titleFactory.isTitleUnlocked) — never live-checked, only ever set by an admin via
+    // `/admin grant-title`. Distinct from guildLevel's use of permanentTitles (which persists
+    // an otherwise-live-checkable condition once it's true) — this one has NOTHING to live-check
+    // in the first place, permanentTitles is the sole source of truth from day one.
+    { id: "champion_of_the_fallen_realm", label: "Champion of the Fallen Realm", description: "One of the three names carried over from a Kingdom that no longer stands.", condition: { type: "manualGrant" } }
 ]
 
 const CatchUp = {

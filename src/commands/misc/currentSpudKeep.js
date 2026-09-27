@@ -35,7 +35,19 @@ function flattenRoster(entrants) {
         const contributionByUserId = new Map(
             (entrant.breakdown.memberContributions || []).map(c => [c.member.userId, c])
         );
-        for (const member of entrant.roster) {
+        // Ordered by each member's own power contribution, descending (direct instruction,
+        // 2026-09-27: "order spud keep players in each guild and in merc list in order of
+        // power they're contributing"). memberContributions is already sorted this way
+        // (raidFactory.getEffectiveRaidPowerBreakdown), but entrant.roster itself isn't, so
+        // sort a copy here rather than assume it inherits that order. A roster member missing
+        // from memberContributions (shouldn't happen — see comment above) sorts to the back
+        // instead of landing at an arbitrary spot.
+        const sortedRoster = [...entrant.roster].sort((a, b) => {
+            const contribA = contributionByUserId.get(a.id)?.contribution ?? -Infinity;
+            const contribB = contributionByUserId.get(b.id)?.contribution ?? -Infinity;
+            return contribB - contribA;
+        });
+        for (const member of sortedRoster) {
             const contribution = contributionByUserId.get(member.id) || null;
             rows.push({ username: member.username, entrantName: entrant.name, entrantType: entrant.type, contribution });
         }

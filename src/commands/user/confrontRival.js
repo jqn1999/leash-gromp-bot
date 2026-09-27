@@ -109,7 +109,7 @@ module.exports = {
         // BIG_EVENT_WIN_CHANCE_THRESHOLD anyway, so this is never looser than that pattern.
         if (result.won && result.scenario === 'hard') {
             const fields = [
-                bigEventsChannel.playerField(userDisplayName),
+                bigEventsChannel.playerField(userDisplayName, userDetails.equippedTitle),
                 bigEventsChannel.oddsField(result.successChance),
                 bigEventsChannel.rewardField(result.rewardAmount),
             ];

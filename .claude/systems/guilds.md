@@ -58,6 +58,18 @@ into a single guarded write instead of two separate ones. Guild records created 
 existed are healed to version 0 on their first guarded write (`attribute_not_exists(guildVersion)`
 in the condition).
 
+**`/guild-members` display order: role first, then power within each role (2026-09-27, direct
+instruction: "guild list by role first then sorted within each role so leader then coleaders
+etc").** `guildMembers.js` already fetches `memberDetails` (full `userDetails` per member) for the
+pre-existing Titles enrichment — reused here, with no new queries, to compute each member's
+`raidFactory.getMemberRaidPower` and sort `guild.memberList` by it (descending) BEFORE
+`createGuildMemberListEmbed` runs. That embed function was already structured as one Leader
+`.find()` plus separate Co-Leader/Elder/Member `.filter()` calls bucketing by role — since
+`.filter()`/`.find()` preserve relative order, pre-sorting `memberList` by power makes each role
+bucket come out power-sorted for free, with no change needed inside `createGuildMemberListEmbed`
+itself. (`memberList` itself ends up sorted by power across ALL roles, not role-then-power — that
+cross-role interleaving is never rendered directly, only each role's own filtered bucket is.)
+
 ## Guild bank
 
 [guildBank.js](../../src/commands/guilds/guildBank.js):

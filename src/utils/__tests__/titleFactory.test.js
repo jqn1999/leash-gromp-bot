@@ -154,6 +154,30 @@ describe('isTitleUnlocked — festivalCosmetic titles (Seasonal Festivals integr
     });
 });
 
+// manualGrant (2026-09-27) — a one-off historical honor (champion_of_the_fallen_realm) with
+// no statPath/threshold at all. permanentTitles is the ONLY source of truth, set solely by
+// /admin grant-title — nothing here is ever live-checked or opportunistically persisted the
+// way guildLevel's own permanentTitles usage is.
+describe('isTitleUnlocked — manualGrant titles (one-off admin-granted honors)', () => {
+    test('locked until an admin has granted it — no DB call, no live check of any kind', async () => {
+        const user = baseUser({ permanentTitles: [] });
+        expect(await titleFactory.isTitleUnlocked(user, 'champion_of_the_fallen_realm')).toBe(false);
+        expect(dynamoHandler.findGuildById).not.toHaveBeenCalled();
+        expect(dynamoHandler.updateUserFields).not.toHaveBeenCalled();
+    });
+
+    test('unlocked once permanentTitles contains it, regardless of any other stat', async () => {
+        const user = baseUser({ permanentTitles: ['champion_of_the_fallen_realm'] });
+        expect(await titleFactory.isTitleUnlocked(user, 'champion_of_the_fallen_realm')).toBe(true);
+    });
+
+    test('missing permanentTitles entirely reads as locked, not a crash', async () => {
+        const user = baseUser();
+        delete user.permanentTitles;
+        expect(await titleFactory.isTitleUnlocked(user, 'champion_of_the_fallen_realm')).toBe(false);
+    });
+});
+
 describe('getTitleProgress', () => {
     test('returns every title with isUnlocked/currentValue, without persisting anything for already-unlocked stat titles', async () => {
         const user = baseUser({ rebirthCount: 5 });
@@ -189,6 +213,18 @@ describe('getTitleProgress', () => {
         const frost = progress.find(p => p.title.id === 'frost_fair_laureate');
         expect(frost.isUnlocked).toBe(false);
         expect(frost.currentValue).toBe(0);
+    });
+
+    test('a locked manualGrant title reports binary 0 progress, a granted one reports 1', async () => {
+        const user = baseUser({ permanentTitles: ['champion_of_the_fallen_realm'] });
+        const progress = await titleFactory.getTitleProgress(user);
+
+        const champion = progress.find(p => p.title.id === 'champion_of_the_fallen_realm');
+        expect(champion.isUnlocked).toBe(true);
+        expect(champion.currentValue).toBe(1);
+
+        const noneGranted = await titleFactory.getTitleProgress(baseUser({ permanentTitles: [] }));
+        expect(noneGranted.find(p => p.title.id === 'champion_of_the_fallen_realm').currentValue).toBe(0);
     });
 });
 

@@ -136,7 +136,7 @@ module.exports = {
                 title: '⚔️ Hard Warband Repelled!',
                 description: `**${guildName}** repelled ${result.rival.name}'s warband on the hardest Guild Rival Warband tier!`,
                 fields: [
-                    bigEventsChannel.playerField(userDisplayName),
+                    bigEventsChannel.playerField(userDisplayName, userDetails.equippedTitle),
                     bigEventsChannel.guildField(guildName),
                     bigEventsChannel.oddsField(result.successChance),
                     bigEventsChannel.rewardField(result.rewardAmount),

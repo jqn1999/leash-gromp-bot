@@ -240,6 +240,16 @@ describe('field builders', () => {
         expect(playerField('Someone')).toEqual({ name: 'Adventurer', value: 'Someone', inline: true });
     });
 
+    // equippedTitle (systems/titles.md, "more places titles show up" pass, 2026-09-27) —
+    // optional so every pre-existing call site (no second arg) is unaffected.
+    test('playerField with an equipped title appends its short label', () => {
+        expect(playerField('Someone', 'reborn_spud')).toEqual({ name: 'Adventurer', value: 'Someone, the Reborn', inline: true });
+    });
+
+    test('playerField with an unrecognized title id falls back to just the name', () => {
+        expect(playerField('Someone', 'not_a_real_title')).toEqual({ name: 'Adventurer', value: 'Someone', inline: true });
+    });
+
     test('rewardField defaults currency to potatoes', () => {
         expect(rewardField(12345)).toEqual({ name: 'Reward', value: '12,345 potatoes', inline: true });
     });

@@ -433,6 +433,14 @@ design was marked a nice-to-have, not a v1 requirement, and was **not implemente
   rather than a crash. `createSpudKeepRosterEmbed` shows it as "adding **X** power (Y% of their own
   Z)" right on each player's own line, so a member can see both their raw power and how much the
   rank decay/floor already cost them.
+
+  **Display order: power-sorted within each entrant, strongest first (2026-09-27, direct
+  instruction: "order spud keep players in each guild and in merc list in order of power they're
+  contributing").** `memberContributions` is already sorted descending by power (see above), but
+  `entrant.roster` itself isn't guaranteed to be — `flattenRoster()` now sorts a copy of each
+  entrant's roster by its matched `contribution` value (descending) before pushing rows, rather than
+  assuming it inherits `memberContributions`' order. A roster member missing from
+  `memberContributions` sorts to the back instead of landing at an arbitrary spot.
 - `/collect-potatoes` (user, `src/commands/user/collectPotatoes.js`) — the general potato-collection
   command: shows a preview embed with every pending source's own amount (Spud Keep's
   `spudKeepPendingPotatoes` here, Tater Tower's `towerPendingPotatoes` — see systems/tower.md) plus

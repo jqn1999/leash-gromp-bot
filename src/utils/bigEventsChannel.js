@@ -1,5 +1,7 @@
 const dynamoHandler = require("./dynamoHandler");
 const { CompanionRarity } = require("./constants");
+const { TitleFactory } = require("./titleFactory");
+const titleFactory = new TitleFactory();
 
 // Big Events Channel (2026-09-16) — bot-side counterpart to financial-project's own
 // postBigEvent (gromp-economy/gromp-mercenary/gromp-guilds' handler.ts). Originally
@@ -115,8 +117,13 @@ async function postBigEvent({ title, description, fields = [], color = BIG_EVENT
 // Small field builders shared by every call site below, so the exact wording/shape (field
 // name, inline-ness) can't drift between work.js/takeBounty.js/robNpc.js/startRaid.js/
 // enter-tower.js's own calls into a half-dozen slightly different versions of "who did this."
-function playerField(userDisplayName) {
-    return { name: "Adventurer", value: userDisplayName, inline: true };
+// equippedTitle (systems/titles.md, "more places titles show up" pass, 2026-09-27) —
+// optional, so every pre-existing call site keeps working unchanged; callers that already
+// have userDetails in scope (every one of them does, by the time they're posting a Big
+// Event) pass userDetails.equippedTitle for free.
+function playerField(userDisplayName, equippedTitle = null) {
+    const titleLabel = equippedTitle ? titleFactory.getTitleLabel(equippedTitle) : null;
+    return { name: "Adventurer", value: titleLabel ? `${userDisplayName}, ${titleLabel}` : userDisplayName, inline: true };
 }
 function rewardField(amount, currency = "potatoes") {
     return { name: "Reward", value: `${amount.toLocaleString()} ${currency}`, inline: true };

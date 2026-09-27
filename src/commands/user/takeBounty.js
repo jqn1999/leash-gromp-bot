@@ -292,7 +292,7 @@ async function runBountyAttempt(client, interaction, userId, username, userDispl
             title: '🎉 Rare Companion!',
             description: `**${userDisplayName}** won a rare companion off a Bounty!`,
             fields: [
-                bigEventsChannel.playerField(userDisplayName),
+                bigEventsChannel.playerField(userDisplayName, userDetails.equippedTitle),
                 bigEventsChannel.companionField(yukonAward.companion),
                 bigEventsChannel.sourceField('Bounty Reward'),
             ],
@@ -320,7 +320,7 @@ async function runBountyAttempt(client, interaction, userId, username, userDispl
 
     if (result.won && result.successChance < bigEventsChannel.BIG_EVENT_WIN_CHANCE_THRESHOLD) {
         const fields = [
-            bigEventsChannel.playerField(userDisplayName),
+            bigEventsChannel.playerField(userDisplayName, userDetails.equippedTitle),
             bigEventsChannel.oddsField(result.successChance),
             bigEventsChannel.rewardField(netRewardAmount, result.currency),
         ];
@@ -456,7 +456,7 @@ async function runStatBountyAttempt(client, interaction, userId, username, userD
         await bigEventsChannel.postBigEvent({
             title: '🔥 Against All Odds!',
             description: `**${userDisplayName}** pulled off a daring Stat Bounty win against the odds!`,
-            fields: [bigEventsChannel.playerField(userDisplayName), bigEventsChannel.oddsField(result.successChance)],
+            fields: [bigEventsChannel.playerField(userDisplayName, userDetails.equippedTitle), bigEventsChannel.oddsField(result.successChance)],
             color: bigEventsChannel.LONG_SHOT_WIN_COLOR,
         });
     }

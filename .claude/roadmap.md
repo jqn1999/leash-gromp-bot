@@ -18014,3 +18014,158 @@ front. `economy-and-work.md`'s Poison Potato mitigation section gained a follow-
 handling (if any exists there) would need the equivalent lockout-override and threshold change to
 stay in parity, but this wasn't audited in this session; flagged here rather than silently assumed
 fine.
+
+## Titles gains a 4th condition type (`manualGrant`) and its first one-off honor, `champion_of_the_fallen_realm` — a new `/admin grant-title` command
+
+**What was asked.** After a walkthrough of where Titles currently show up (answer: only `/profile`,
+by deliberate v1 design — see `titles.md` section 8), direct instruction for "a new unique title for
+3 players that finished in the top 3 of my last server playing this game."
+
+**What changed.** Every existing Title condition (`stat`, `guildLevel`, `festivalCosmetic`) resolves
+against something already tracked on `userDetails` — a lifetime counter, a live guild fetch, an
+owned cosmetic. "Who finished top 3 on a previous server" has no such backing data at all, so a
+fourth condition type, `manualGrant`, was added: `isTitleUnlocked` for it is a pure
+`permanentTitles.includes(titleId)` check, never live-checked, no opportunistic persistence path —
+`permanentTitles` is the ONLY source of truth for this type, unlike `guildLevel`'s use of the same
+field as a fallback for a condition that could otherwise regress. New title:
+`champion_of_the_fallen_realm` ("Champion of the Fallen Realm") — one shared title for all 3
+finishers, not three separate rank-specific ones (kept simple: a single "you were among the best"
+honor, product-owner call after weighing it against a gold/silver/bronze set). New `/admin
+grant-title` subcommand (devOnly + Administrator) hands it out: takes a player + a title (choices
+statically filtered to `condition.type === 'manualGrant'` only, so this command can never be used to
+bypass a REAL milestone's requirements), checks `titleFactory.isTitleUnlocked` first so a repeat
+grant is a harmless no-op, then appends to `permanentTitles`. Once granted, the title needs zero
+special-casing anywhere else — `/titles`, `/set-title`, `/profile` all already treat every title
+uniformly regardless of condition type, which is exactly the payoff of the condition-type
+abstraction from the original design.
+
+**Not done in this pass — waiting on the actual player identities.** This machinery lets the title be
+granted, but nobody's been granted it yet; the user needs to run `/admin grant-title` themselves for
+each of the 3 players once this ships, since granting requires live Discord/DB access this session
+doesn't have.
+
+**Also answered, not yet acted on: where else Titles could show up.** Audited every embed call site
+for whether `userDetails`/`equippedTitle` is already in memory (no new query) vs. needs a fresh
+fetch:
+- **Free**: guild raid result embeds and World Boss result embeds (`raidMemberDetails`/
+  `worldMemberDetails` are already fetched for the power/multiplier math before either embed is
+  built — this is the exact phase-2 candidate `titles.md` section 8 already flagged), the
+  leaderboard (`getSortedUsers()` returns full docs, `equippedTitle` included), and every Big
+  Events channel post (the winner's full `userDetails` is already in scope at every trigger site).
+- **Small added cost**: the guild member list (`/guild members`) and Tower's daily leaderboard only
+  have `{id, username, role}`-shaped rosters today, so showing a title there means a new per-member
+  fetch — cheap at typical roster sizes, but not free.
+- **Bigger lift, not recommended yet**: a "new title unlocked" nudge would need the same
+  recompute-and-diff logic Achievements' own unlock embed uses, which Titles' v1 design explicitly
+  deferred (decision point #3).
+- Not yet implemented — the plan was presented and the user hasn't confirmed which batch to build.
+
+**Tests.** `titleFactory.test.js` gained a `manualGrant` describe block (3 tests: locked with zero DB
+calls, unlocked once persisted, missing `permanentTitles` degrades to locked not a crash) plus a
+`getTitleProgress` binary-progress case. `admin.test.js` gained a `grant-title` describe block (5
+tests: grants and persists, preserves other existing manual grants rather than overwriting the
+array, already-granted is a no-op, rejects a non-`manualGrant` title id, rejects an unresolvable
+player). Full suite: **114 suites / 2143 tests, all passing** (net +9 new tests, 0 broken).
+
+**Docs.** `systems/titles.md` gained a new "§12 `manualGrant` condition type" section covering the
+mechanism, the granting command, and why it's deliberately scoped to only `manualGrant`-type titles.
+
+**Cross-repo note.** Not ported to `financial-project` — Titles as a whole was already flagged
+missing from the web port entirely (see the earlier parity-audit roadmap entry), so this new
+condition type has nothing to port INTO yet. If/when Titles ships on web, `manualGrant` should be
+included in that port from the start rather than added as its own follow-up.
+
+## Titles surfaced in 6 more places (raid/World Boss results, all 3 leaderboards, Big Events, guild members, Tower leaderboard)
+
+**What was asked.** Direct instruction, following up on the earlier walkthrough of where Titles
+currently show up: "did you also build out all the places titles could show up?"
+
+**What changed.** Built the full recommended set from that walkthrough — see
+`systems/titles.md`'s new "§13 More places Titles show up" section for the complete
+file-by-file breakdown. Summary:
+- **Free** (userDetails/the full user doc already in memory, zero new queries): guild raid result
+  embeds and World Boss result embeds (both already fetch full participant details for the power
+  calculation — enriched the SAME roster arrays/objects in place rather than threading a new
+  parameter through `startRaid.js`'s large, deeply-nested scenario dispatch table, which would
+  have been a much larger and riskier diff for identical player-facing effect), all three personal
+  leaderboards (potato/starch/mercenary — all already full-document scans), and all 14 Big Events
+  channel post call sites (`bigEventsChannel.playerField` gained an optional, backward-compatible
+  `equippedTitle` parameter).
+- **Small, real, deliberately-accepted cost** (the roster shape only carries `{id, username,
+  role}`): `/guild-members` (one `findUser` per member — guild sizes keep this cheap) and Tower's
+  daily leaderboard (fetched live for only the top 5 rendered entries, not the whole day's
+  survivors — deliberately NOT stored on the leaderboard snapshot itself, so a title equipped after
+  today's run still shows up, matching every other leaderboard's live-read behavior).
+- New `TitleFactory.getTitleLabel(titleId)` — the short "the Reborn" form for inline mentions,
+  since the pre-existing `getEquippedTitleLabel`'s full "label — description" sentence would be
+  unreadable repeated across a roster or leaderboard.
+- **Deliberately not done**: a proactive "title unlocked" notification — already flagged in the
+  original design (section 4, decision point #3) as a separate, larger feature (needs the same
+  recompute-and-diff logic Achievements' unlock embed uses), not just another display surface.
+
+**Tests.** 19 new tests across 6 files: `bigEventsChannel.test.js`, `embedFactory.test.js` (12,
+covering every touched embed's title-present/no-title/field-unset-doesn't-crash cases),
+`worldFactory.test.js`, `startRaidNextRaidCooldown.test.js` (a real `runStartRaidFlow` integration
+test — not just the embed-rendering layer), `leaderboard.test.js`, and a new
+`guildMembersTitles.test.js`. One pre-existing exact-object-shape assertion in `leaderboard.test.js`
+needed updating for the new field. Full suite: **115 suites / 2162 tests, all passing** (net +19
+new tests, +1 new suite, 0 broken).
+
+**Cross-repo note.** Not ported to `financial-project` this pass — Titles as a whole doesn't exist
+on the web port yet at all (see the earlier parity-audit entry), so there's a full feature port
+needed before any of these display surfaces have an equivalent to extend. Tracked as its own
+follow-up, in progress.
+
+## Four rosters now sort by power, not join/roster order (Spud Keep roster, guild raid list, World Boss list, guild member list)
+
+**What was asked.** Direct instruction: "order spud keep players in each guild and in merc list in
+order of power they're contributing. Same for raid list and world boss list and guild list (guild
+list by role first then sorted within each role so leader then coleaders etc)."
+
+**What changed.** All four are presentation-only reorders — no payout math, success-chance
+calculation, or stored data shape changed anywhere in this pass:
+- **`/current-spud-keep`'s roster page** (`currentSpudKeep.js`'s `flattenRoster`) — each entrant's
+  `roster` is now sorted by its matched `memberContributions[].contribution` value, descending,
+  before being flattened into rows. `memberContributions` itself was already sorted this way
+  (`raidFactory.getEffectiveRaidPowerBreakdown`), but `entrant.roster` never inherited that order on
+  its own, so this sorts a copy of the roster explicitly rather than assuming it does. A roster
+  member somehow missing from `memberContributions` sorts to the back instead of an arbitrary spot.
+- **Guild raid result's "Members In Raid:" field** (`startRaid.js`'s `resolveRaid`) — `raidList`/
+  `raidMemberDetails` sorted together by `getMemberRaidPower` descending, right after the
+  `raidMemberDetails` fetch and right before the pre-existing Titles `equippedTitle` enrichment
+  step (both arrays reordered in lockstep via an in-place `.splice()`, since they're `const`-bound
+  and read by reference throughout the rest of the function). `raidListByMulti`, built later from
+  these same two arrays, inherits the order for free.
+- **World Boss result's member list** (`worldFactory.js`'s `startWorldBoss`) — `raidListByMulti`
+  sorted by `.multiplier` descending, right after the `raidShare` computation loop and before it's
+  handed to `handlePotatoSplitByShare`/`createWorldResultEmbed`/`buildParticipantsField`.
+- **`/guild-members`** (`guildMembers.js`) — `guild.memberList` sorted by `getMemberRaidPower`
+  (computed off `memberDetails`, already fetched for the Titles enrichment, no new queries) BEFORE
+  `createGuildMemberListEmbed` runs. That embed function already bucketed by role via one Leader
+  `.find()` plus Co-Leader/Elder/Member `.filter()` calls — since `.find()`/`.filter()` preserve
+  relative order, pre-sorting by power makes each role bucket come out power-sorted for free
+  (role first, power within role — exactly what was asked), with zero changes needed inside the
+  embed function itself.
+
+**Why each reorder is safe** (traced before implementing, not assumed): every downstream consumer
+of the reordered arrays is either a flat, identical per-member operation dispatched via its own
+`Promise.all` (`handleStatSplit`, `handlePotatoSplit`, `handlePotatoSplitByShare`,
+`incrementCounter` — order-independent by construction), or, for `getEffectiveRaidPower`,
+internally re-sorts its OWN copy of the roster by power before computing the team-power total — so
+an external pre-sort for display can never change the actual power/success-chance math or who gets
+paid what, only what order names print in.
+
+**Tests.** 5 new tests across 4 files, each roster deliberately constructed weakest-member-first so
+a pass can only be explained by an explicit sort, never by coincidental join/roster order:
+`currentSpudKeep.test.js` (+2: sorts by contribution descending, and a missing-from-
+`memberContributions` member sorts to the back), `startRaidPowerSort.test.js` (new file, +1: a real
+`runStartRaidFlow` integration test asserting "Members In Raid:" lists strongest-first),
+`worldFactory.test.js` (+1: `raidListByMulti` passed to `createWorldResultEmbed` is sorted by
+`.multiplier` descending), `guildMembersPowerSort.test.js` (new file, +1: each role's own filtered
+bucket comes out power-sorted). Full suite: **117 suites / 2167 tests, all passing** (net +5 new
+tests, +2 new suites, 0 broken).
+
+**Cross-repo note.** Not raised as a request for this pass, and not ported — `financial-project`'s
+own Spud Keep roster view (`gromp-economy/handler.ts`'s `doCurrentSpudKeep`) and any guild-member
+list it has would need the equivalent sort for full parity if the web UI shows these same rosters,
+but the user didn't ask for the web side this turn. Worth flagging next time web parity is audited.

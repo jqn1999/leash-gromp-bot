@@ -18,7 +18,7 @@ jest.mock('../../../utils/festivalFactory', () => ({
 const dynamoHandler = require('../../../utils/dynamoHandler');
 const { addChatChannelIndexEntry, removeChatChannelIndexEntry } = require('../../guilds/guildChat');
 const festivalFactory = require('../../../utils/festivalFactory');
-const { resetTowerCallback, setActivityChannelCallback, setMercChatChannelCallback, startFestivalCallback, revokeImmuneToVenomCallback } = require('../admin');
+const { resetTowerCallback, setActivityChannelCallback, setMercChatChannelCallback, startFestivalCallback, revokeImmuneToVenomCallback, grantTitleCallback } = require('../admin');
 
 beforeEach(() => {
     jest.clearAllMocks();
@@ -608,5 +608,81 @@ describe('/admin revoke-immune-to-venom', () => {
 
         expect(dynamoHandler.updateUserFields).not.toHaveBeenCalled();
         expect(interaction.editReply).toHaveBeenCalledWith(expect.stringContaining('nothing to revoke'));
+    });
+});
+
+// ---------------------------------------------------------------------------------------
+// /admin grant-title — the one way a manualGrant Title (systems/titles.md) is ever handed
+// out, since it has no statPath/threshold to earn it through. Scoped to only titles with
+// condition.type === 'manualGrant' (champion_of_the_fallen_realm as of this pass, a one-off
+// honor for the top 3 finishers of a previous server).
+// ---------------------------------------------------------------------------------------
+describe('/admin grant-title', () => {
+    function fakeInteraction(playerId = 'target-1', titleId = 'champion_of_the_fallen_realm') {
+        return {
+            deferReply: jest.fn().mockResolvedValue(),
+            editReply: jest.fn().mockResolvedValue(),
+            options: {
+                get: (name) => {
+                    if (name === 'player') return { value: playerId };
+                    if (name === 'title') return { value: titleId };
+                    return undefined;
+                },
+            },
+            guild: {
+                members: {
+                    fetch: jest.fn().mockResolvedValue({ displayName: 'TargetPlayer', user: { username: 'targetplayer' } }),
+                },
+            },
+        };
+    }
+
+    test('grants the title and persists it into permanentTitles', async () => {
+        dynamoHandler.findUser.mockResolvedValue({ userId: 'target-1', permanentTitles: [] });
+        const interaction = fakeInteraction();
+
+        await grantTitleCallback({}, interaction);
+
+        expect(dynamoHandler.updateUserFields).toHaveBeenCalledWith('target-1', { permanentTitles: ['champion_of_the_fallen_realm'] });
+        expect(interaction.editReply).toHaveBeenCalledWith(expect.stringContaining('Granted **Champion of the Fallen Realm**'));
+    });
+
+    test('preserves any other already-granted manualGrant titles rather than overwriting the array', async () => {
+        dynamoHandler.findUser.mockResolvedValue({ userId: 'target-1', permanentTitles: ['some_other_manual_title'] });
+        const interaction = fakeInteraction();
+
+        await grantTitleCallback({}, interaction);
+
+        expect(dynamoHandler.updateUserFields).toHaveBeenCalledWith('target-1', { permanentTitles: ['some_other_manual_title', 'champion_of_the_fallen_realm'] });
+    });
+
+    test('already granted: reports nothing to grant, writes nothing', async () => {
+        dynamoHandler.findUser.mockResolvedValue({ userId: 'target-1', permanentTitles: ['champion_of_the_fallen_realm'] });
+        const interaction = fakeInteraction();
+
+        await grantTitleCallback({}, interaction);
+
+        expect(dynamoHandler.updateUserFields).not.toHaveBeenCalled();
+        expect(interaction.editReply).toHaveBeenCalledWith(expect.stringContaining('already holds'));
+    });
+
+    test('rejects a title id that is not a recognized manualGrant title', async () => {
+        dynamoHandler.findUser.mockResolvedValue({ userId: 'target-1', permanentTitles: [] });
+        const interaction = fakeInteraction('target-1', 'reborn_spud'); // a real title, but not manualGrant
+
+        await grantTitleCallback({}, interaction);
+
+        expect(dynamoHandler.updateUserFields).not.toHaveBeenCalled();
+        expect(interaction.editReply).toHaveBeenCalledWith(expect.stringContaining("isn't a recognized manually-grantable title"));
+    });
+
+    test('rejects a player who cannot be resolved in this server', async () => {
+        const interaction = fakeInteraction();
+        interaction.guild.members.fetch.mockResolvedValue(null);
+
+        await grantTitleCallback({}, interaction);
+
+        expect(dynamoHandler.updateUserFields).not.toHaveBeenCalled();
+        expect(interaction.editReply).toHaveBeenCalledWith(expect.stringContaining("doesn't exist in this server"));
     });
 });
