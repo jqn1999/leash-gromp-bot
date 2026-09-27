@@ -37,8 +37,20 @@ module.exports = {
         // uses — see mercenaryFactory.resolveBountyAttempt's own comment.
         const effectiveBountyPower = getEffectiveRaidPower([userDetails]);
 
+        // reward scaled by the mercenary's own Rank multiplier (2026-09-27, direct
+        // instruction: "make bountyboard command take into account their merc level") —
+        // this preview used to show each tier's raw, unscaled Bounty.TIERS reward, which
+        // undersold every rank above 1 (mercenaryFactory.resolveBountyAttempt's own win
+        // branch multiplies by rankInfo.rewardMultiplier before rounding; this preview
+        // hadn't been). Math.round is required, not cosmetic — rewardMultiplier values like
+        // 1.15/1.30/3.30 hit floating-point imprecision against an integer base (41000 *
+        // 1.15 === 47149.99999999999 in JS), which would otherwise show a decimal instead
+        // of a whole-number potato amount. Penalty is deliberately left unscaled — see
+        // resolveBountyAttempt's own comment: a loss is never reduced by rewardMultiplier,
+        // by design, so as rank climbs the risk/reward ratio actually improves.
         const weightedTiers = getDynamicTierWeights(Bounty.TIERS, 1, effectiveBountyPower).map(t => ({
             ...t,
+            reward: Math.round(t.reward * rankInfo.rewardMultiplier),
             successChance: Math.min(effectiveBountyPower / t.difficulty, Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE)
         }));
 

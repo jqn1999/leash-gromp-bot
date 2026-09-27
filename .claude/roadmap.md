@@ -18231,3 +18231,36 @@ final bank-capacity tier's raw increase somewhere. Whether it has the same "lite
 number instead of a maxed-out framing" issue (in whatever form its own UI takes — no Discord
 embeds there, but presumably an equivalent number/label) hasn't been audited this pass and should
 be checked before considering this fully caught up cross-repo.
+
+## `/bounty-board` now scales its shown reward by Mercenary Rank, rounded
+
+**What was asked.** Direct instruction: "make bountyboard command take into account their merc
+level and calculate the gain number correctly rounded to a whole number."
+
+**What was found (root cause).** `bountyBoard.js` built its per-tier preview off
+`getDynamicTierWeights(Bounty.TIERS, ...)`, which just spreads each raw tier object through
+unchanged (`raidFactory.js`'s `getDynamicTierWeights` only adds a `weight` field) — so the reward
+shown was `Bounty.TIERS[i].reward` verbatim, with no Rank multiplier applied at all. The real payout
+formula, `mercenaryFactory.resolveBountyAttempt`'s win branch, multiplies that same base by
+`rankInfo.rewardMultiplier` (1.00 at Rank 1 up to 5.00 at maxed Rank 6) before rounding — meaning
+every mercenary above Rank 1 was looking at a preview that understated their actual reward, worse
+the higher their rank climbed.
+
+**What changed.** `bountyBoard.js` now overrides each tier's `reward` with
+`Math.round(t.reward * rankInfo.rewardMultiplier)` before building the embed. The rounding is a
+real correctness fix, not just tidiness — verified `41000 * 1.15 === 47149.99999999999` in Node,
+so an unrounded display would show a decimal potato amount at several rank/tier combinations.
+Penalty is deliberately left untouched — `resolveBountyAttempt`'s own comment already establishes
+that a loss is never discounted by `rewardMultiplier` by design (so the risk/reward ratio actually
+improves with rank rather than losses shrinking to match), and the preview should keep matching
+that. See `systems/mercenary-bounties.md`'s `/bounty-board` entry for the full writeup.
+
+**Tests.** 4 new tests (`bountyBoardRankScaling.test.js`, new file): Rank 1 shows the raw
+unscaled reward (a no-op multiplier, sanity check), Rank 2 (1.15x) and a maxed Rank 6 (5.00x) both
+show `Math.round(base * rewardMultiplier)` and confirm every value is a whole number via
+`Number.isInteger`, and a separate test locks in that penalty stays unscaled at every rank. Full
+suite: **120 suites / 2184 tests, all passing** (net +4 new tests, +1 new suite, 0 broken).
+
+**Cross-repo note.** Not checked — `financial-project` doesn't appear to have ported `/bounty-board`
+itself (only the actual bounty-resolution logic, per earlier parity passes), so there's likely
+nothing to port this into, but that assumption hasn't been directly verified this pass.
