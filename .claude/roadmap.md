@@ -17905,3 +17905,45 @@ description updated to include `memberContributions`.
 own `getEffectiveRaidPowerBreakdown` mirrors were just given the `RAID_TEAM_DECAY_FLOOR` fix above,
 but neither one currently has a per-player contribution DISPLAY to extend (that's specific to this
 Discord command's own paginated embed) — nothing to port unless the web UI grows an equivalent view.
+
+**Same-session follow-up (direct instruction: "add spud keep power contribution to the UI").** The web
+UI DID grow that equivalent view, in this same session — `/gromp`'s own Spud Keep panel has its own
+enrolled-player roster table (`gromp.component.html`), the exact web counterpart of this command's page
+2+. Ported `memberContributions` into `gromp-economy/handler.ts`'s mirrored `getEffectiveRaidPowerBreakdown`
+(same additive shape as the bot's), matched each roster row by `userId` the same way `flattenRoster`
+does, and rendered each player's own "adding X power (Y% of their own Z)" line under their guild/Merc
+Faction entry. See `financial-project/NOTES_GROMP_WEB_INTEGRATION.md`'s own numbered entry for this pass.
+
+## `/regrade`'s preview embed shows base + regrades as "Current", not just base (direct instruction: "for regrade embed make the current (stat) take base + regrades instead of just base")
+
+**What was asked.** `/regrade`'s confirm-preview embed (added 2026-09-26) labels a field "Current
+\<stat\>" but fed it `getBaseAmount` — the raw shop-tier base with `sweetPotatoBuffs` AND
+`regradeAmount` both stripped out. A player who'd already earned real regrade progress on that track
+saw a "Current" number lower than what they actually had, since it silently dropped their regrade
+gains from the display.
+
+**What changed.** `regrade.js`'s callback now computes `currentStatAmount = baseAmount +
+userDetails.regrades[config.regradeKey].regradeAmount` and passes that to
+`createRegradePreviewEmbed` instead of the bare `baseAmount`. The eligibility gate itself
+(`hasRequiredBaseAmount`, "have you maxed the shop tier") is untouched — it still checks the raw
+`baseAmount`, since shop-tier completion is deliberately independent of regrade progress. Renamed
+`createRegradePreviewEmbed`'s `currentBaseAmount` parameter to `currentStatAmount` to match what it
+actually holds now. `sweetPotatoBuffs` (Bonus) stays excluded from this number on purpose — that
+bucket is unrelated to shop/regrade grinding (Tower, World Boss, Sweet Potato encounters instead),
+so it was never part of what this command's own "Current" field should mean; only the completed-
+attempt embed's "New \<stat\>" field (which already showed the full raw stat, unchanged here) reflects
+the true live total including Bonus.
+
+**Tests.** New `regrade.test.js` describe block: a fixture with nonzero `regradeAmount` (50) AND a
+nonzero `sweetPotatoBuffs` bonus (7) asserts the preview's `currentStatAmount` arg is exactly
+`base + regradeAmount`, excluding the Bonus. Full suite: **114 suites / 2126 tests, all passing**
+(net +1 new test, 0 broken).
+
+**Docs.** `systems/economy-and-work.md`'s Regrade section updated: the confirm-preview description now
+says "current stat amount" instead of "current base amount", and a new paragraph explains the
+base-vs-base+regrades-vs-full-total distinction explicitly.
+
+**Cross-repo note.** Checked `financial-project`'s own `/gromp` Regrade panel (`onRegrade` in
+`gromp.component.ts`) — it has no preview/confirm step at all yet (a single-click "Attempt Regrade"
+button straight to the result), so there's no "Current" field there to drift from this fix. Nothing to
+port; flagged here rather than silently skipped.

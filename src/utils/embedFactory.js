@@ -4551,7 +4551,7 @@ class EmbedFactory {
     // createRegradeEmbed above which only ever narrates a completed attempt. Mirrors that
     // one's field shape/labels (typeText, Success Chance formatting) so the preview and the
     // result it leads into read as the same screen, not two different designs.
-    createRegradePreviewEmbed(userDisplayName, userId, userAvatar, userPotatoes, regradeType, currentBaseAmount, cost, increaseAmount, successChance, failStack) {
+    createRegradePreviewEmbed(userDisplayName, userId, userAvatar, userPotatoes, regradeType, currentStatAmount, cost, increaseAmount, successChance, failStack) {
         const avatarUrl = getUserAvatar(userId, userAvatar);
         const typeText = regradeType === 'Work Multiplier' ? 'work multi' : 'potatoes';
         const canAfford = userPotatoes >= cost;
@@ -4559,7 +4559,7 @@ class EmbedFactory {
             { name: 'Current Potatoes:', value: `${userPotatoes.toLocaleString()} potatoes`, inline: true },
             { name: 'Cost:', value: `${cost.toLocaleString()} potatoes`, inline: true },
             { name: '\n', value: '\n', inline: false },
-            { name: `Current ${regradeType}:`, value: `${currentBaseAmount.toLocaleString()} ${typeText}`, inline: true },
+            { name: `Current ${regradeType}:`, value: `${currentStatAmount.toLocaleString()} ${typeText}`, inline: true },
             { name: 'Increase On Success:', value: `+${increaseAmount.toLocaleString()} ${typeText}`, inline: true },
             { name: 'Success Chance:', value: `${(successChance * 100).toFixed(2)}% (+${(failStack * 100).toFixed(2)}%)`, inline: false },
         ];

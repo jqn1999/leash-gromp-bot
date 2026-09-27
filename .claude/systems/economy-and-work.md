@@ -676,7 +676,7 @@ tier into 75%, a 10% tier into 15%, etc.
 
 **Confirm-preview step** (2026-09-26, direct instruction: "show an embed with the regrade info
 and buttons for regrading or not") — `/regrade` no longer spends/rolls the instant it's called.
-It first shows `createRegradePreviewEmbed` (current base amount, this tier's cost/success
+It first shows `createRegradePreviewEmbed` (current stat amount, this tier's cost/success
 chance/potential increase) with a Confirm/Cancel row (`buildConfirmCancelRow`, the same helper
 `/rob`/`/start-raid`/Rebirth already use), and only executes the actual spend+roll on a Confirm
 click — re-validated against a **fresh** `findUser` read at that point (not the read the preview
@@ -685,6 +685,16 @@ timeout clears the buttons and changes nothing. The three tracks' near-identical
 (previously three separate `switch`/`case` blocks) was consolidated into one `TRACK_CONFIGS`-driven
 code path as part of this change — adding the confirm step on top of three separately-maintained
 copies would have tripled the duplication instead of just adding it once.
+
+**"Current" field is base + regrades, not just base** (2026-09-27, direct instruction: "make the
+current (stat) take base + regrades instead of just base") — the preview's eligibility gate
+(`hasRequiredBaseAmount`) still checks the raw shop-tier `getBaseAmount` (statField minus
+`sweetPotatoBuffs` minus `regradeAmount`), since that's specifically "have you maxed the shop
+tier" and unrelated to regrade progress. But the displayed "Current \<stat\>" value is
+`baseAmount + regrades.<stat>.regradeAmount` — a player's shop+regrade progress, i.e. what
+this command itself has built up. `sweetPotatoBuffs` (Bonus) stays excluded on purpose: that
+bucket comes from unrelated sources (Tower, World Boss, Sweet Potato encounters), not
+shop/regrade grinding, so it was never part of what "Current" here means.
 
 **`view-tiers` option** (same direct instruction: "add option to see all regrade tiers with
 pagination") — a boolean option on `/regrade` that, when true, skips the preview/confirm flow

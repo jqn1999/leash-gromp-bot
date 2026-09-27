@@ -223,8 +223,16 @@ module.exports = {
         if (!eligibility) return;
         const { currentTier, chanceOfSuccess, failStack } = eligibility;
         const baseAmount = getBaseAmount(userDetails, config);
+        // The preview's "Current" field (direct instruction, 2026-09-27: show base + regrades,
+        // not just base) — baseAmount alone is the shop-tier checkpoint used for the
+        // eligibility gate above, but that's not what a player thinks of as their "current"
+        // stat: it strips out regrade progress they've already earned. Deliberately still
+        // excludes sweetPotatoBuffs (Bonus) — that bucket comes from unrelated sources (Tower,
+        // World Boss, etc.), not shop/regrade grinding, so it stays out of this command's own
+        // number the same way baseAmount already did.
+        const currentStatAmount = baseAmount + userDetails.regrades[config.regradeKey].regradeAmount;
 
-        const previewEmbed = embedFactory.createRegradePreviewEmbed(userDisplayName, userId, userAvatar, userDetails.potatoes, config.label, baseAmount, currentTier.cost, currentTier.increase, chanceOfSuccess, failStack);
+        const previewEmbed = embedFactory.createRegradePreviewEmbed(userDisplayName, userId, userAvatar, userDetails.potatoes, config.label, currentStatAmount, currentTier.cost, currentTier.increase, chanceOfSuccess, failStack);
         const canAffordNow = userDetails.potatoes >= currentTier.cost;
         const components = canAffordNow ? [buildConfirmCancelRow(CONFIRM_ID, 'Regrade')] : [];
         const reply = await interaction.editReply({ embeds: [previewEmbed], components });
