@@ -54,6 +54,17 @@ module.exports = {
 
         let raidMemberList = [];
         const raidMemberDetails = await Promise.all(raidList.map(element => dynamoHandler.findUser(element.id, element.username)));
+        // Ordered by each member's own power, descending (2026-09-27, same instruction/fix as
+        // startRaid.js's resolveRaid — "make current-raid command also use the new sort
+        // logic"). Sorted together via the same rankedPairs-then-splice pattern so raidList
+        // and raidMemberDetails stay index-matched for the loop below and for
+        // getEffectiveRaidPowerBreakdown (which re-sorts its own copy internally anyway, so
+        // this pre-sort only affects the numbered list's display order, never the power math).
+        const rankedPairs = raidList
+            .map((member, i) => ({ member, details: raidMemberDetails[i] }))
+            .sort((a, b) => getMemberRaidPower(b.details) - getMemberRaidPower(a.details));
+        raidList.splice(0, raidList.length, ...rankedPairs.map(p => p.member));
+        raidMemberDetails.splice(0, raidMemberDetails.length, ...rankedPairs.map(p => p.details));
         for (const [index, element] of raidList.entries()) {
             const userDetails = raidMemberDetails[index];
             if (!userDetails) {

@@ -957,6 +957,17 @@ Raid:" field lists names in, never who gets paid what or the actual power/succes
 `raidListByMulti` (built later in the same function from the now-sorted `raidList`/
 `raidMemberDetails`) naturally inherits the sorted order for free.
 
+**`/current-raid`'s own numbered preview list gets the same sort (same-day follow-up, direct
+instruction: "make current-raid command also use the new sort logic").** This is a genuinely
+separate list from the one above — `currentRaid.js` shows the roster BEFORE a raid is even
+started (each member numbered `N) username` with their own raid power), not the post-resolution
+"Members In Raid:" field — so the first pass's fix to `resolveRaid` never touched it. Same
+pattern: `raidList`/`raidMemberDetails` sorted together via the identical rankedPairs-then-splice
+technique, right after the `raidMemberDetails` fetch and before the numbered-list loop builds
+each embed field. `getEffectiveRaidPowerBreakdown` (called right after, for the Total Multiplier
+display) is unaffected — same as `resolveRaid`, it re-sorts its own internal copy regardless of
+what order it's handed.
+
 ## World raids
 
 Server-wide bosses (not guild-scoped), state stored in the stats table under the `world` doc

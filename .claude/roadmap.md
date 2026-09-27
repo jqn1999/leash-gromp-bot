@@ -18169,3 +18169,21 @@ tests, +2 new suites, 0 broken).
 own Spud Keep roster view (`gromp-economy/handler.ts`'s `doCurrentSpudKeep`) and any guild-member
 list it has would need the equivalent sort for full parity if the web UI shows these same rosters,
 but the user didn't ask for the web side this turn. Worth flagging next time web parity is audited.
+
+## `/current-raid`'s own preview list gets the same power sort (same-day follow-up, direct instruction: "make current-raid command also use the new sort logic")
+
+**What was asked.** A follow-up to the four-roster sorting pass above — `/current-raid` (the
+roster PREVIEW shown before a raid is even started) was missed because the earlier pass only
+touched `startRaid.js`'s `resolveRaid` (the post-resolution "Members In Raid:" field) — a
+genuinely separate code path and a genuinely separate list.
+
+**What changed.** `currentRaid.js` now sorts `raidList`/`raidMemberDetails` together by
+`getMemberRaidPower` descending, via the identical rankedPairs-then-splice technique
+`resolveRaid` already established, right after the `raidMemberDetails` fetch and before the
+numbered `N) username` embed-field loop builds. `getEffectiveRaidPowerBreakdown` (called right
+after, for the Total Multiplier display) is unaffected for the same reason as before — it sorts
+its own internal copy regardless of input order.
+
+**Tests.** 1 new test (`currentRaidPowerSort.test.js`), roster built weakest-member-first so a
+pass can only be explained by an explicit sort. Full suite: **118 suites / 2168 tests, all
+passing** (net +1 new test, +1 new suite, 0 broken).
