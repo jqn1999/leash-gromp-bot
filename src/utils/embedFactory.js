@@ -1994,7 +1994,7 @@ class EmbedFactory {
         });
 
         if (mitigationInfo) {
-            const { reduction, lockoutSeconds, hitNumberThisWeek, milestoneJustReached, milestone20JustReached, rebatePercent, escalationMultiplier } = mitigationInfo;
+            const { reduction, lockoutSeconds, venomImmuneLockout, hitNumberThisWeek, milestoneJustReached, milestone20JustReached, rebatePercent, escalationMultiplier } = mitigationInfo;
 
             if (immune) {
                 // Guinea Pig's own rebate is deliberately NOT built off the mitigated
@@ -2007,6 +2007,15 @@ class EmbedFactory {
                 fields.push({
                     name: `Guinea Pig:`,
                     value: `Turned ${(rebatePercent * 100).toFixed(1)}% of the raw loss into a gain instead${escalationContext} — no cooldown lockout.`,
+                    inline: true,
+                });
+            } else if (venomImmuneLockout) {
+                // Immune to Venom's own benefit (2026-09-27) — a flat lockout regardless of
+                // this week's hit count, so the usual reduction/hit-count phrasing doesn't
+                // apply here at all.
+                fields.push({
+                    name: `Cooldown:`,
+                    value: `${convertSecondstoMinutes(lockoutSeconds)} lockout (🏅 Immune to Venom)`,
                     inline: true,
                 });
             } else {
@@ -2031,7 +2040,7 @@ class EmbedFactory {
             if (milestone20JustReached) {
                 fields.push({
                     name: `🏅 Immune to Venom:`,
-                    value: `20 Poison hits in one week — you've truly built up a tolerance now.`,
+                    value: `40 Poison hits in one week — from your next Poison Potato hit onward, your lockout is a flat 5 minutes, no matter how the weekly count resets.`,
                     inline: false,
                 });
             }

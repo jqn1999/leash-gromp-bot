@@ -62,6 +62,12 @@ const Work = {
     // eating a full hour of momentum. See PoisonMitigation below for the further
     // per-hit-this-week reduction on top of this base.
     POISON_POTATO_TIMER_INCREASE_SECONDS: 1800,
+    // Immune to Venom's own benefit (2026-09-27, direct instruction, the first achievement
+    // tied to a real gameplay perk) — once a player has unlocked immune_to_venom, this flat
+    // value REPLACES the normal reduction-based lockout calculation entirely for every
+    // future Poison Potato hit, regardless of that week's own hit count. See
+    // workFactory.js's handlePoisonPotato.
+    POISON_IMMUNE_LOCKOUT_SECONDS: 300,
     // Poison-tier rarity, but steals from bankStored instead of liquid potatoes — the
     // bank protects from /rob, not from this. Percent-of-banked rather than flat so it
     // scales with wealth like every other late-game number, capped so one unlucky roll
@@ -119,7 +125,14 @@ const Achievements = [
     // MILESTONE_REDUCTION jump at hit 10 was removed for everyone, 2026-09-24) — see
     // PoisonMitigation/MimicMitigation.SECOND_MILESTONE_HIT_THRESHOLD.
     { id: "mimics_favorite_mark", name: "The Mimic's Favorite Mark", description: "Get hit by Mimic Potato 10 times in a single week", statPath: "totalMimicMilestonesReached", threshold: 1 },
-    { id: "immune_to_venom", name: "Immune to Venom", description: "Get hit by Poison Potato 20 times in a single week", statPath: "totalPoisonMilestones20Reached", threshold: 1 },
+    // Raised 20 -> 40 (2026-09-27, direct instruction) as part of the first achievement-
+    // tied-benefit pass (see PoisonMitigation.SECOND_MILESTONE_HIT_THRESHOLD and
+    // workFactory.js's handlePoisonPotato) — once this is unlocked, every FUTURE Poison
+    // Potato hit gets a flat 5-minute lockout instead of the normal reduction-based one,
+    // permanently. Mimic's own parallel tier (mimics_best_customer, right below) is
+    // deliberately untouched — no benefit was requested for it, and its own
+    // MimicMitigation.SECOND_MILESTONE_HIT_THRESHOLD stays at 20.
+    { id: "immune_to_venom", name: "Immune to Venom", description: "Get hit by Poison Potato 40 times in a single week — unlocks a flat 5-minute Poison Potato lockout forever after", statPath: "totalPoisonMilestones20Reached", threshold: 1 },
     { id: "mimics_best_customer", name: "The Mimic's Best Customer", description: "Get hit by Mimic Potato 20 times in a single week", statPath: "totalMimicMilestones20Reached", threshold: 1 },
     // Mimic Slaying's own "first blood" achievement (2026-09-10, direct instruction,
     // same day as Mimic Slaying itself) — statPath is workScenarioCounts.mimicKilled,
@@ -1022,11 +1035,21 @@ const PoisonMitigation = {
     MILESTONE_HIT_THRESHOLD: 10,
     // Second, achievement-only tier (2026-09-10, Poison/Mimic weekly-milestone achievement
     // pass) — a second lifetime counter/achievement (totalPoisonMilestones20Reached) one
-    // step up from the 10-hit milestone above, for a player unlucky enough to get hit 20
-    // times in one week. Never affected `reduction` at all, even before the 10-hit
+    // step up from the 10-hit milestone above, for a player unlucky enough to get hit this
+    // many times in one week. Never affected `reduction` at all, even before the 10-hit
     // milestone's own reduction bump was removed for everyone. See workFactory.js's
     // computePoisonMitigation.
-    SECOND_MILESTONE_HIT_THRESHOLD: 20
+    //
+    // Raised 20 -> 40 (2026-09-27, direct instruction) — the first achievement tied to a
+    // real gameplay benefit rather than just a badge: unlocking `immune_to_venom` now also
+    // fixes every FUTURE Poison Potato lockout at Work.POISON_IMMUNE_LOCKOUT_SECONDS (5
+    // minutes) regardless of weekly hit count, replacing the normal reduction-based
+    // calculation entirely (see handlePoisonPotato). Raising the bar to 40 keeps that a
+    // genuinely hard-earned perk rather than something a bad week hands out at 20. The
+    // counter field name (`totalPoisonMilestones20Reached`) stays as-is — renaming it would
+    // touch every existing player's stored data for no functional reason; the field just
+    // means "reached the second Poison milestone tier," whatever that tier's threshold is.
+    SECOND_MILESTONE_HIT_THRESHOLD: 40
 }
 
 // Same weekly bad-luck mitigation as Poison Potato, mirrored (not shared — see

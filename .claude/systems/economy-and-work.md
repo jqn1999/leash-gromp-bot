@@ -471,6 +471,31 @@ second, harder tier (20 hits/week) was added for BOTH Poison and Mimic at the sa
   `mimics_best_customer` (`totalMimicMilestones20Reached`) — see
   [achievements.md](achievements.md) for the full writeup.
 
+**`immune_to_venom` raised to 40 hits/week and given a real benefit (2026-09-27, direct
+instruction — the first achievement tied to an actual gameplay mechanic, not just a badge).**
+`PoisonMitigation.SECOND_MILESTONE_HIT_THRESHOLD` went from `20` to `40` — Mimic's own identical
+constant (`MimicMitigation.SECOND_MILESTONE_HIT_THRESHOLD`) and `mimics_best_customer` are
+untouched, no benefit was requested there. Once a player holds `immune_to_venom`,
+`handlePoisonPotato` now checks `(userDetails.achievements || []).includes('immune_to_venom')`
+(read from BEFORE this hit — the achievement is only unlocked at the end of the request, so the
+exact hit that crosses the new 40-hit bar still gets the normal reduction-based lockout, not the
+benefit; it kicks in starting with the player's next Poison hit) and, if true, sets `lockoutSeconds`
+to a flat `Work.POISON_IMMUNE_LOCKOUT_SECONDS` (300 — 5 minutes) instead of running the usual
+`Math.floor(POISON_POTATO_TIMER_INCREASE_SECONDS * (1 - reduction))` calculation at all — a fixed
+override, not an extra layer of reduction on top. Only affects the lockout duration; the potato
+LOSS itself still follows the normal weekly reduction unchanged. Scoped to the non-Guinea-Pig branch
+only (`!immune`) — Guinea Pig's own perk already skips the lockout entirely, a strictly bigger
+benefit, so this override would be a no-op there anyway. `mitigationInfo.venomImmuneLockout` (new
+boolean) lets `embedFactory.createPoisonPotatoEmbed` show a distinct "🏅 Immune to Venom" cooldown
+line instead of the usual hit-count/reduction phrasing, which would otherwise look inconsistent
+next to a lockout that no longer actually depends on either.
+
+Raising an already-shipped achievement's threshold exposed a real gap: `achievementFactory`'s
+unlock model is one-directional by construction (append-only, never re-validated or revoked) — see
+[achievements.md](achievements.md#achievement-tied-gameplay-benefits-2026-09-27-direct-instruction--first-of-a-kind)
+for the full reasoning and the one-time `/admin revoke-immune-to-venom` correction this required
+(direct instruction: "make sure any users that had it before wouldnt have it complete now").
+
 ### Mimic Slaying — a chance to kill the Mimic instead of losing to it (2026-09-10, direct instruction)
 
 Every Mimic Potato encounter, for every player, unconditionally (no companion or rank gate — direct

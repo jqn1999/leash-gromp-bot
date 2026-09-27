@@ -17947,3 +17947,70 @@ base-vs-base+regrades-vs-full-total distinction explicitly.
 `gromp.component.ts`) — it has no preview/confirm step at all yet (a single-click "Attempt Regrade"
 button straight to the result), so there's no "Current" field there to drift from this fix. Nothing to
 port; flagged here rather than silently skipped.
+
+## Immune to Venom: first achievement tied to a real gameplay benefit, threshold raised 20 → 40, old holders revoked (direct instruction, in three parts across one session)
+
+**What was asked.** "Look into first new functionality of tying benefits to achievements. first one
+is the Immune to Venom achievement 20 poison potatoes in a single week. On achievement embed and
+other places that reference it, players that have achieved that get 5 minute timers on poisons
+instead of whatever it would normally be. increase the achievement to 40 poisons in a week though" —
+followed shortly after by "also make sure any users that had it before wouldnt have it complete now
+or i can go through and remove it from people."
+
+**What changed.**
+1. `PoisonMitigation.SECOND_MILESTONE_HIT_THRESHOLD` (`constants.js`) raised `20` → `40`. Mimic's own
+   identical constant (`MimicMitigation.SECOND_MILESTONE_HIT_THRESHOLD`) and its `mimics_best_customer`
+   achievement are deliberately untouched — no benefit was requested for Mimic, only Poison.
+2. New constant `Work.POISON_IMMUNE_LOCKOUT_SECONDS: 300` (5 minutes). `workFactory.js`'s
+   `handlePoisonPotato` now checks `userDetails.achievements` (as it stood BEFORE this hit) for
+   `'immune_to_venom'` and, if present (and Guinea Pig doesn't already apply), overrides
+   `lockoutSeconds` to this flat value instead of the usual reduction-based calculation — a
+   replacement, not an additional discount layer. Only the lockout is affected; the potato loss
+   itself is untouched. Deliberately does NOT apply to the exact hit that crosses the new 40-hit
+   threshold itself, since the achievement isn't persisted until after that request completes — the
+   benefit starts on the player's next Poison hit.
+3. `mitigationInfo.venomImmuneLockout` (new field) lets `embedFactory.createPoisonPotatoEmbed` render
+   a distinct "🏅 Immune to Venom" cooldown line instead of the usual hit-count/%-softer phrasing,
+   which would otherwise misleadingly imply the lockout still depends on this week's hit count.
+4. The achievement's own `description` in `constants.js` was rewritten to state both the new 40-hit
+   requirement and the benefit itself in plain language — this field is what actually renders in
+   `/achievements` and the unlock embed, so it doubles as the in-game documentation of the perk
+   rather than needing a separate explanation anywhere.
+5. **Revocation.** `achievementFactory.checkAndUnlock`/`getProgress` are both one-directional by
+   construction — an achievement, once unlocked, is never re-validated or removed even if the
+   threshold that granted it later changes. Every player who'd legitimately earned `immune_to_venom`
+   under the OLD 20-hit bar would otherwise keep both the badge and its new real benefit forever,
+   most of them without ever having reached the new 40-hit bar. There's no stored per-week history to
+   check "did they also happen to hit 40 that same week" against, so this was resolved with an
+   unconditional one-time correction rather than a guess: new `/admin revoke-immune-to-venom`
+   subcommand (`admin.js`) scans the whole user table (`dynamoHandler.getUsers`, same precedent
+   `set-merc-chat-channel`'s own retroactive-role-grant scan already set) and, for every current
+   holder, strips `immune_to_venom` from `achievements` and resets `totalPoisonMilestones20Reached`
+   to 0 in one `updateUserFields` write. A player truly capable of a 40-hit week just re-earns it
+   honestly from here. Deliberately a manual, run-once admin tool — not wired into `dynamoHandler.findUser`'s
+   self-heal chain the way `rebirthFactory.healBaseDrift` is, since the underlying threshold-change
+   event is itself one-time, not an ongoing bug class worth permanent hot-path overhead for.
+
+**Tests.** `workFactory.test.js`: updated the two pre-existing 20-hit-threshold tests to 40 (milestone
+crossing at hit 39→40, past-threshold check moved from hit 25 to hit 45), added a hit-19-does-not-
+flag test to lock in the new gap between the old and new bar, and a new 4-test
+"Immune to Venom benefit" describe block (no benefit without the achievement; flat lockout with it
+regardless of weekly hit count; NOT applied on the exact crossing hit; Guinea Pig still fully skips
+the lockout even with the achievement held). `embedFactory.test.js`: new test asserting the
+`venomImmuneLockout` branch shows the flat lockout + callout and omits the hit-count/%-softer text.
+`admin.test.js`: new describe block for `revoke-immune-to-venom` (revokes + resets exactly the
+current holders, leaves everyone else untouched; no-holders case reports nothing to do and writes
+nothing). `getLocalCommands.test.js` caught the new subcommand's description exceeding Discord's
+100-char cap on the first pass — trimmed. Full suite: **114 suites / 2134 tests, all passing** (net
++9 new tests, 0 broken).
+
+**Docs.** `achievements.md` gained a new "Achievement-tied gameplay benefits" section covering both
+the general pattern (first of its kind) and the specific revocation reasoning, with a note for
+whoever adds the next benefit-tied achievement to budget for this same threshold-change problem up
+front. `economy-and-work.md`'s Poison Potato mitigation section gained a follow-up paragraph on the
+40-hit raise and the benefit mechanism.
+
+**Cross-repo note.** Not checked against `financial-project` this pass — `/gromp`'s own Poison Potato
+handling (if any exists there) would need the equivalent lockout-override and threshold change to
+stay in parity, but this wasn't audited in this session; flagged here rather than silently assumed
+fine.
