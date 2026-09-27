@@ -18187,3 +18187,47 @@ its own internal copy regardless of input order.
 **Tests.** 1 new test (`currentRaidPowerSort.test.js`), roster built weakest-member-first so a
 pass can only be explained by an explicit sort. Full suite: **118 suites / 2168 tests, all
 passing** (net +1 new test, +1 new suite, 0 broken).
+
+## `/regrade` shows "Unlimited" instead of a literal 100-billion number on Bank Capacity's final tier
+
+**What was asked.** A design conversation about mercenary vs. guild balance (bank capacity for
+end-game regrades, guild income vs. merc income) led to checking the actual math on whether a
+player can safely stage the final bank-capacity regrade attempt — which turned out to be safe by
+construction (capacity grows in lockstep with the same track's own escalating cost, never dropping
+below a ~1.2x margin) — and then a direct follow-up question: "does bank capacity regrade show
+infinite increase at max tier?"
+
+**What was found.** No — none of `/regrade`'s three embeds (preview, result, `view-tiers` ladder)
+special-cased it. Bank Capacity's last `bankRegradeTiers` rung has `increase: 100,000,000,000`,
+landing exactly on `REGRADE_CAPS.bankCapacity` (103,000,000,000) — the same threshold that makes
+`/bank`/`/profile` switch to showing "Unlimited" via `embedFactory.isBankCapacityMaxed`/
+`formatBankCapacityField`. But all three regrade embeds just called `.toLocaleString()` on the raw
+increase, so a player would see a plain, oddly specific 100-billion number with no hint that it's
+actually the "never worry about bank space again" milestone.
+
+**What changed.** New `regrade.js` helper `completesBankCapacity(config, regradeAmountAfterAttempt)`
+— deliberately scoped to the `bankCapacity` track only (the other two tracks have their own
+completion caps in `REGRADE_CAPS`, but neither gets Infinity/Unlimited framing anywhere else in the
+game). Threaded through as a new, backward-compatible trailing `willMaxBankCapacity` parameter
+(default `false`) on `createRegradePreviewEmbed`/`createRegradeEmbed`/`createRegradeTiersPageEmbed`
+— each now shows "Unlimited" (with a short "(fully maxes/maxes Bank Capacity!)" qualifier) instead
+of the literal increase when it applies. The result embed's check reads the POST-increase
+`regradeAmount` right after `executeRegrade`'s in-place mutation, gated on `increase > 0`, so a
+failed final-tier attempt never shows "Unlimited" no matter how close to the cap it already sits.
+See `systems/economy-and-work.md`'s Regrade section for the full per-embed breakdown.
+
+**Tests.** 12 new tests across 2 files: `regradeBankCapacityMaxed.test.js` (new file, 7 tests —
+preview/result/tiers-row flag-passing, covering final-tier success, final-tier failure, a
+non-final tier, and that work-multi/passive-income never get flagged) plus 5 new tests appended to
+`embedFactory.test.js` locking in the actual rendered field text for all three embeds in both the
+maxing and non-maxing case. `regrade.js` also gained two new test-only exports (`buildTierRows`,
+`TRACK_CONFIGS`) so the tiers-list row flag could be unit-tested directly rather than only through
+pagination. Full suite: **119 suites / 2180 tests, all passing** (net +12 new tests, +1 new suite,
+0 broken).
+
+**Cross-repo note.** Not checked yet — `financial-project` has its own `/regrade` port (its
+non-atomic-write bug was fixed there in an earlier pass), and its web UI likely renders the same
+final bank-capacity tier's raw increase somewhere. Whether it has the same "literal 100-billion
+number instead of a maxed-out framing" issue (in whatever form its own UI takes — no Discord
+embeds there, but presumably an equivalent number/label) hasn't been audited this pass and should
+be checked before considering this fully caught up cross-repo.

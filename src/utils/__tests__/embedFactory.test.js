@@ -2040,3 +2040,50 @@ describe('createTitlesPageEmbed', () => {
         expect(field.value).toBe(title.description);
     });
 });
+
+// Bank Capacity's final regrade tier's real increase (+100,000,000,000) is the "you never
+// have to worry about bank space again" milestone — the same threshold /bank and /profile
+// show as "Unlimited" — rather than an oddly specific huge number. 2026-09-27, direct
+// instruction. willMaxBankCapacity is computed by regrade.js and threaded through as a new
+// trailing param on all three regrade embeds; these tests lock in the actual rendered text.
+describe('regrade embeds show "Unlimited" instead of the raw increase when a Bank Capacity attempt would max it out', () => {
+    test('createRegradePreviewEmbed: willMaxBankCapacity true replaces the raw increase', () => {
+        const embed = embedFactory.createRegradePreviewEmbed('Player', 'user-1', null, 5000000000, 'Bank Capacity', 4000000000, 3000000000, 100000000000, 0.02, 0, true);
+        const field = embed.data.fields.find(f => f.name === 'Increase On Success:');
+        expect(field.value).toBe('Unlimited (fully maxes Bank Capacity!)');
+        expect(field.value).not.toContain('100,000,000,000');
+    });
+
+    test('createRegradePreviewEmbed: willMaxBankCapacity false (default) shows the raw increase, unchanged from before', () => {
+        const embed = embedFactory.createRegradePreviewEmbed('Player', 'user-1', null, 1000000, 'Bank Capacity', 1000000000, 500000000, 200000000, 0.5, 0);
+        const field = embed.data.fields.find(f => f.name === 'Increase On Success:');
+        expect(field.value).toBe('+200,000,000 potatoes');
+    });
+
+    test('createRegradeEmbed: a successful maxing attempt shows Unlimited on both the New and Increase fields', () => {
+        const embed = embedFactory.createRegradeEmbed('Player', 'user-1', null, 2000000000, 'Bank Capacity', 104000000000, 100000000000, 0.02, 0, -3000000000, 0, null, true);
+        const newField = embed.data.fields.find(f => f.name === 'New Bank Capacity:');
+        const increaseField = embed.data.fields.find(f => f.name === 'Increase Amount:');
+        expect(newField.value).toBe('Unlimited potatoes');
+        expect(increaseField.value).toBe('Unlimited (Bank Capacity Maxed!)');
+    });
+
+    test('createRegradeEmbed: willMaxBankCapacity false (default) shows the raw new amount/increase, unchanged from before', () => {
+        const embed = embedFactory.createRegradeEmbed('Player', 'user-1', null, 500000000, 'Bank Capacity', 1200000000, 200000000, 0.45, 0, -500000000);
+        const newField = embed.data.fields.find(f => f.name === 'New Bank Capacity:');
+        const increaseField = embed.data.fields.find(f => f.name === 'Increase Amount:');
+        expect(newField.value).toBe('1,200,000,000 potatoes');
+        expect(increaseField.value).toBe('200,000,000');
+    });
+
+    test('createRegradeTiersPageEmbed: a row flagged willMaxBankCapacity shows Unlimited instead of its own +increase', () => {
+        const tierRows = [
+            { tier: { cost: 2500000000, increase: 800000000, chance: 0.03 }, index: 8, isCurrent: false, willMaxBankCapacity: false },
+            { tier: { cost: 3000000000, increase: 100000000000, chance: 0.02 }, index: 9, isCurrent: true, willMaxBankCapacity: true },
+        ];
+        const embed = embedFactory.createRegradeTiersPageEmbed('Bank Capacity', tierRows, 0, 1, 'potatoes');
+        expect(embed.data.fields[0].value).toContain('+800,000,000 potatoes');
+        expect(embed.data.fields[1].value).toContain('Unlimited (maxes Bank Capacity!)');
+        expect(embed.data.fields[1].value).not.toContain('100,000,000,000');
+    });
+});
