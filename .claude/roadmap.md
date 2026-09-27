@@ -18074,3 +18074,44 @@ mechanism, the granting command, and why it's deliberately scoped to only `manua
 missing from the web port entirely (see the earlier parity-audit roadmap entry), so this new
 condition type has nothing to port INTO yet. If/when Titles ships on web, `manualGrant` should be
 included in that port from the start rather than added as its own follow-up.
+
+## Titles surfaced in 6 more places (raid/World Boss results, all 3 leaderboards, Big Events, guild members, Tower leaderboard)
+
+**What was asked.** Direct instruction, following up on the earlier walkthrough of where Titles
+currently show up: "did you also build out all the places titles could show up?"
+
+**What changed.** Built the full recommended set from that walkthrough — see
+`systems/titles.md`'s new "§13 More places Titles show up" section for the complete
+file-by-file breakdown. Summary:
+- **Free** (userDetails/the full user doc already in memory, zero new queries): guild raid result
+  embeds and World Boss result embeds (both already fetch full participant details for the power
+  calculation — enriched the SAME roster arrays/objects in place rather than threading a new
+  parameter through `startRaid.js`'s large, deeply-nested scenario dispatch table, which would
+  have been a much larger and riskier diff for identical player-facing effect), all three personal
+  leaderboards (potato/starch/mercenary — all already full-document scans), and all 14 Big Events
+  channel post call sites (`bigEventsChannel.playerField` gained an optional, backward-compatible
+  `equippedTitle` parameter).
+- **Small, real, deliberately-accepted cost** (the roster shape only carries `{id, username,
+  role}`): `/guild-members` (one `findUser` per member — guild sizes keep this cheap) and Tower's
+  daily leaderboard (fetched live for only the top 5 rendered entries, not the whole day's
+  survivors — deliberately NOT stored on the leaderboard snapshot itself, so a title equipped after
+  today's run still shows up, matching every other leaderboard's live-read behavior).
+- New `TitleFactory.getTitleLabel(titleId)` — the short "the Reborn" form for inline mentions,
+  since the pre-existing `getEquippedTitleLabel`'s full "label — description" sentence would be
+  unreadable repeated across a roster or leaderboard.
+- **Deliberately not done**: a proactive "title unlocked" notification — already flagged in the
+  original design (section 4, decision point #3) as a separate, larger feature (needs the same
+  recompute-and-diff logic Achievements' unlock embed uses), not just another display surface.
+
+**Tests.** 19 new tests across 6 files: `bigEventsChannel.test.js`, `embedFactory.test.js` (12,
+covering every touched embed's title-present/no-title/field-unset-doesn't-crash cases),
+`worldFactory.test.js`, `startRaidNextRaidCooldown.test.js` (a real `runStartRaidFlow` integration
+test — not just the embed-rendering layer), `leaderboard.test.js`, and a new
+`guildMembersTitles.test.js`. One pre-existing exact-object-shape assertion in `leaderboard.test.js`
+needed updating for the new field. Full suite: **115 suites / 2162 tests, all passing** (net +19
+new tests, +1 new suite, 0 broken).
+
+**Cross-repo note.** Not ported to `financial-project` this pass — Titles as a whole doesn't exist
+on the web port yet at all (see the earlier parity-audit entry), so there's a full feature port
+needed before any of these display surfaces have an equivalent to extend. Tracked as its own
+follow-up, in progress.

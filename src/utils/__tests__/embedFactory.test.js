@@ -545,6 +545,27 @@ describe('createWorldResultEmbed world-buff announcement', () => {
     });
 });
 
+// Titles (systems/titles.md, "more places titles show up" pass, 2026-09-27) —
+// worldFactory.js's startWorldBoss enriches each raidListByMulti entry with equippedTitle
+// (already fetched for the power calc) before this embed is built.
+describe('createWorldResultEmbed Titles in the Members In Raid field', () => {
+    const mob = { name: 'Griseous, the Dragon Fruit', description: 'flavor text', thumbnailUrl: 'https://example.com/x.png' };
+
+    test('a member with an equipped title shows it inline after their username', () => {
+        const raidList = [{ id: 'u1', username: 'Raider', raidShare: 1, equippedTitle: 'reborn_spud' }];
+        const embed = embedFactory.createWorldResultEmbed(raidList, 1000, mob, 0.5, 'Win!');
+        const field = embed.data.fields.find(f => f.name === 'Members In Raid:');
+        expect(field.value).toContain('Raider, the Reborn');
+    });
+
+    test('a member with no equipped title shows just their username, unchanged', () => {
+        const raidList = [{ id: 'u1', username: 'Raider', raidShare: 1, equippedTitle: null }];
+        const embed = embedFactory.createWorldResultEmbed(raidList, 1000, mob, 0.5, 'Win!');
+        const field = embed.data.fields.find(f => f.name === 'Members In Raid:');
+        expect(field.value).toBe('Raider - 1,000 potatoes gained\n');
+    });
+});
+
 // Mercenary Rank's Rival success bonus (2026-08-29) — surfaced explicitly on both the
 // post-fight result embed and the pre-fight /notoriety preview, since the whole point was
 // making rank's contribution to a Rival fight actually felt.
@@ -1165,6 +1186,73 @@ describe('createMercenaryLeaderboardEmbed', () => {
         expect(embed.data.fields.find(f => f.name === 'Your Rank')).toBeUndefined();
         expect(embed.data.fields[1].name).toContain('(You)');
     });
+
+    // Titles (systems/titles.md, "more places titles show up" pass, 2026-09-27) —
+    // getSortedMercenariesByBountyWins returns full user docs, equippedTitle included.
+    test('shows an equipped title inline after the username', () => {
+        const titledMercs = [{ userId: 'u1', username: 'TopMerc', mercenaryBountyWinCount: 60, isMercenary: true, equippedTitle: 'reborn_spud' }];
+        const embed = embedFactory.createMercenaryLeaderboardEmbed(titledMercs, -1);
+        expect(embed.data.fields[0].name).toContain('TopMerc, the Reborn');
+    });
+});
+
+// Titles (systems/titles.md, "more places titles show up" pass, 2026-09-27) —
+// getSortedUsers/getSortedUserStarches return full user docs, equippedTitle included at zero
+// extra cost.
+describe('createUserLeaderboardEmbed Titles', () => {
+    test('shows an equipped title inline after the username', () => {
+        const users = [{ username: 'Alice', potatoes: 1000, bankStored: 0, equippedTitle: 'reborn_spud' }];
+        const embed = embedFactory.createUserLeaderboardEmbed(users, 1000, -1);
+        expect(embed.data.fields[0].name).toContain('Alice, the Reborn');
+    });
+
+    test('no equipped title shows just the username, unchanged', () => {
+        const users = [{ username: 'Alice', potatoes: 1000, bankStored: 0, equippedTitle: null }];
+        const embed = embedFactory.createUserLeaderboardEmbed(users, 1000, -1);
+        expect(embed.data.fields[0].name).not.toContain(',');
+    });
+});
+
+describe('createUserStarchLeaderboardEmbed Titles', () => {
+    test('shows an equipped title inline after the username', () => {
+        const users = [{ username: 'Alice', starches: 500, equippedTitle: 'reborn_spud' }];
+        const embed = embedFactory.createUserStarchLeaderboardEmbed(users, 500, -1);
+        expect(embed.data.fields[0].name).toContain('Alice, the Reborn');
+    });
+});
+
+// Titles (systems/titles.md, "more places titles show up" pass, 2026-09-27) —
+// guildMembers.js enriches each memberList entry with equippedTitle (one findUser per
+// member, the one surface where this genuinely isn't free) before this embed is built.
+describe('createGuildMemberListEmbed Titles', () => {
+    const { GuildRoles } = require('../constants');
+
+    function guildFixture(memberList) {
+        return { guildName: 'Test Guild', memberList };
+    }
+
+    test('shows the leader\'s title on their single-line field', () => {
+        const guild = guildFixture([{ id: 'l1', username: 'Leader1', role: GuildRoles.LEADER, equippedTitle: 'reborn_spud' }]);
+        const embed = embedFactory.createGuildMemberListEmbed(guild, {});
+        const leaderField = embed.data.fields.find(f => f.name === GuildRoles.LEADER);
+        expect(leaderField.value).toBe('Leader1, the Reborn');
+    });
+
+    test('shows titles for co-leaders/elders/members, one per line, mixed with untitled members', () => {
+        const guild = guildFixture([
+            { id: 'l1', username: 'Leader1', role: GuildRoles.LEADER, equippedTitle: null },
+            { id: 'm1', username: 'Member1', role: GuildRoles.MEMBER, equippedTitle: 'reborn_spud' },
+            { id: 'm2', username: 'Member2', role: GuildRoles.MEMBER, equippedTitle: null },
+        ]);
+        const embed = embedFactory.createGuildMemberListEmbed(guild, {});
+        const memberField = embed.data.fields.find(f => f.name === GuildRoles.MEMBER);
+        expect(memberField.value).toBe('Member1, the Reborn\nMember2\n');
+    });
+
+    test('a member with no equippedTitle field at all (pre-existing shape) does not throw', () => {
+        const guild = guildFixture([{ id: 'l1', username: 'Leader1', role: GuildRoles.LEADER }]);
+        expect(() => embedFactory.createGuildMemberListEmbed(guild, {})).not.toThrow();
+    });
 });
 
 // Raid Result Embed Shows Next-Raid Cooldown (2026-08-31) — nextRaidAvailableAt is a new
@@ -1208,6 +1296,32 @@ describe('createRaidEmbed next-raid cooldown field', () => {
         const nextRaidAvailableAt = Date.now() + 1_548_000;
         const embed = embedFactory.createRaidEmbed('Guild', raidList, 5, -500, null, mob, 0.5, 'Loss!', null, null, null, nextRaidAvailableAt, null, 0);
         expect(embed.data.fields.find(f => f.name.includes('Cooldown Skip Chance'))).toBeUndefined();
+    });
+});
+
+// Titles (systems/titles.md, "more places titles show up" pass, 2026-09-27) — startRaid.js's
+// resolveRaid enriches each raidList entry with equippedTitle before this embed is built;
+// other callers never set it, so this must stay a no-op suffix for them.
+describe('createRaidEmbed Titles in the Members In Raid field', () => {
+    const mob = { name: 'Test Mob', description: 'flavor', thumbnailUrl: 'https://example.com/x.png' };
+
+    test('a member with an equipped title shows it inline after their username', () => {
+        const raidList = [{ id: 'u1', username: 'Raider', equippedTitle: 'reborn_spud' }];
+        const embed = embedFactory.createRaidEmbed('Guild', raidList, 5, 1000, null, mob, 0.5, 'Win!');
+        const field = embed.data.fields.find(f => f.name === 'Members In Raid:');
+        expect(field.value).toContain('Raider, the Reborn');
+    });
+
+    test('a member with no equipped title shows just their username, unchanged', () => {
+        const raidList = [{ id: 'u1', username: 'Raider', equippedTitle: null }];
+        const embed = embedFactory.createRaidEmbed('Guild', raidList, 5, 1000, null, mob, 0.5, 'Win!');
+        const field = embed.data.fields.find(f => f.name === 'Members In Raid:');
+        expect(field.value).toBe('Raider\n');
+    });
+
+    test('a caller that never sets equippedTitle at all (pre-existing shape) does not throw', () => {
+        const raidList = [{ id: 'u1', username: 'Raider' }];
+        expect(() => embedFactory.createRaidEmbed('Guild', raidList, 5, 1000, null, mob, 0.5, 'Win!')).not.toThrow();
     });
 });
 

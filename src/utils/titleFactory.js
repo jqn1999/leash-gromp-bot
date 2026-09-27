@@ -124,6 +124,15 @@ class TitleFactory {
         if (!title) return null;
         return `${title.label} — ${title.description}`;
     }
+
+    // Short form ("the Reborn", not the full "the Reborn — Shed one life's harvest...")
+    // for inline mentions where a full flavor sentence would be too long — a roster line,
+    // a Big Events post, a leaderboard row. See systems/titles.md's "more places titles
+    // show up" pass (2026-09-27). Same null-safety as getEquippedTitleLabel above.
+    getTitleLabel(titleId) {
+        const title = Titles.find(t => t.id === titleId);
+        return title ? title.label : null;
+    }
 }
 
 module.exports = {

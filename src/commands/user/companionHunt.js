@@ -141,7 +141,7 @@ async function runCollect(interaction) {
                 title: '🎉 Rare Companion!',
                 description: `**${userDisplayName}** found a rare companion out on an expedition!`,
                 fields: [
-                    bigEventsChannel.playerField(userDisplayName),
+                    bigEventsChannel.playerField(userDisplayName, userDetails.equippedTitle),
                     bigEventsChannel.companionField(result.companion),
                     bigEventsChannel.sourceField('Found on a Companion Hunt'),
                 ],

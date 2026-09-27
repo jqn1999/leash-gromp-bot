@@ -412,3 +412,72 @@ describe block (grants and persists; preserves other existing `permanentTitles` 
 than overwriting; already-granted is a no-op; rejects a non-`manualGrant` title id; rejects an
 unresolvable player). Full suite: **114 suites / 2143 tests, all passing** (net +9 new tests,
 0 broken).
+
+## 13. More places Titles show up (2026-09-27, direct instruction)
+
+Section 8 originally scoped Titles to `/profile` only, with guild raid result embeds flagged as
+the cheapest phase-2 candidate. This pass built that candidate plus every other spot where a
+player's `equippedTitle` was already sitting in memory (or cheap to fetch) at the point an embed
+gets built, following the "one thing shown at a time, expand later" precedent to its next step.
+
+**Free — `userDetails`/the full user doc was already fetched for something else:**
+- **Guild raid result embeds** (`createRaidEmbed`) — `startRaid.js`'s `resolveRaid` already fetches
+  `raidMemberDetails` for the power calculation; enriches the SAME `raidList` array/objects in
+  place (`member.equippedTitle = raidMemberDetails[i]?.equippedTitle`) rather than threading a new
+  parameter through the raid-scenario dispatch chain (a large, deeply-nested table of tier-specific
+  closures — mutating the existing objects that already flow through unchanged was the much lower-
+  risk option). `createRaidEmbed`'s "Members In Raid:" line reads `element.equippedTitle` if
+  present; every other, non-title-aware caller of this same function is unaffected (the field is
+  simply absent on their objects).
+- **World Boss result embeds** (`createWorldResultEmbed`) — same shape: `worldFactory.js`'s
+  `startWorldBoss` already loops over `raidMemberDetails` to compute each participant's power;
+  `equippedTitle` rides along onto the same `raidListByMulti` entries it already builds.
+- **The potato/starch/mercenary leaderboards** (`createUserLeaderboardEmbed`/
+  `createUserStarchLeaderboardEmbed`/`createMercenaryLeaderboardEmbed`) — all three already
+  operate on full-document scans (`dynamoHandler.getSortedUsers`/`getSortedUserStarches`/
+  `getSortedMercenariesByBountyWins`), so `equippedTitle` is already on every entry.
+- **Every Big Events channel post** — `bigEventsChannel.playerField(userDisplayName, equippedTitle
+  = null)` gained an optional second parameter (backward-compatible; every pre-existing call site
+  with no second arg is unaffected). Updated the 14 call sites across `work.js`, `takeBounty.js`,
+  `robNpc.js`, `confrontRival.js`, `companionHunt.js`, `startRaid.js`, `repelWarband.js`, and
+  `enter-tower.js` to pass `userDetails.equippedTitle` — every one of them already has `userDetails`
+  in scope at the point it posts.
+
+**Small, real, but deliberately accepted extra cost — the roster shape only carries `{id,
+username, role}`, not a full user doc:**
+- **`/guild-members`** (`createGuildMemberListEmbed`) — `guildMembers.js` now does one
+  `dynamoHandler.findUser` per member (typical guild sizes keep this cheap in practice) and
+  enriches `guild.memberList` in place, same pattern as the raid roster above.
+- **Tower's daily leaderboard** (`/leaderboard tower-leaderboard`, `createTowerLeaderboardEmbed`)
+  — the stored `tower_leaderboard` entries are a payout-time snapshot with no `equippedTitle`
+  field, and deliberately weren't given one: a title equipped AFTER today's run should still show
+  up here, matching every other leaderboard's live-read behavior. `leaderboard.js` fetches
+  `equippedTitle` live for only the top 5 entries actually rendered (not the full sorted array),
+  keeping the cost bounded regardless of how many players survived today.
+
+**Rendering helper.** `TitleFactory` gained `getTitleLabel(titleId)` — the short form ("the
+Reborn") for inline mentions, distinct from the existing `getEquippedTitleLabel` (the full
+"label — description" string `/profile`'s dedicated field needs). Every new call site above uses
+the short form; a roster line or a Big Events post with the full flavor sentence appended to every
+name would be unreadable at more than one or two entries.
+
+**Deliberately NOT done in this pass**: a "new title unlocked" proactive notification — this needs
+the same recompute-and-diff logic Achievements' own unlock embed uses, which section 4's Decision
+point #3 already deferred for the same reason (a real, separate feature, not just another display
+surface).
+
+**Tests.** `bigEventsChannel.test.js` (+2: title appended when present, falls back to bare name for
+an unrecognized id), `embedFactory.test.js` (+12 across `createRaidEmbed`/`createWorldResultEmbed`/
+all three leaderboard embeds/`createGuildMemberListEmbed`, including no-title and unset-field
+non-crash cases), `worldFactory.test.js` (+1, confirms `equippedTitle` actually reaches
+`raidListByMulti`), `startRaidNextRaidCooldown.test.js` (+1, full `runStartRaidFlow` integration:
+a titled leader and an untitled member both render correctly in the real result embed),
+`leaderboard.test.js` (updated the pre-existing exact-shape assertion for the new field, +1 for a
+title actually being fetched and passed through), new `guildMembersTitles.test.js` (+2: the
+per-member fetch enriches `memberList` correctly, a `findUser` failure degrades to no title rather
+than crashing). Full suite: **115 suites / 2162 tests, all passing** (net +19 new tests,
+0 broken).
+
+**Cross-repo note.** Not ported to `financial-project` in this same pass — see the separate
+roadmap entry for the Titles web port, which covers these same display surfaces where an
+equivalent view exists there.

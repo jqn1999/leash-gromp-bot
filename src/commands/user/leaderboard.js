@@ -29,6 +29,16 @@ async function runTowerLeaderboard(interaction) {
     // towerLeaderboardFactory.js's sortTowerLeaderboardEntries, shared with the actual
     // payout ranking so this preview can't drift onto a different ordering.
     const sorted = sortTowerLeaderboardEntries(entries);
+
+    // Titles (systems/titles.md, "more places titles show up" pass, 2026-09-27) — stored
+    // leaderboard entries are a payout-time snapshot with no equippedTitle field, and
+    // deliberately isn't given one (a title picked AFTER today's run should still show up
+    // here, the same live-read behavior every other leaderboard already has) — fetched live
+    // for only the top 5 actually rendered, not the full `sorted` array, to keep this cheap.
+    const topFive = sorted.slice(0, 5);
+    const topFiveDetails = await Promise.all(topFive.map(e => dynamoHandler.findUser(e.userId, e.username)));
+    topFive.forEach((entry, i) => { entry.equippedTitle = topFiveDetails[i]?.equippedTitle || null; });
+
     const embed = embedFactory.createTowerLeaderboardEmbed(sorted);
     interaction.editReply({ embeds: [embed] });
 }

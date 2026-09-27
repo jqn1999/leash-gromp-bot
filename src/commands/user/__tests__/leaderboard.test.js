@@ -72,12 +72,29 @@ describe('/leaderboard tower-leaderboard option', () => {
         await callback({}, interaction);
 
         expect(dynamoHandler.getTowerLeaderboard).toHaveBeenCalled();
+        // equippedTitle (2026-09-27, "more places titles show up" pass) — leaderboard.js
+        // fetches this live for the top 5 rendered entries; findUser isn't stubbed to
+        // return anything here, so it degrades to null for each, not a crash.
         expect(embedFactoryInstance.createTowerLeaderboardEmbed).toHaveBeenCalledWith([
-            { userId: 'b', displayName: 'B', floor: 10 },
-            { userId: 'c', displayName: 'C', floor: 7 },
-            { userId: 'a', displayName: 'A', floor: 3 },
+            { userId: 'b', displayName: 'B', floor: 10, equippedTitle: null },
+            { userId: 'c', displayName: 'C', floor: 7, equippedTitle: null },
+            { userId: 'a', displayName: 'A', floor: 3, equippedTitle: null },
         ]);
         expect(interaction.editReply).toHaveBeenCalledWith({ embeds: [embedFactoryInstance.createTowerLeaderboardEmbed.mock.results[0].value] });
+    });
+
+    test('fetches the equipped title live for each of the top 5 entries', async () => {
+        const entries = [{ userId: 'a', username: 'A', floor: 5 }];
+        dynamoHandler.getTowerLeaderboard.mockResolvedValue(entries);
+        dynamoHandler.findUser.mockResolvedValue({ equippedTitle: 'reborn_spud' });
+        const interaction = fakeInteraction('tower-leaderboard');
+
+        await callback({}, interaction);
+
+        expect(dynamoHandler.findUser).toHaveBeenCalledWith('a', 'A');
+        expect(embedFactoryInstance.createTowerLeaderboardEmbed).toHaveBeenCalledWith([
+            { userId: 'a', username: 'A', floor: 5, equippedTitle: 'reborn_spud' },
+        ]);
     });
 
     // Ranking order (2026-09-23, direct instruction): floor, then elitesKilled, then

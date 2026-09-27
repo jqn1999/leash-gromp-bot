@@ -208,3 +208,30 @@ describe('Next-raid cooldown: displayed value matches the written value', () => 
         expect(field.value).toBe(`<t:${Math.floor(writtenValue / 1000)}:R>`);
     });
 });
+
+// Titles (systems/titles.md, "more places titles show up" pass, 2026-09-27) — resolveRaid
+// enriches raidList with each member's equippedTitle (already fetched for the power calc)
+// before the result embed is built.
+describe('Titles show up in the raid result\'s Members In Raid field', () => {
+    test('a raider with an equipped title shows it inline after their username', async () => {
+        const leader = { ...userFixture('leader', 1_000_000), equippedTitle: 'reborn_spud' };
+        const m2 = userFixture('m2', 1_000_000);
+        dynamoHandler.findUser.mockImplementation(async (id) => (id === 'leader' ? leader : id === 'm2' ? m2 : undefined));
+        jest.spyOn(Math, 'random').mockReturnValue(0.5);
+
+        const guild = guildFixture();
+        dynamoHandler.findGuildById.mockResolvedValueOnce(guild).mockResolvedValueOnce({ ...guild, raidCount: 1 });
+
+        const interaction = fakeInteraction();
+        await runStartRaidFlow(interaction, 'baby');
+
+        Math.random.mockRestore();
+
+        const lastCall = interaction.editReply.mock.calls[interaction.editReply.mock.calls.length - 1];
+        const embed = lastCall[0].embeds[0];
+        const membersField = embed.data.fields.find(f => f.name === 'Members In Raid:');
+        expect(membersField.value).toContain('Leader, the Reborn');
+        expect(membersField.value).toContain('Member2\n');
+        expect(membersField.value).not.toContain('Member2,');
+    });
+});

@@ -51,7 +51,15 @@ module.exports = {
             interaction.editReply(`${userDisplayName} there was an error looking for the given guild! Check your input and try again!`);
             return;
         }
-        
+
+        // Titles (systems/titles.md, "more places titles show up" pass, 2026-09-27) —
+        // guild.memberList is only {id, username, role}, so unlike the raid/World Boss
+        // embeds this genuinely costs one findUser per member (typical guild sizes are
+        // small, so this stays cheap in practice). Enriched in place, same pattern
+        // startRaid.js's resolveRaid uses for its own raidList.
+        const memberDetails = await Promise.all(guild.memberList.map(m => dynamoHandler.findUser(m.id, m.username)));
+        guild.memberList.forEach((member, i) => { member.equippedTitle = memberDetails[i]?.equippedTitle || null; });
+
         const embed = embedFactory.createGuildMemberListEmbed(guild, interaction);
         interaction.editReply({ embeds: [embed] });
     }

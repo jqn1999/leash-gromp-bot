@@ -234,6 +234,21 @@ describe('World power calc (2026-09-04 fix)', () => {
         expect(withRebirthChance).toBeGreaterThan(noRebirthChance);
     });
 
+    // Titles (systems/titles.md, "more places titles show up" pass, 2026-09-27) —
+    // userDetails is already fetched here for the power calc, so equippedTitle rides along
+    // onto raidListByMulti for free.
+    test('carries each participant\'s equippedTitle onto raidListByMulti for the result embed', async () => {
+        const spy = jest.spyOn(EmbedFactory.prototype, 'createWorldResultEmbed');
+        const griseousIndex = worldBossMobs.findIndex(m => m.name === 'Griseous, the Dragon Fruit');
+
+        mockWinnableRaid(griseousIndex, [{ id: 'a', workMultiplierAmount: 100, rebirthCount: 0, equippedTitle: 'reborn_spud' }]);
+        const factory = new worldFactory();
+        await factory.popWorldBoss();
+        const [raidListByMulti] = spy.mock.calls[0];
+
+        expect(raidListByMulti[0].equippedTitle).toBe('reborn_spud');
+    });
+
     test('a live workMulti World Boss buff raises totalMultiplier further, without changing any participant\'s own raidShare', async () => {
         const spy = jest.spyOn(EmbedFactory.prototype, 'createWorldResultEmbed');
         const griseousIndex = worldBossMobs.findIndex(m => m.name === 'Griseous, the Dragon Fruit');

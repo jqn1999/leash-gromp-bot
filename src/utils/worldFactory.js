@@ -64,7 +64,9 @@ async function startWorldBoss(world, mob){
             // no separate Number.isFinite guard needed anymore.
             const memberMultiplier = getMemberRaidPower(userDetails);
             totalMultiplier += memberMultiplier;
-            raidListByMulti.push({id: element.id, username: element.username, multiplier: memberMultiplier})
+            // Titles (systems/titles.md, "more places titles show up" pass, 2026-09-27) —
+            // userDetails is already fetched above for the power calc, so this is free.
+            raidListByMulti.push({id: element.id, username: element.username, multiplier: memberMultiplier, equippedTitle: userDetails?.equippedTitle || null})
         })
         for (const element of raidListByMulti) {
             element.raidShare = totalMultiplier > 0 ? element.multiplier / totalMultiplier : 0;

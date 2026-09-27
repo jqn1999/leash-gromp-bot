@@ -851,11 +851,15 @@ class EmbedFactory {
     createUserLeaderboardEmbed(sortedUsers, total, userIndex) {
         const avatarUrl = 'https://cdn.discordapp.com/avatars/1187560268172116029/2286d2a5add64363312e6cb49ee23763.png';
         const topCount = Math.min(5, sortedUsers.length);
+        // Titles (systems/titles.md, "more places titles show up" pass, 2026-09-27) —
+        // sortedUsers is a full-doc scan (dynamoHandler.getSortedUsers), so equippedTitle is
+        // already here at zero extra cost.
         const formatEntry = (element, index) => {
             const totalWealth = element.potatoes + element.bankStored;
             const isYou = index === userIndex;
+            const titleSuffix = element.equippedTitle ? `, ${titleFactory.getTitleLabel(element.equippedTitle)}` : '';
             return {
-                name: `${rankLabel(index)} ${element.username}${isYou ? ' (You)' : ''}`,
+                name: `${rankLabel(index)} ${element.username}${titleSuffix}${isYou ? ' (You)' : ''}`,
                 value: `${totalWealth.toLocaleString()} potatoes total (${(totalWealth / total * 100).toFixed(2)}% of server)\n${element.potatoes.toLocaleString()} liquid • ${element.bankStored.toLocaleString()} banked`,
                 inline: false,
             };
@@ -890,8 +894,9 @@ class EmbedFactory {
         const topCount = Math.min(5, sortedUsers.length);
         const formatEntry = (element, index) => {
             const isYou = index === userIndex;
+            const titleSuffix = element.equippedTitle ? `, ${titleFactory.getTitleLabel(element.equippedTitle)}` : '';
             return {
-                name: `${rankLabel(index)} ${element.username}${isYou ? ' (You)' : ''}`,
+                name: `${rankLabel(index)} ${element.username}${titleSuffix}${isYou ? ' (You)' : ''}`,
                 value: `${element.starches.toLocaleString()} starches (${(element.starches / total * 100).toFixed(2)}% of server)`,
                 inline: false,
             };
@@ -931,11 +936,12 @@ class EmbedFactory {
         const formatEntry = (element, index) => {
             const isYou = index === userIndex;
             const rankInfo = mercenaryFactory.getMercenaryRankInfo(element.mercenaryBountyWinCount);
-            const title = MERCENARY_RANK_TITLES[rankInfo.rank] || `Rank ${rankInfo.rank}`;
+            const rankTitle = MERCENARY_RANK_TITLES[rankInfo.rank] || `Rank ${rankInfo.rank}`;
             const retiredTag = element.isMercenary ? '' : ' (Retired)';
+            const equippedTitleSuffix = element.equippedTitle ? `, ${titleFactory.getTitleLabel(element.equippedTitle)}` : '';
             return {
-                name: `${rankLabel(index)} ${element.username}${isYou ? ' (You)' : ''}${retiredTag}`,
-                value: `Rank ${rankInfo.rank} — ${title} • ${element.mercenaryBountyWinCount.toLocaleString()} bounty win${element.mercenaryBountyWinCount === 1 ? '' : 's'}`,
+                name: `${rankLabel(index)} ${element.username}${equippedTitleSuffix}${isYou ? ' (You)' : ''}${retiredTag}`,
+                value: `Rank ${rankInfo.rank} — ${rankTitle} • ${element.mercenaryBountyWinCount.toLocaleString()} bounty win${element.mercenaryBountyWinCount === 1 ? '' : 's'}`,
                 inline: false,
             };
         };
@@ -1363,16 +1369,23 @@ class EmbedFactory {
             interaction.editReply(`${userDisplayName} there was an error retrieving the guild leader of your guild. Let an admin know!`);
             return;
         }
+        // Titles (systems/titles.md, "more places titles show up" pass, 2026-09-27) —
+        // guildMembers.js enriches each memberList entry with equippedTitle before this is
+        // called; a caller that never sets it (none currently) just gets no suffix.
+        const memberLine = (member) => {
+            const titleSuffix = member.equippedTitle ? `, ${titleFactory.getTitleLabel(member.equippedTitle)}` : '';
+            return `${member.username}${titleSuffix}`;
+        };
         userList.push({
             name: `${leader.role}`,
-            value: `${leader.username}`,
+            value: memberLine(leader),
             inline: false,
         })
         const coleaderList = memberList.filter((currentMember) => currentMember.role == GuildRoles.COLEADER)
         if (coleaderList.length > 0) {
             let stringListOfMembers = ``;
             for (const [index, element] of coleaderList.entries()) {
-                stringListOfMembers += `${element.username}\n`
+                stringListOfMembers += `${memberLine(element)}\n`
             }
             const listOfMembers = {
                 name: `${GuildRoles.COLEADER}`,
@@ -1381,12 +1394,12 @@ class EmbedFactory {
             };
             userList.push(listOfMembers);
         }
-        
+
         const elderList = memberList.filter((currentMember) => currentMember.role == GuildRoles.ELDER)
         if (elderList.length > 0) {
             let stringListOfMembers = ``;
             for (const [index, element] of elderList.entries()) {
-                stringListOfMembers += `${element.username}\n`
+                stringListOfMembers += `${memberLine(element)}\n`
             }
             const listOfMembers = {
                 name: `${GuildRoles.ELDER}`,
@@ -1400,7 +1413,7 @@ class EmbedFactory {
         if (regularMemberList.length > 0) {
             let stringListOfMembers = ``;
             for (const [index, element] of regularMemberList.entries()) {
-                stringListOfMembers += `${element.username}\n`
+                stringListOfMembers += `${memberLine(element)}\n`
             }
             const listOfMembers = {
                 name: `${GuildRoles.MEMBER}`,
@@ -1734,9 +1747,15 @@ class EmbedFactory {
             })
         }
 
+        // Titles (systems/titles.md, "more places titles show up" pass, 2026-09-27) —
+        // startRaid.js's resolveRaid enriches each raidList entry with equippedTitle
+        // (already fetched for the power calculation, no new query here) before this embed
+        // is ever built; other callers of createRaidEmbed simply never set it, so this is a
+        // no-op suffix for them.
         let stringListOfMembers = ``;
         for (const [index, element] of raidList.entries()) {
-            stringListOfMembers += `${element.username}\n`
+            const titleSuffix = element.equippedTitle ? `, ${titleFactory.getTitleLabel(element.equippedTitle)}` : '';
+            stringListOfMembers += `${element.username}${titleSuffix}\n`
         }
         const listOfMembers = {
             name: `Members In Raid:`,
@@ -1869,7 +1888,8 @@ class EmbedFactory {
             })
         } else {
             for (const [index, element] of raidList.entries()) {
-                stringListOfMembers += `${element.username} - ${Math.round(element.raidShare * totalRaidReward).toLocaleString()} potatoes gained\n`
+                const titleSuffix = element.equippedTitle ? `, ${titleFactory.getTitleLabel(element.equippedTitle)}` : '';
+                stringListOfMembers += `${element.username}${titleSuffix} - ${Math.round(element.raidShare * totalRaidReward).toLocaleString()} potatoes gained\n`
             }
             const listOfMembers = {
                 name: `Members In Raid:`,
@@ -4679,8 +4699,12 @@ class EmbedFactory {
                 // Elites Killed/Potatoes shown alongside Floor now that they're real
                 // ranking tiebreakers (2026-09-23) — visible even when they didn't decide
                 // this particular entry's rank, so ties further down the list are legible.
+                // Titles (2026-09-27) — leaderboard.js fetches this live for only the top 5
+                // entries actually rendered here, so a stored (snapshot) entry with no
+                // equippedTitle of its own still shows the player's CURRENT title.
+                const titleSuffix = entry.equippedTitle ? `, ${titleFactory.getTitleLabel(entry.equippedTitle)}` : '';
                 entryList.push({
-                    name: `${rankLabel(index)} ${entry.username}`,
+                    name: `${rankLabel(index)} ${entry.username}${titleSuffix}`,
                     value: `Floor ${entry.floor.toLocaleString()} • ${(entry.elitesKilled || 0).toLocaleString()} Elites Killed • ${(entry.potatoes || 0).toLocaleString()} potatoes`,
                     inline: false,
                 });
