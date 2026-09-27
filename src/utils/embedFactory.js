@@ -5219,7 +5219,17 @@ class EmbedFactory {
         const { currentBuff, entrants, consecutiveHoldCycles } = preview;
         const isHolderLive = Boolean(currentBuff && currentBuff.holderType && currentBuff.expiresAt > Date.now());
         const totalEnrolled = entrants.reduce((sum, e) => sum + e.roster.length, 0);
-        const lines = pageRows.map(row => `${row.username} — ${row.entrantType === 'mercenary' ? '⚔️' : '🏰'} ${row.entrantName}`);
+        // Power contribution per player (2026-09-27, direct instruction: "include how much
+        // power each player is adding to the total for their guild / to mercs") — shows
+        // their own rank-weighted share (contribution) and what % of their OWN power that
+        // rank-decay left them counting at, so a player can see both "how much I'm adding"
+        // and "how much the decay/floor already cost me" at a glance.
+        const lines = pageRows.map(row => {
+            const contributionText = row.contribution
+                ? ` — adding **${row.contribution.contribution.toFixed(2)}** power (${(row.contribution.weight * 100).toFixed(0)}% of their own ${row.contribution.power.toFixed(2)})`
+                : '';
+            return `${row.username} — ${row.entrantType === 'mercenary' ? '⚔️' : '🏰'} ${row.entrantName}${contributionText}`;
+        });
 
         const holderLine = isHolderLive
             ? `**${currentBuff.holderName}** currently holds the Keep (${consecutiveHoldCycles.toLocaleString()} consecutive cycle${consecutiveHoldCycles === 1 ? '' : 's'} held).`

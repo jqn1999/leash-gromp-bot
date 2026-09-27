@@ -638,7 +638,7 @@ describe('getEffectiveRaidPowerBreakdown', () => {
     });
 
     test('an empty roster returns all zeros, not NaN', () => {
-        expect(getEffectiveRaidPowerBreakdown([])).toEqual({ teamPower: 0, headcountBonus: 0, effectivePower: 0 });
+        expect(getEffectiveRaidPowerBreakdown([])).toEqual({ teamPower: 0, headcountBonus: 0, effectivePower: 0, memberContributions: [] });
     });
 
     // 2026-09-13 — the optional powerFn param spudKeepFactory.js passes
@@ -653,6 +653,69 @@ describe('getEffectiveRaidPowerBreakdown', () => {
         };
         expect(getEffectiveRaidPowerBreakdown([user]).teamPower).toBeCloseTo(105); // default includes Sprout's +5%
         expect(getEffectiveRaidPowerBreakdown([user], getSpudKeepMemberPower).teamPower).toBeCloseTo(100); // excludes it
+    });
+
+    // memberContributions (2026-09-27, direct instruction: "include how much power each
+    // player is adding to the total for their guild / to mercs") — per-member breakdown of
+    // the exact same rank-weighted math teamPower already sums, in sorted-descending order.
+    describe('memberContributions', () => {
+        test('sums to exactly teamPower', () => {
+            const roster = [
+                { userId: 'u1', workMultiplierAmount: 40, rebirthCount: 0 },
+                { userId: 'u2', workMultiplierAmount: 100, rebirthCount: 0 },
+                { userId: 'u3', workMultiplierAmount: 10, rebirthCount: 0 },
+            ];
+            const { teamPower, memberContributions } = getEffectiveRaidPowerBreakdown(roster);
+            const summed = memberContributions.reduce((sum, m) => sum + m.contribution, 0);
+            expect(summed).toBeCloseTo(teamPower);
+        });
+
+        test('is sorted descending by power, with each entry\'s own weight and contribution', () => {
+            const roster = [
+                { userId: 'u1', workMultiplierAmount: 40, rebirthCount: 0 },
+                { userId: 'u2', workMultiplierAmount: 100, rebirthCount: 0 }, // out of order on purpose
+                { userId: 'u3', workMultiplierAmount: 10, rebirthCount: 0 },
+            ];
+            const { memberContributions } = getEffectiveRaidPowerBreakdown(roster);
+            expect(memberContributions.map(m => m.member.userId)).toEqual(['u2', 'u1', 'u3']);
+            expect(memberContributions[0].power).toBeCloseTo(100);
+            expect(memberContributions[0].weight).toBeCloseTo(1.0); // rank 0
+            expect(memberContributions[0].contribution).toBeCloseTo(100);
+            expect(memberContributions[1].power).toBeCloseTo(40);
+            expect(memberContributions[1].weight).toBeCloseTo(Raid.RAID_TEAM_DECAY); // rank 1, 50%
+            expect(memberContributions[1].contribution).toBeCloseTo(40 * Raid.RAID_TEAM_DECAY);
+            expect(memberContributions[2].power).toBeCloseTo(10);
+            expect(memberContributions[2].weight).toBeCloseTo(Raid.RAID_TEAM_DECAY_FLOOR); // rank 2 == the floor exactly
+            expect(memberContributions[2].contribution).toBeCloseTo(10 * Raid.RAID_TEAM_DECAY_FLOOR);
+        });
+
+        test('every rank past 2 is floored at RAID_TEAM_DECAY_FLOOR, not still halving', () => {
+            const roster = Array.from({ length: 6 }, (_, i) => ({ userId: `u${i}`, workMultiplierAmount: 100 - i, rebirthCount: 0 }));
+            const { memberContributions } = getEffectiveRaidPowerBreakdown(roster);
+            // Ranks 3, 4, 5 (0-indexed) all get the flat floor weight, not 0.125/0.0625/0.03125.
+            expect(memberContributions[3].weight).toBeCloseTo(Raid.RAID_TEAM_DECAY_FLOOR);
+            expect(memberContributions[4].weight).toBeCloseTo(Raid.RAID_TEAM_DECAY_FLOOR);
+            expect(memberContributions[5].weight).toBeCloseTo(Raid.RAID_TEAM_DECAY_FLOOR);
+        });
+
+        test('powerFn is respected the same way it is for teamPower', () => {
+            const user = {
+                userId: 'u1',
+                workMultiplierAmount: 100,
+                rebirthCount: 0,
+                companions: { owned: [{ instanceId: 'sprout-a', id: 'sprout', workCount: 0 }], active: 'sprout-a', ownedCount: 1, mythicOwnedCount: 0 }
+            };
+            const withDefault = getEffectiveRaidPowerBreakdown([user]).memberContributions[0];
+            const withSpudKeep = getEffectiveRaidPowerBreakdown([user], getSpudKeepMemberPower).memberContributions[0];
+            expect(withDefault.power).toBeCloseTo(105);
+            expect(withSpudKeep.power).toBeCloseTo(100);
+        });
+
+        test('keeps the original member object accessible for the caller to read username/id off of', () => {
+            const roster = [{ userId: 'u1', username: 'Sinfonia', workMultiplierAmount: 40, rebirthCount: 0 }];
+            const { memberContributions } = getEffectiveRaidPowerBreakdown(roster);
+            expect(memberContributions[0].member).toBe(roster[0]);
+        });
     });
 });
 

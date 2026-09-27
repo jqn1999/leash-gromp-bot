@@ -17865,3 +17865,43 @@ for why Spud Keep is affected identically (shared function).
 via grep, both still using the un-floored `Math.pow` formula. Ported the identical
 `RAID_TEAM_DECAY_FLOOR: 0.25` fix into both in the same session; see that repo's own
 `NOTES_GROMP_WEB_INTEGRATION.md` entry.
+
+## `/current-spud-keep`'s roster page now shows each player's own power contribution (direct instruction: "on the spud keep second page of the command include how much power each player is adding to the total for their guild / to mercs")
+
+**What was asked.** Page 2+ of `/current-spud-keep` (the flattened enrolled-player list added
+2026-08-31) shows who's enrolled and under which guild/Merc Faction, but not how much each of them is
+actually contributing given the rank-weighted decay (just extended with a 25% floor, above). Direct
+instruction to add that per-player number.
+
+**What changed.** `raidFactory.getEffectiveRaidPowerBreakdown` (the one function both Guild Raid and
+Spud Keep already share) gained a `memberContributions` field — purely additive, every pre-existing
+caller reading only `teamPower`/`headcountBonus`/`effectivePower` is unaffected. It's
+`[{ member, power, weight, contribution }]`, one entry per roster member in the same sorted-
+descending-by-power order `teamPower` itself sums in, where `contribution = power * weight` is
+exactly that member's own slice of `teamPower`. `currentSpudKeep.js`'s `flattenRoster` now merges this
+into each roster row by matching `entrant.roster[i].id` (the roster's own `guild.memberList`-style
+shape) against `memberContributions[j].member.userId` (the full `userDetails` object) — same value,
+different field name across the two shapes that already existed independently in this codebase.
+`embedFactory.createSpudKeepRosterEmbed` renders it right on each player's own line: "adding **X**
+power (Y% of their own Z)".
+
+**Tests.** `raidFactory.test.js` gained a `memberContributions` describe block (5 tests): sums to
+exactly `teamPower`; sorted descending with each entry's own correct weight/contribution; every rank
+past 2 sits at the flat floor, not still halving; `powerFn` (Spud Keep's own companion-excluding
+scorer) is respected the same way it already is for `teamPower`; the original member object stays
+accessible by reference. New `currentSpudKeep.test.js` (5 tests) locks in `flattenRoster`'s
+id/userId-matching logic specifically, since a silent mismatch there would just make every
+contribution show as `null` rather than throw — multi-entrant flattening, a missing-from-
+memberContributions member degrading to `null` instead of crashing, and an entrant with no
+`memberContributions` field at all (defensive) not crashing either. `embedFactory.test.js` gained 2
+tests for the new render line and its null-contribution fallback. Full suite: **114 suites / 2125
+tests, all passing** (net +12 new tests, 0 broken).
+
+**Docs.** `systems/spud-keep.md`'s "Enrolled-player pages" section extended with the new field's full
+mechanism. `systems/raids-and-world-events.md`'s `getEffectiveRaidPowerBreakdown` return-shape
+description updated to include `memberContributions`.
+
+**Cross-repo note.** This is a bot-side `/current-spud-keep` display feature only — `financial-project`'s
+own `getEffectiveRaidPowerBreakdown` mirrors were just given the `RAID_TEAM_DECAY_FLOOR` fix above,
+but neither one currently has a per-player contribution DISPLAY to extend (that's specific to this
+Discord command's own paginated embed) — nothing to port unless the web UI grows an equivalent view.

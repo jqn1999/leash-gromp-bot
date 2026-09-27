@@ -417,6 +417,22 @@ design was marked a nice-to-have, not a v1 requirement, and was **not implemente
   and rendered via a new `embedFactory.createSpudKeepRosterEmbed`. Total page count is
   `entrantPages.length + rosterPages.length`, dispatched through the exact same
   `buildPaginationRow`/`runPaginatedReply` Previous/Next mechanism — no new interaction pattern.
+
+  **Per-player power contribution (2026-09-27, direct instruction: "include how much power each
+  player is adding to the total for their guild / to mercs").** `raidFactory.getEffectiveRaidPowerBreakdown`
+  gained a `memberContributions` field (purely additive — every pre-existing caller reading only
+  `teamPower`/`headcountBonus`/`effectivePower` is unaffected): an array of `{ member, power, weight,
+  contribution }`, one per roster member, in the same sorted-descending-by-power order `teamPower`
+  itself is summed in — `weight` is that member's own rank-decayed share (see
+  `raids-and-world-events.md`'s `RAID_TEAM_DECAY`/`RAID_TEAM_DECAY_FLOOR`), `contribution` is
+  `power * weight`. `flattenRoster()` merges this into each roster row by matching
+  `entrant.roster[i].id` against `memberContributions[j].member.userId` (same value, different field
+  name across the two shapes — `roster` entries are `guild.memberList`'s own `{id, username}` shape,
+  `memberContributions` entries carry the full `userDetails` object) — a member missing from
+  `memberContributions` (shouldn't happen in practice, but defensive) gets a `null` contribution
+  rather than a crash. `createSpudKeepRosterEmbed` shows it as "adding **X** power (Y% of their own
+  Z)" right on each player's own line, so a member can see both their raw power and how much the
+  rank decay/floor already cost them.
 - `/collect-potatoes` (user, `src/commands/user/collectPotatoes.js`) — the general potato-collection
   command: shows a preview embed with every pending source's own amount (Spud Keep's
   `spudKeepPendingPotatoes` here, Tater Tower's `towerPendingPotatoes` — see systems/tower.md) plus
