@@ -18752,6 +18752,12 @@ starchCapacityPercent companion, `createUserStatsEmbed`'s Live line present/abse
 No prior test covered either field's exact text, which is how this shipped unnoticed. Full suite:
 **122 suites / 2224 tests, all passing** (net +4 new tests).
 
-**Cross-repo note.** `financial-project` doesn't have an equivalent player-facing profile display
-for this stat in its own duplicated handlers (confirmed — no `maxStarches`/starch-capacity display
-logic in `gromp-economy`/`gromp-companions`), so nothing to port here.
+**Cross-repo note.** Initially checked only `financial-project`'s `.ts`/`.tsx` files for a
+`maxStarches` display and found none, so first reported "nothing to port" — wrong: the display
+lives in an Angular `.html` template (`gromp.component.html`), a file extension that grep pass
+never covered. Re-checked when the user asked directly ("did website need a fix too it does have a
+starch section") and found the identical bug, plus a related one: see that repo's own
+`NOTES_GROMP_WEB_INTEGRATION.md` entry #102 for the fix (this stat has no bot-side equivalent to
+sync back the other direction — the website's fix mirrors an existing `bankCapacityEffective`
+pattern the bot itself doesn't have, since the bot computes its own live bonus inline per-embed
+rather than via a precomputed profile field).
