@@ -18352,3 +18352,45 @@ symmetric with existing behavior.
 nothing's running, a real stop posts the right embed to the right channel with the right admin
 reply, and confirmation it never touches the Big Events channel. Full suite: **121 suites / 2202
 tests, all passing**.
+
+## Boosted-odds naming fix (all 3 surfaces) + new `/work-odds` command
+
+**What was asked.** Player-reported, seeing the live Frost Fair announcement: "Nothing said
+poison had 50% more chance to be found." Follow-up, same conversation: "add a command that shows
+a user ephemerally via embed their /work command's full list of encounters and the % chance of
+each."
+
+**What was found.** `activeFestival.oddsOverride` was always live and correctly applied to every
+`/work` roll (`festivalFactory.applyFestivalOddsOverride`) — this was purely a display gap, not a
+math bug. Neither `/festival`'s status embed, the `/admin start-festival` announcement, nor its
+Big Events post ever named which encounter was boosted or by how much.
+
+**What changed.** New `Festival.ODDS_OVERRIDE_SCENARIO_LABEL` map (`constants.js`) gives a
+human-readable name to each scenario `ODDS_OVERRIDE` can boost (`sweet`/`poison`/`taro`). Wired
+into three existing surfaces plus one new command, all computing the shown percent identically
+(`Math.round((multiplier - 1) * 100)`):
+- **`createFestivalStatusEmbed`** (`/festival`) — new "🎲 Boosted Odds" field, shown first.
+- **`/admin start-festival`'s plain-text announcement and its Big Events post** — both gained an
+  appended sentence naming the encounter and percent.
+- **New `/work-odds` command** (`workOdds.js`) — read-only, ephemeral, mirrors `/bounty-board`'s
+  own precedent. Shows all 11 `/work` scenarios and the caller's own live, fully-composed
+  percentage for each, replicating `performWork`'s real pipeline exactly: `workScenarios` (already
+  hourly-event-adjusted) → Prospector's own widening (`getEffectiveScenarioChances`, using the
+  caller's own equipped companion) → the active festival's odds-boost, if any
+  (`applyFestivalOddsOverride`). Also surfaces a boost-note line for either an active Prospector
+  bonus or a live festival boost, so a player can always check current odds — with a festival
+  running or not — not just be told about it once at announcement time. See
+  `systems/economy-and-work.md`'s new `/work-odds` entry and `systems/seasonal-festivals.md`'s
+  "Boosted-odds naming fix" entry for the full writeup.
+
+**Tests.** 8 new tests across 2 files: `workOdds.test.js` (new file, +3 — baseline odds sum to
+~100% with no boost notes, Prospector equipped widens the right scenarios and adds its own note,
+a live festival oddsOverride widens the matching scenario to the exact expected percent and names
+it), `embedFactory.test.js` (+4 — `createFestivalStatusEmbed`'s new field present/absent,
+`createWorkOddsEmbed`'s render shape), `admin.test.js` (+1 — the start-festival announcement and
+Big Events post both name the boosted encounter). Full suite: **122 suites / 2210 tests, all
+passing**.
+
+**Cross-repo note.** Not checked this pass — if `financial-project`'s own `/gromp` page shows a
+comparable odds preview anywhere (unconfirmed), it would need the same naming fix for parity, but
+the web port doesn't have a `/work-odds` equivalent to add regardless.

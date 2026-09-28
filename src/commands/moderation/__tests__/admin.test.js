@@ -583,6 +583,22 @@ describe('/admin start-festival', () => {
         expect(payload.title).toContain('Harvest Festival');
         expect(payload.description).toContain('/festival-shop');
     });
+
+    // Boosted-odds callout (2026-09-28, player-reported: "Nothing said poison had 50% more
+    // chance to be found") — both the plain-text announcement and the Big Events post now
+    // name the boosted encounter, not just /festival's own status embed.
+    test('the announcement and the Big Events post both name the boosted encounter and its percent', async () => {
+        const now = Date.now();
+        festivalFactory.startFestival.mockResolvedValue({ festivalId: 'frost_fair', startsAt: now, endsAt: now + 7 * 24 * 60 * 60 * 1000 });
+        const interaction = fakeInteraction({ festival: 'frost_fair' });
+        const client = fakeClient();
+
+        await startFestivalCallback(client, interaction);
+
+        expect(client.__channel.send).toHaveBeenCalledWith(expect.stringContaining('+50% chance to encounter a Poison Potato'));
+        const [payload] = bigEventsChannel.postBigEvent.mock.calls[0];
+        expect(payload.description).toContain('+50% chance to encounter a Poison Potato');
+    });
 });
 
 // ---------------------------------------------------------------------------------------

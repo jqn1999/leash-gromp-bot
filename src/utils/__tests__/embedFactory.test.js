@@ -2087,3 +2087,55 @@ describe('regrade embeds show "Unlimited" instead of the raw increase when a Ban
         expect(embed.data.fields[1].value).not.toContain('100,000,000,000');
     });
 });
+
+// /festival's boosted-odds callout (2026-09-28, player-reported: "Nothing said poison had 50%
+// more chance to be found") — activeFestival.oddsOverride was always live and applied to every
+// /work roll, but no player-facing surface named which encounter or by how much until now.
+describe('createFestivalStatusEmbed — boosted-odds callout', () => {
+    function progress() {
+        return [{
+            objective: { name: 'Brave the Frost Roads', description: 'desc' },
+            isCompleted: false, progress: 10, tiersCompleted: 0, totalTiers: 3, nextTierThreshold: 100,
+        }];
+    }
+
+    test('a live oddsOverride adds a "Boosted Odds" field naming the encounter and percent, as the FIRST field', () => {
+        const activeFestival = { festivalId: 'frost_fair', endsAt: Date.now() + 100000, oddsOverride: { scenario: 'poison', multiplier: 1.5 } };
+        const embed = embedFactory.createFestivalStatusEmbed('Player', activeFestival, progress(), 100);
+
+        const field = embed.data.fields[0];
+        expect(field.name).toBe('🎲 Boosted Odds');
+        expect(field.value).toBe('+50% chance to encounter a Poison Potato while working this season!');
+    });
+
+    test('no oddsOverride: no "Boosted Odds" field at all', () => {
+        const activeFestival = { festivalId: 'frost_fair', endsAt: Date.now() + 100000, oddsOverride: null };
+        const embed = embedFactory.createFestivalStatusEmbed('Player', activeFestival, progress(), 100);
+
+        expect(embed.data.fields.some(f => f.name === '🎲 Boosted Odds')).toBe(false);
+    });
+});
+
+// /work-odds (2026-09-28, direct instruction: "add a command that shows a user ephemerally
+// via embed their /work command's full list of encounters and the % chance of each").
+describe('createWorkOddsEmbed', () => {
+    test('renders one line per scenario in the Encounter Odds field, and boost notes in the description', () => {
+        const odds = [
+            { label: 'Golden Potato', percentText: '0.10%' },
+            { label: 'Poison Potato', percentText: '1.50%' },
+        ];
+        const embed = embedFactory.createWorkOddsEmbed('Player', odds, ['Poison Potato is boosted +50% by this season\'s festival.']);
+
+        expect(embed.data.title).toContain('Player');
+        expect(embed.data.description).toContain('boosted +50%');
+        const field = embed.data.fields.find(f => f.name === 'Encounter Odds:');
+        expect(field.value).toBe('Golden Potato: **0.10%**\nPoison Potato: **1.50%**');
+    });
+
+    test('no boost notes: description falls back to a generic line, not an empty string', () => {
+        const embed = embedFactory.createWorkOddsEmbed('Player', [{ label: 'Regular Work', percentText: '87.25%' }], []);
+
+        expect(embed.data.description.length).toBeGreaterThan(0);
+        expect(embed.data.description).not.toContain('boosted');
+    });
+});

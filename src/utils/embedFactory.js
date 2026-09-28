@@ -2645,6 +2645,27 @@ class EmbedFactory {
         return embed;
     }
 
+    // /work-odds (2026-09-28, direct instruction: "add a command that shows a user
+    // ephemerally via embed their /work command's full list of encounters and the % chance
+    // of each") — `odds` is [{ label, percentText }] in the same order workScenarios itself
+    // rolls in, already fully composed (hourly event + Prospector + festival boost) by the
+    // caller; this is a pure render, same division of labor every other odds-preview embed
+    // in this file already follows. `boostNotes` is a small array of already-formatted
+    // sentences (festival/Prospector callouts) or empty — shown as the description, above
+    // the odds list, so a player sees WHY a number looks unusually wide before reading it.
+    createWorkOddsEmbed(userDisplayName, odds, boostNotes = []) {
+        const oddsLines = odds.map(({ label, percentText }) => `${label}: **${percentText}**`).join('\n');
+
+        const embed = new EmbedBuilder()
+            .setTitle(`${userDisplayName}'s /work Odds`)
+            .setDescription(boostNotes.length > 0 ? boostNotes.join(' ') : `Your live odds on every /work encounter.`)
+            .setColor("Blue")
+            .setFooter({ text: "Made by Beggar" })
+            .setTimestamp(Date.now())
+            .setFields([{ name: 'Encounter Odds:', value: oddsLines, inline: false }])
+        return embed;
+    }
+
     // Win/loss + stat-reward + Yukon callouts, same "own dedicated embed for a
     // multi-outcome resolution" precedent createPoisonPotatoEmbed/
     // createCompanionEncounterEmbed already set. `result` is
@@ -5427,14 +5448,32 @@ class EmbedFactory {
         const festivalName = Festival.NAME[activeFestival.festivalId] || activeFestival.festivalId;
         const tokenLabel = Festival.TOKEN_LABEL[activeFestival.festivalId] || 'Festival Tokens';
 
-        const fields = progressList.map(({ objective, isCompleted, progress, tiersCompleted, totalTiers, nextTierThreshold }) => {
+        const fields = [];
+        // Boosted-odds callout (2026-09-28, player-reported: "Nothing said poison had 50%
+        // more chance to be found") — activeFestival.oddsOverride was already applied to
+        // every /work roll all along (festivalFactory.applyFestivalOddsOverride), but no
+        // player-facing surface ever named which encounter or by how much. Shown first,
+        // above the objective list, since it affects EVERY /work call regardless of whether
+        // any objective happens to track that same encounter type.
+        if (activeFestival.oddsOverride) {
+            const { scenario, multiplier } = activeFestival.oddsOverride;
+            const encounterLabel = Festival.ODDS_OVERRIDE_SCENARIO_LABEL[scenario] || scenario;
+            const boostPercent = Math.round((multiplier - 1) * 100);
+            fields.push({
+                name: '🎲 Boosted Odds',
+                value: `+${boostPercent}% chance to encounter a ${encounterLabel} while working this season!`,
+                inline: false,
+            });
+        }
+
+        for (const { objective, isCompleted, progress, tiersCompleted, totalTiers, nextTierThreshold } of progressList) {
             const status = isCompleted ? '✅' : '🎪';
             const value = isCompleted
                 ? `${objective.description}\nAll ${totalTiers} tiers complete!`
                 : `${objective.description}\nTier ${tiersCompleted}/${totalTiers} — (${progress.toLocaleString()} / ${nextTierThreshold.toLocaleString()} to next tier)`;
-            return { name: `${status} ${objective.name}`, value, inline: false };
-        });
-        if (fields.length === 0) {
+            fields.push({ name: `${status} ${objective.name}`, value, inline: false });
+        }
+        if (progressList.length === 0) {
             fields.push({ name: 'No objectives', value: 'This festival has no objectives configured.', inline: false });
         }
 

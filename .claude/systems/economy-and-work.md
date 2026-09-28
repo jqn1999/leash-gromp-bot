@@ -589,6 +589,43 @@ Every handler increments `workScenarioCounts.<type>`, adds 1 to `workCount`,
 and resets the work timer — all folded into one combined `dynamoHandler.updateUserFields` write per
 handler (see [architecture/data-model.md](../architecture/data-model.md)).
 
+## `/work-odds` — live personal odds preview
+
+2026-09-28, direct instruction: "add a command that shows a user ephemerally via embed their
+/work command's full list of encounters and the % chance of each."
+[workOdds.js](../../src/commands/user/workOdds.js) — read-only, ephemeral, mirrors
+`/bounty-board`/`/current-raid`'s own "never claims or snapshots by viewing" precedent. Shows every
+one of the 11 `/work` scenarios and the caller's own live, fully-composed percentage chance for
+each — the exact pipeline `performWork` itself uses, in the same order:
+
+1. **`workScenarios`** (`work.js`'s own exported array) — already reflects whatever hourly
+   `EventFactory` event is currently live, since the cron's `setWorkScenarios` mutates it directly
+   rather than composing at read time.
+2. **Prospector's widening** — `workFactory.getEffectiveScenarioChances(workScenarios,
+   prospectorMultiplierBonus)`, where the bonus is read live off the caller's own equipped
+   companion (0 if Prospector isn't equipped, a true no-op).
+3. **The active Seasonal Festival's odds-boost**, if one is live —
+   `festivalFactory.applyFestivalOddsOverride`, composed on top of the Prospector-adjusted
+   chances, never replacing them (see systems/seasonal-festivals.md's own "odds-boost piece").
+
+The cumulative thresholds this produces are converted to each scenario's own independent
+probability mass (`width = chance[i] - chance[i-1]`, the same "subtract the running total" pattern
+`getEffectiveScenarioChances`/`applyFestivalOddsOverride`/`startRaid.js`'s own `bracketOdds` all
+already use internally) and shown as a plain percentage per scenario, labeled with the same
+colloquial names used everywhere else in this game (Prospector's own perk description, Big Events
+labels) — **not** each mob constant's raw `.name` field (`poisonPotato.name` is "Poisonous
+Potato," never shown to players as such anywhere else).
+
+**Also fixes the specific gap that prompted this**: a player-reported "Nothing said poison had 50%
+more chance to be found" during a live Frost Fair — neither `/festival` nor the festival-start
+announcement ever named which encounter was boosted or by how much, even though
+`activeFestival.oddsOverride` was always live and applied. Fixed in the same pass, in three places:
+`/work-odds`'s own boost-note line (above the odds list), a new "🎲 Boosted Odds" field on
+`createFestivalStatusEmbed` (`/festival`'s own status embed), and a new sentence appended to both
+`/admin start-festival`'s plain-text announcement and its Big Events post. All three read the same
+new `Festival.ODDS_OVERRIDE_SCENARIO_LABEL` map (`constants.js`) for the human-readable scenario
+name, and compute the shown percent the same way (`Math.round((multiplier - 1) * 100)`).
+
 ## Catch-up bonus
 
 New/underdeveloped players get a multiplicative bonus applied to their effective work multiplier,
