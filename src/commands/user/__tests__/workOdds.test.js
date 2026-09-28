@@ -48,7 +48,7 @@ test('no Prospector, no live festival: 11 scenarios shown, no boost notes, perce
     spy.mockRestore();
 });
 
-test('Prospector equipped: widens Poison/Large/Companion/Taro/Mimic and adds a boost note', async () => {
+test('Prospector equipped: widens Poison/Large/Mimic, leaves Taro Trader untouched, and adds a boost note', async () => {
     const withoutProspector = baseUser();
     const withProspector = baseUser({ companions: { owned: [{ instanceId: 'p-1', id: 'prospector', workCount: 0 }], active: 'p-1' } });
 
@@ -57,15 +57,48 @@ test('Prospector equipped: widens Poison/Large/Companion/Taro/Mimic and adds a b
     await callback({}, fakeInteraction());
     const [, baselineOdds] = spy.mock.calls[0];
     const baselinePoison = parseFloat(baselineOdds.find(o => o.label === 'Poison Potato').percentText);
+    const baselineTaro = parseFloat(baselineOdds.find(o => o.label === 'Taro Trader').percentText);
 
     spy.mockClear();
     dynamoHandler.findUser.mockResolvedValueOnce(withProspector);
     await callback({}, fakeInteraction());
     const [, boostedOdds, boostNotes] = spy.mock.calls[0];
     const boostedPoison = parseFloat(boostedOdds.find(o => o.label === 'Poison Potato').percentText);
+    const boostedTaro = parseFloat(boostedOdds.find(o => o.label === 'Taro Trader').percentText);
 
     expect(boostedPoison).toBeGreaterThan(baselinePoison);
+    expect(boostedTaro).toBeCloseTo(baselineTaro, 3); // no longer widened (removed 2026-09-28)
     expect(boostNotes.some(n => n.includes('Prospector'))).toBe(true);
+    spy.mockRestore();
+});
+
+// 2026-09-28, direct instruction: Companion widens PROSPECTOR_COMPANION_SCENARIO_MULTIPLIER
+// (1.5x) more than Poison/Large/Mimic's shared base value.
+test('Prospector equipped: Companion widens by 1.5x as much (proportionally) as Poison/Large/Mimic', async () => {
+    const withoutProspector = baseUser();
+    const withProspector = baseUser({ companions: { owned: [{ instanceId: 'p-1', id: 'prospector', workCount: 0 }], active: 'p-1' } });
+
+    dynamoHandler.findUser.mockResolvedValueOnce(withoutProspector);
+    const spy = jest.spyOn(EmbedFactory.prototype, 'createWorkOddsEmbed').mockReturnValue({});
+    await callback({}, fakeInteraction());
+    const [, baselineOdds] = spy.mock.calls[0];
+    const baselinePoison = parseFloat(baselineOdds.find(o => o.label === 'Poison Potato').percentText);
+    const baselineCompanion = parseFloat(baselineOdds.find(o => o.label === 'Wandering Companion').percentText);
+
+    spy.mockClear();
+    dynamoHandler.findUser.mockResolvedValueOnce(withProspector);
+    await callback({}, fakeInteraction());
+    const [, boostedOdds] = spy.mock.calls[0];
+    const boostedPoison = parseFloat(boostedOdds.find(o => o.label === 'Poison Potato').percentText);
+    const boostedCompanion = parseFloat(boostedOdds.find(o => o.label === 'Wandering Companion').percentText);
+
+    const poisonGrowth = boostedPoison / baselinePoison;
+    const companionGrowth = boostedCompanion / baselineCompanion;
+    // Not an exact 1.5x on the final percentages (each scenario's own widening also shifts
+    // by however much widened BEFORE it in roll order, same as every other
+    // getEffectiveScenarioChances test in workFactory.test.js) — just confirms Companion's
+    // own growth is meaningfully larger than Poison's, not identical.
+    expect(companionGrowth).toBeGreaterThan(poisonGrowth);
     spy.mockRestore();
 });
 

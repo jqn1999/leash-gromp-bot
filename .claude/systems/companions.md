@@ -516,7 +516,7 @@ a Legendary-or-better find rather than something you can roll on your very first
 | Barn Owl | Rare | `robChanceFlat` +10% |
 | Mole | Rare | `starchSellBonusPercent` +9% |
 | Firefly | Rare | `workMultiplierPercent` +9% |
-| Prospector | Rare | `specialEncounterMultiplierBonus` +0.75 (+75% of Poison/Large/Companion/Taro/Mimic's own encounter chance — Metal/Sweet/Ancient/Golden/Golden Yam excluded, see below) + `workMultiplierPercent` -8% (the cost) |
+| Prospector | Rare | `specialEncounterMultiplierBonus` +0.75 (+75% of Poison/Large/Mimic's own encounter chance, +112.5% of Companion's — 1.5x higher, nerfed-then-re-nerfed Taro Trader stays excluded alongside Metal/Sweet/Ancient/Golden/Golden Yam, see below) + `workMultiplierPercent` -8% (the cost) |
 | Spudsprite | Legendary | `workCooldownSkipChance` 15% + `workMultiplierPercent` +8% |
 | Rootcarver, the Cellar Keeper | Legendary | `starchSellBonusPercent` +12% + `passiveIncomePercent` +8% |
 | Elder Rootbeard | Mythic | `regradeChanceBoostPercent` +10% (multiplicative — boosts the regrade tier's own chance, e.g. 50% -> 55%; nerfed from +50% 2026-09-28) + `passiveIncomePercent` +10% + `robChanceFlat` +15% + `starchSellBonusPercent` +15% |
@@ -572,7 +572,8 @@ Per-perk-type progression (blank = no companion currently grants that perk at th
 | Regrade Success | — | — | — | +10% multiplicative (Elder Rootbeard) |
 | Rebirth Bonus | — | — | — | 20% (Mochi) |
 | Poison Immunity | Guinea Pig only | — | — | — |
-| Special Encounter Chance (5 scenarios) | — | +75% (Prospector) | — | — |
+| Special Encounter Chance (Poison/Large/Mimic) | — | +75% (Prospector) | — | — |
+| Special Encounter Chance (Companion, 1.5x the rest) | — | +112.5% (Prospector) | — | — |
 
 Passive Income is the one perk type two companions share *within the same rarity tier* (both
 Mythics, different magnitudes) — see the 2026-08-22 Mythic rebalance below for why. The Work
@@ -734,13 +735,43 @@ Golden Potato is the rare big currency spike — so widening all three at once w
 meaningfully better at farming the game's scarcest currency (starches) and its biggest one-off
 potato payout than a Rare-tier companion with an explicit work-multiplier cost was meant to be. A
 same-day follow-up instruction added Taro Trader back, leaving Golden Potato and Golden Yam as the
-only two still excluded — Poison Potato, Large Potato, Companion, Taro Trader, and Mimic Potato make
-up the current widened set (5 scenarios, not the original 7 or the briefly-narrowed 4). The `value`
-(0.75) and the `workMultiplierPercent` cost (-8%) were left untouched throughout — only the scenario
-membership list (`PROSPECTOR_DOUBLED_SCENARIOS` in `workFactory.js`) changed. No fresh EV simulation
-was run for either pass (unlike the three-round check above) — both changes are pure
-scenario-membership edits on an already-tuned bonus value, not a new value needing its own
-calibration.
+only two still excluded — Poison Potato, Large Potato, Companion, Taro Trader, and Mimic Potato made
+up the widened set at that point (5 scenarios, not the original 7 or the briefly-narrowed 4; see
+below for why this changed again). The `value` (0.75) and the `workMultiplierPercent` cost (-8%)
+were left untouched throughout — only the scenario membership list (`PROSPECTOR_DOUBLED_SCENARIOS`
+in `workFactory.js`) changed. No fresh EV simulation was run for either pass (unlike the three-round
+check above) — both changes are pure scenario-membership edits on an already-tuned bonus value, not
+a new value needing its own calibration.
+
+**Taro Trader removed again for good, and Companion given its own higher percentage (2026-09-28,
+direct instruction)** — the "Taro Trader added back" reasoning above was per-hit-magnitude-based
+(Taro's own payout, 1-1.5x `effectiveMultiplier` in starches, is small compared to Golden Yam's
+29.23-43.85x), but checking that against actual EV (rate × payout, not just payout) told a different
+story: Taro's base encounter rate (2%) is ~20x Golden Yam's (0.1%), so a maxed Prospector's widened
+Taro alone (up to ~+108.75% rate) produces MORE average starch EV per `/work` call than Golden Yam's
+full, un-widened contribution — exactly the outcome excluding Golden Yam was meant to prevent, just
+reached through the other starch source instead. Taro Trader was pulled from
+`PROSPECTOR_DOUBLED_SCENARIOS` a second time, leaving Golden Potato, Taro Trader, and Golden Yam all
+excluded on one consistent basis: nothing that touches the scarce currency (starch) or the biggest
+one-shot currency spike gets widened.
+
+Same instruction, a second change: Companion (the Wandering Companion encounter) now widens by
+`PROSPECTOR_COMPANION_SCENARIO_MULTIPLIER` (1.5x) the shared base value instead of the plain 0.75
+Poison/Large/Mimic still use — "increase the companion % specifically by 1.5x the rest... instead
+of 75% base, make the companion one specifically 112.5% starting then scale as normal." Implemented
+as a multiplier applied to the perk's own live, level-scaled `multiplierBonus` inside
+`getEffectiveScenarioChances` (`workFactory.js`) — not a second stored perk value — so
+companion-leveling's usual level scaling still applies exactly as it always has, just with this
+extra 1.5x always layered on top for Companion specifically. At base (level 1): Poison/Large/Mimic
++75%, Companion +112.5%. At max level (1.45x scaling): Poison/Large/Mimic +108.75%,
+Companion +163.125%. `embedFactory.js`'s `specialEncounterMultiplierBonus` label and
+`/work-odds`' own boost-note text both updated to show the two different percentages instead of one
+shared number.
+
+The widened set is now Poison Potato, Large Potato, Companion (at 1.5x), and Mimic Potato — 4
+scenarios, not 5. No fresh EV simulation was run for this pass either (same reasoning as the prior
+narrowing) — the Taro removal is a pure scenario-membership edit, and the Companion multiplier is a
+targeted, requested magnitude change to one already-widened scenario, not a full redesign.
 
 **Same-day follow-up nerf (2026-09-23, direct instruction: "make the maximum penalty reduction for
 mimic and poison when using prospector 60% instead of allowing 90%"), superseded the very next day**

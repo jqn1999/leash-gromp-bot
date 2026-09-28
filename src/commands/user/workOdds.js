@@ -1,6 +1,6 @@
 const { getUserInteractionDetails, requireUserDetails } = require("../../utils/helperCommands")
 const dynamoHandler = require("../../utils/dynamoHandler");
-const { getEffectiveScenarioChances } = require("../../utils/workFactory");
+const { getEffectiveScenarioChances, PROSPECTOR_COMPANION_SCENARIO_MULTIPLIER } = require("../../utils/workFactory");
 const companionFactory = require("../../utils/companionFactory");
 const festivalFactory = require("../../utils/festivalFactory");
 const { WORK_SCENARIO_INDICES } = require("../../utils/eventFactory");
@@ -10,9 +10,9 @@ const { EmbedFactory } = require("../../utils/embedFactory");
 const embedFactory = new EmbedFactory();
 
 // Human-readable labels per /work scenario type — matches the established colloquial terms
-// already used elsewhere (Prospector's own perk description: "Poison Potato, Large Potato,
-// Companion, Taro Trader & Mimic Potato"), not each mob constant's own raw `.name` field
-// (poisonPotato.name is "Poisonous Potato," never shown to players as such anywhere else).
+// already used elsewhere (Prospector's own perk description), not each mob constant's own
+// raw `.name` field (poisonPotato.name is "Poisonous Potato," never shown to players as
+// such anywhere else).
 const SCENARIO_LABELS = {
     [WORK_SCENARIO_INDICES.GOLDEN]: "Golden Potato",
     [WORK_SCENARIO_INDICES.POISON]: "Poison Potato",
@@ -83,7 +83,7 @@ module.exports = {
             ? `${Festival.ODDS_OVERRIDE_SCENARIO_LABEL[festivalOddsOverride.scenario] || festivalOddsOverride.scenario} is boosted +${Math.round((festivalOddsOverride.multiplier - 1) * 100)}% by this season's festival.`
             : null;
         const prospectorText = prospectorMultiplierBonus > 0
-            ? `Prospector is widening Poison/Large/Companion/Taro/Mimic by +${(prospectorMultiplierBonus * 100).toFixed(0)}% each.`
+            ? `Prospector is widening Poison/Large/Mimic by +${(prospectorMultiplierBonus * 100).toFixed(0)}% each, and Companion by +${(prospectorMultiplierBonus * PROSPECTOR_COMPANION_SCENARIO_MULTIPLIER * 100).toFixed(0)}%.`
             : null;
 
         const embed = embedFactory.createWorkOddsEmbed(userDisplayName, odds, [festivalBoostText, prospectorText].filter(Boolean));

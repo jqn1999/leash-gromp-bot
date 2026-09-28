@@ -9,12 +9,12 @@ const { WORK_SCENARIO_INDICES } = require("../utils/eventFactory");
 
 // Prospector's specialEncounterMultiplierBonus perk (see constants.js) widens SEVERAL
 // non-contiguous scenarios' own slice of work.js's cumulative roll table — Poison, Large,
-// Companion, Mimic, and Taro Trader, each independently, while every OTHER scenario (Metal,
-// Sweet, Ancient, Golden, Golden Yam) and Regular's own fixed-at-1 catch-all stay untouched
-// and absorb the difference by shrinking. Generalizes the exact mechanism the retired
-// Metal-only metalEncounterChanceFlat perk established (2026-08-23) — widen a scenario's
-// own raw slice width, then shift every LATER scenario's cumulative threshold up by the
-// same running total so each keeps its own width unchanged — just applied to several
+// Companion, and Mimic, each independently, while every OTHER scenario (Metal, Sweet,
+// Ancient, Golden, Golden Yam, Taro Trader) and Regular's own fixed-at-1 catch-all stay
+// untouched and absorb the difference by shrinking. Generalizes the exact mechanism the
+// retired Metal-only metalEncounterChanceFlat perk established (2026-08-23) — widen a
+// scenario's own raw slice width, then shift every LATER scenario's cumulative threshold up
+// by the same running total so each keeps its own width unchanged — just applied to several
 // scattered scenario types instead of one contiguous "Metal onward" run. Sweet Potato and
 // Metal Potato are excluded from the widened set for the original 2026-08-29 reason: both
 // grant a permanent, uncapped-ish stat bonus (Sweet's flat +0.2 workMultiplierAmount 1/3
@@ -25,11 +25,29 @@ const { WORK_SCENARIO_INDICES } = require("../utils/eventFactory");
 // since-removed isBoostedHit dampener in handleMetalPotato already had to fix once for
 // Prospector/Metal specifically (see systems/companions.md's Prospector section for that
 // history). Golden Potato, Taro Trader, and Golden Yam were REMOVED from the widened set
-// (2026-09-23, direct instruction — a nerf) for a different reason — those three are this
-// game's highest-value scavenge scenarios (the two starch-granting encounters plus the rare
-// high-payout currency drop) — then Taro Trader was ADDED BACK the same day (direct
-// instruction), leaving only Golden Potato and Golden Yam excluded on that basis. Poison/
-// Large/Companion/Mimic/Taro stay widened.
+// 2026-09-23 (direct instruction — a nerf) as this game's highest-value scavenge scenarios
+// (the two starch-granting encounters plus the rare high-payout currency drop); Taro Trader
+// was ADDED BACK the same day (direct instruction) on the reasoning that its own PER-HIT
+// payout is small (1-1.5x effectiveMultiplier in starches) compared to Golden Yam's
+// (29.23-43.85x) — then REMOVED AGAIN 2026-09-28 (direct instruction) once that per-hit-
+// magnitude reasoning was checked against actual EV: Taro's base encounter rate (2%) is
+// ~20x Golden Yam's (0.1%), so a maxed Prospector's widened Taro (up to ~+108.75% rate)
+// alone produces more average starch EV per /work call than Golden Yam's full, un-widened
+// contribution — exactly the outcome excluding Golden Yam was meant to prevent, just
+// reached through the OTHER starch source instead. Golden Potato/Taro Trader/Golden Yam all
+// stay excluded now, on this consistent "nothing that touches the scarce currency (starch)
+// or the biggest one-shot currency spike gets widened" basis.
+//
+// Companion (the Wandering Companion encounter) gets its own widening scaled
+// PROSPECTOR_COMPANION_SCENARIO_MULTIPLIER (1.5x) higher than Poison/Large/Mimic's shared
+// base value (2026-09-28, direct instruction — "increase the companion % specifically by
+// 1.5x the rest... instead of 75% base, make the companion one specifically 112.5%
+// starting"). Applied to whatever the perk's OWN live, level-scaled value already is (the
+// `multiplierBonus` param below), so companion-leveling's usual scaling still applies
+// exactly as it always has — this is a flat 1.5x on top of that, not a separate stored
+// value or a different scaling curve. At base (level 1): Poison/Large/Mimic +75%,
+// Companion +112.5%. At max level (1.45x scaling): Poison/Large/Mimic +108.75%,
+// Companion +163.125%.
 //
 // Computes every scenario's new effective cumulative threshold in ONE pass over the whole
 // table (rather than incremental per-iteration bookkeeping in work.js's own roll loop), so
@@ -43,9 +61,10 @@ const PROSPECTOR_DOUBLED_SCENARIOS = [
     WORK_SCENARIO_INDICES.POISON,
     WORK_SCENARIO_INDICES.LARGE,
     WORK_SCENARIO_INDICES.COMPANION,
-    WORK_SCENARIO_INDICES.TARO,
     WORK_SCENARIO_INDICES.MIMIC,
 ];
+
+const PROSPECTOR_COMPANION_SCENARIO_MULTIPLIER = 1.5;
 
 function getEffectiveScenarioChances(scenarios, multiplierBonus) {
     let previousChance = 0;
@@ -54,7 +73,10 @@ function getEffectiveScenarioChances(scenarios, multiplierBonus) {
         const rawWidth = chance - previousChance;
         previousChance = chance;
         if (multiplierBonus > 0 && type !== WORK_SCENARIO_INDICES.REGULAR && PROSPECTOR_DOUBLED_SCENARIOS.includes(type)) {
-            shift += rawWidth * multiplierBonus;
+            const effectiveBonus = type === WORK_SCENARIO_INDICES.COMPANION
+                ? multiplierBonus * PROSPECTOR_COMPANION_SCENARIO_MULTIPLIER
+                : multiplierBonus;
+            shift += rawWidth * effectiveBonus;
         }
         // Regular (the fixed-at-1 catch-all, WORK_SCENARIO_INDICES.REGULAR = -1) is never
         // widened — it absorbs every other scenario's widening by shrinking, exactly the
@@ -1144,6 +1166,10 @@ module.exports = {
     computePoisonMitigation,
     computeMimicMitigation,
     getEffectiveScenarioChances,
+    // Exported so embedFactory.js's specialEncounterMultiplierBonus label can show the same
+    // Companion-specific multiplier this file's own widening actually applies, instead of a
+    // second hardcoded copy of the 1.5 magic number drifting out of sync with it.
+    PROSPECTOR_COMPANION_SCENARIO_MULTIPLIER,
     // Widened for Mercenary Bounties (mercenaryFactory.js's /rob-npc payout) to reuse the
     // exact same reward-scaling formula every other /work-shaped reward already uses,
     // instead of duplicating it — behavior-preserving, these were already the private
