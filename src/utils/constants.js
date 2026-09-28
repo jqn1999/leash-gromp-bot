@@ -1719,17 +1719,26 @@ const Companions = [
         // high-roll tiers and did nothing for the sub-5% late tiers.
         //
         // Nerfed 0.5 -> 0.1 (2026-09-28, direct instruction — "it saves alot of
-        // potatoes"): at 0.5 the perk was cutting the EXPECTED potato cost of clearing a
-        // regrade tier by up to 1/3 (each attempt costs the same regardless of outcome, so
-        // a 1.5x success-chance multiplier roughly divides the expected number of attempts
-        // — and therefore the expected total potatoes spent — needed to clear a tier by
-        // 1.5x too), on top of the failStack this player already accumulates toward every
-        // future attempt regardless of companion. At 0.1, a 50%-chance tier goes 50% -> 55%
-        // instead of 50% -> 75%, and the sub-5% late tiers barely move at all (2% -> 2.2%)
-        // — still a real, felt edge at the tiers most players actually grind through, but
-        // no longer a dominant "always equip this before regrading" pick that made every
-        // other Mythic-tier choice look wrong by comparison whenever a regrade was on the
-        // table.
+        // potatoes"), then RESTORED 0.1 -> 0.5 same session once real expected-value math
+        // (accounting for the failStack pity mechanic properly, not the naive "divides
+        // expected attempts by 1.5x" estimate the original nerf used) showed the felt
+        // early-game effect and the actual aggregate impact are very different things.
+        // Per-TIER, the naive estimate holds roughly true for cheap high-chance early tiers
+        // (0.5 boost cuts tier 0's own expected attempts by ~30%, matching the "up to 1/3"
+        // framing) — but per full 14-tier LADDER, computed via simulation
+        // (`E[attempts]=sum of survival probabilities under chance_k = min(1, tier.chance*
+        // (1+boost) + k*failStackIncrease)`), the boost barely moves total expected potato
+        // cost at all: 0% -> 1.25% (0.1), 3.05% (0.25), 5.87% (0.5) reduction on the full
+        // work-multi ladder's ~458B expected potato total. The late, low-chance, high-cost
+        // tiers (which hold the large majority of that total — tier 13 alone is ~26% of
+        // it) are dominated by failStack's additive pity climb regardless of the
+        // multiplicative boost, so even 0.5 was never close to the "dominant, always-equip"
+        // pick the original nerf comment assumed — it was reacting to the early-tier felt
+        // effect, not the real aggregate EV. Against Mochi's continuous, always-on 40%
+        // (fresh) to 65.4% (maxed) work-axis Income Power (`balance-audit.md`'s own
+        // Mochi-vs-Rootbeard finding), even 0.5's 5.87% total-ladder reduction is a small
+        // fraction — this perk is, if anything, still undervalued relative to Mochi at 0.5,
+        // not overtuned.
         //
         // robChanceFlat swapped for starchCapacityPercent (2026-09-28, direct instruction —
         // "what would be another bonus i can replace the rob chance on rootbeard with,"
@@ -1746,7 +1755,7 @@ const Companions = [
         // check (starchCapacityPercent has no effect on Taro Trader/Golden Yam's free
         // grants, which aren't capped by maxStarches at all).
         perks: [
-            { type: "regradeChanceBoostPercent", value: 0.1 },
+            { type: "regradeChanceBoostPercent", value: 0.5 },
             { type: "passiveIncomePercent", value: 0.10 },
             { type: "starchCapacityPercent", value: 0.25 },
             { type: "starchSellBonusPercent", value: 0.15 }
