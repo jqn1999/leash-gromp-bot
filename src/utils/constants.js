@@ -2790,7 +2790,18 @@ const Festival = {
         harvest_festival: { scenario: "sweet", multiplier: 1.5 },
         frost_fair: { scenario: "poison", multiplier: 1.5 },
         spring_planting: { scenario: "taro", multiplier: 1.5 },
-    }
+    },
+
+    // Human-readable label for ODDS_OVERRIDE's own `scenario` value — neither /festival's
+    // status embed nor /admin start-festival's own announcement ever told players WHICH
+    // encounter was boosted, or by how much (2026-09-28, player-reported: "Nothing said
+    // poison had 50% more chance to be found"). Only the 3 scenarios ODDS_OVERRIDE actually
+    // uses need an entry here; extend this if a future festival ever boosts a different one.
+    ODDS_OVERRIDE_SCENARIO_LABEL: {
+        sweet: "Sweet Potato",
+        poison: "Poison Potato",
+        taro: "Taro Trader",
+    },
 }
 
 // Fixed, complete 3-objective set per festival — NOT a rotated subset like Quests' own

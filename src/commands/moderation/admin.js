@@ -588,9 +588,18 @@ async function runStartFestival(client, interaction) {
     const tokenLabel = Festival.TOKEN_LABEL[festivalId] || 'Festival Tokens';
     const endsAtSeconds = Math.floor(festival.endsAt / 1000);
 
+    // Boosted-odds callout (2026-09-28, player-reported: "Nothing said poison had 50% more
+    // chance to be found") — same fix as createFestivalStatusEmbed's own new field, applied
+    // here too so the very first announcement already names the boosted encounter instead of
+    // only /festival ever explaining it after the fact.
+    const oddsOverride = Festival.ODDS_OVERRIDE[festivalId];
+    const oddsCallout = oddsOverride
+        ? ` This season's boosted odds: **+${Math.round((oddsOverride.multiplier - 1) * 100)}% chance to encounter a ${Festival.ODDS_OVERRIDE_SCENARIO_LABEL[oddsOverride.scenario] || oddsOverride.scenario}** while working.`
+        : '';
+
     if (announce) {
         const channel = await client.channels.fetch(FESTIVAL_EVENT_CHANNEL_ID);
-        await channel.send(`<@&${FESTIVAL_EVENT_ROLE_ID}> The **${festivalName}** has begun! Check /festival for objectives and /festival-shop to spend ${tokenLabel} — ends <t:${endsAtSeconds}:R>.`);
+        await channel.send(`<@&${FESTIVAL_EVENT_ROLE_ID}> The **${festivalName}** has begun! Check /festival for objectives and /festival-shop to spend ${tokenLabel} — ends <t:${endsAtSeconds}:R>.${oddsCallout}`);
         // Big Events channel (2026-09-28, direct instruction — "wire festival start into big
         // events channel") — separate from the plain-text role-ping announcement above,
         // which stays in the dedicated festival/events channel. This mirrors every other
@@ -599,7 +608,7 @@ async function runStartFestival(client, interaction) {
         // try/catch), never blocks the real admin reply below.
         await bigEventsChannel.postBigEvent({
             title: `🎪 The ${festivalName} Has Begun!`,
-            description: `A new season opens its stalls — check /festival for this week's objectives and /festival-shop to spend ${tokenLabel} before it closes.`,
+            description: `A new season opens its stalls — check /festival for this week's objectives and /festival-shop to spend ${tokenLabel} before it closes.${oddsCallout}`,
             fields: [{ name: 'Ends', value: `<t:${endsAtSeconds}:R>`, inline: true }],
         });
         interaction.editReply(`Started ${festivalName} for ${Math.round((festival.endsAt - festival.startsAt) / (24 * 60 * 60 * 1000))} day(s) — announced in <#${FESTIVAL_EVENT_CHANNEL_ID}> and the Big Events channel.`);

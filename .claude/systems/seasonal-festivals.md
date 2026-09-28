@@ -694,3 +694,24 @@ New no-argument Subcommand, `runEndFestival` (right after `runStartFestival` in 
 was scoped to festival START only ("wire festival start into big events channel"), and a natural
 end (the daily cron) was never wired into Big Events either, so a manual stop stays symmetric with
 that existing behavior rather than inventing a new announcement pattern an end never had before.
+
+## Boosted-odds naming fix + `/work-odds`
+
+2026-09-28, player-reported: "Nothing said poison had 50% more chance to be found."
+`activeFestival.oddsOverride` was always live and applied to every `/work` roll
+(`festivalFactory.applyFestivalOddsOverride`) — the gap was purely display-side, not a math bug.
+No player-facing surface (`/festival`, the start announcement, the Big Events post) ever named
+which encounter was boosted or by how much. Fixed in four places, all reading the same new
+`Festival.ODDS_OVERRIDE_SCENARIO_LABEL` map (`constants.js`, `{ sweet: "Sweet Potato", poison:
+"Poison Potato", taro: "Taro Trader" }`) and computing the shown percent the same way
+(`Math.round((multiplier - 1) * 100)`):
+
+1. **`createFestivalStatusEmbed`** (`/festival`'s own status embed, `embedFactory.js`) — a new "🎲
+   Boosted Odds" field, shown first, above the objective list.
+2. **`/admin start-festival`'s plain-text announcement** — a sentence appended naming the
+   encounter and percent.
+3. **`/admin start-festival`'s Big Events post** — the same sentence appended to its description.
+4. **New `/work-odds` command** (`workOdds.js`, see `systems/economy-and-work.md`'s own entry for
+   the full pipeline) — a standalone, always-available way to check current `/work` odds
+   (including any live festival boost AND the caller's own Prospector bonus) without needing a
+   festival to be running at all, prompted by the same conversation that found the naming gap.
