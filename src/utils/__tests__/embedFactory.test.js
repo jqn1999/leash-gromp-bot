@@ -1594,6 +1594,94 @@ describe('World Boss buff status line (createUserEmbed / createUserStatsEmbed)',
     });
 });
 
+// Starch Capacity "Live:" figure (2026-09-28, player-reported: "my starch capacity didn't
+// increase with rootbeard on") — createUserEmbed's "Current Starch Capacity:" and
+// createUserStatsEmbed's "Current Starch Capacity Upgrade:" both used to show only the raw
+// stored maxStarches, with no companion bonus folded in at all (unlike Work Multiplier/
+// Passive Income/Bank Capacity right next to them). The underlying mechanic was always
+// correct — buyStarch.js/give.js both already applied starchCapacityPercent live — this was
+// a display-only gap, the same class of bug as the earlier Spud Keep Power display fix.
+describe('Starch Capacity "Live:" figure reflects starchCapacityPercent', () => {
+    function baseUserDetails(overrides = {}) {
+        return {
+            rebirthCount: 0,
+            companions: { ownedCount: 0 },
+            guildId: 0,
+            isMercenary: false,
+            potatoes: 0,
+            bankStored: 0,
+            starches: 0,
+            workMultiplierAmount: 1,
+            passiveAmount: 0,
+            bankCapacity: 50000,
+            maxStarches: 1000,
+            workCount: 0,
+            loginStreak: 0,
+            records: {},
+            totalEarnings: 0,
+            totalLosses: 0,
+            sweetPotatoBuffs: { workMultiplierAmount: 0, passiveAmount: 0, bankCapacity: 0 },
+            regrades: {
+                workMulti: { regradeAmount: 0, failStack: 0 },
+                passiveAmount: { regradeAmount: 0, failStack: 0 },
+                bankCapacity: { regradeAmount: 0, failStack: 0 }
+            },
+            ...overrides
+        };
+    }
+
+    beforeEach(() => {
+        const rebirthFactory = require('../rebirthFactory');
+        const companionFactory = require('../companionFactory');
+        const dynamoHandler = require('../dynamoHandler');
+        rebirthFactory.getLiveRebirthPercent.mockReturnValue(0);
+        companionFactory.getActiveCompanion.mockReturnValue(null);
+        dynamoHandler.getActiveWorldBuff.mockResolvedValue(undefined);
+        dynamoHandler.isWorldBuffLive.mockReturnValue(false);
+        dynamoHandler.isPotionLive.mockReturnValue(false);
+    });
+
+    test('createUserEmbed shows the boosted total with an equipped Elder Rootbeard', async () => {
+        const companionFactory = require('../companionFactory');
+        companionFactory.getActivePerkValue.mockImplementation((_, perkType) => perkType === 'starchCapacityPercent' ? 0.25 : 0);
+
+        const embed = await embedFactory.createUserEmbed('user-1', 'Player', 'hash', baseUserDetails(), 0);
+
+        const field = embed.data.fields.find(f => f.name === 'Current Starch Capacity:');
+        expect(field.value).toBe('1,250 starches (+250)');
+    });
+
+    test('createUserEmbed shows the plain total with no companion equipped', async () => {
+        const companionFactory = require('../companionFactory');
+        companionFactory.getActivePerkValue.mockReturnValue(0);
+
+        const embed = await embedFactory.createUserEmbed('user-1', 'Player', 'hash', baseUserDetails(), 0);
+
+        const field = embed.data.fields.find(f => f.name === 'Current Starch Capacity:');
+        expect(field.value).toBe('1,000 starches');
+    });
+
+    test('createUserStatsEmbed\'s Starch Capacity Upgrade "Live:" figure includes an equipped Elder Rootbeard', async () => {
+        const companionFactory = require('../companionFactory');
+        companionFactory.getActivePerkValue.mockImplementation((_, perkType) => perkType === 'starchCapacityPercent' ? 0.25 : 0);
+
+        const embed = await embedFactory.createUserStatsEmbed('user-1', 'Player', 'hash', baseUserDetails());
+
+        const field = embed.data.fields.find(f => f.name.startsWith('Current Starch Capacity Upgrade'));
+        expect(field.value).toContain('Live: 1,250 starches (+250)');
+    });
+
+    test('createUserStatsEmbed omits the Live line with no companion equipped', async () => {
+        const companionFactory = require('../companionFactory');
+        companionFactory.getActivePerkValue.mockReturnValue(0);
+
+        const embed = await embedFactory.createUserStatsEmbed('user-1', 'Player', 'hash', baseUserDetails());
+
+        const field = embed.data.fields.find(f => f.name.startsWith('Current Starch Capacity Upgrade'));
+        expect(field.value).not.toContain('Live:');
+    });
+});
+
 // /skip-chances (2026-09-05, direct instruction — "can we get all the user's skip chances
 // for all the various mechanics somewhere... a dedicated embed to make it easier"). Never
 // rolls anything — just displays whatever sources arrays it's handed.

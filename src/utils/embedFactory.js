@@ -642,9 +642,22 @@ class EmbedFactory {
                 value: bankLabel,
                 inline: false,
             });
+            // starchCapacityPercent (Elder Rootbeard) is the only live modifier for this
+            // stat — no rebirth/world-buff/potion component touches maxStarches at all
+            // (rebirthFactory.computeRebirthState resets it to Starch.STARTING_CAPACITY
+            // with no buff term, unlike work/passive/bank). Found missing entirely here
+            // 2026-09-28 (player-reported: "my starch capacity didn't increase with
+            // rootbeard on") — the underlying mechanic was always correct (buyStarch.js/
+            // give.js both apply it live), only this display never reflected it, the same
+            // display-vs-math bug class as the earlier Spud Keep Power fix.
+            const starchCapacityPercent = companionFactory.getActivePerkValue(userDetails, "starchCapacityPercent");
+            const starchCapacityBonus = Math.round(userDetails.maxStarches * starchCapacityPercent);
+            const starchCapacityLabel = starchCapacityBonus > 0
+                ? `${(userDetails.maxStarches + starchCapacityBonus).toLocaleString()} starches (+${starchCapacityBonus.toLocaleString()})`
+                : `${userDetails.maxStarches.toLocaleString()} starches`;
             fields.push({
                 name: "Current Starch Capacity:",
-                value: `${userDetails.maxStarches.toLocaleString()} starches`,
+                value: starchCapacityLabel,
                 inline: false,
             });
             const activeCompanion = companionFactory.getActiveCompanion(userDetails);
@@ -817,6 +830,13 @@ class EmbedFactory {
         const totalBankPercent = companionFactory.getActivePerkValue(userDetails, "bankCapacityPercent") + rebirthPercent;
         const liveBankBonus = bankCapacityMaxed ? 0 : Math.round(userDetails.bankCapacity * totalBankPercent);
 
+        // starchCapacityPercent (Elder Rootbeard) is the only live modifier for this stat —
+        // see createUserEmbed's own identical comment for why no rebirth/world-buff/potion
+        // term applies. Found missing entirely here 2026-09-28 (same player report as
+        // createUserEmbed's fix — this "Upgrade" embed hardcoded "+ 0 + 0" with no Live
+        // line at all, unlike every other stat field around it).
+        const liveStarchBonus = Math.round(userDetails.maxStarches * companionFactory.getActivePerkValue(userDetails, "starchCapacityPercent"));
+
         const fields = [
             {
                 name: "Current Work Multiplier Upgrade:\n(Base + Bonus + Regrade)",
@@ -839,7 +859,8 @@ class EmbedFactory {
             },
             {
                 name: "Current Starch Capacity Upgrade:",
-                value: `${starchName}\n(${userBaseMaxStarches.toLocaleString()} + 0 + 0) starches`,
+                value: `${starchName}\n(${userBaseMaxStarches.toLocaleString()} + 0 + 0) starches = ${userDetails.maxStarches.toLocaleString()}`
+                    + (liveStarchBonus > 0 ? `\nLive: ${(userDetails.maxStarches + liveStarchBonus).toLocaleString()} starches (+${liveStarchBonus.toLocaleString()})` : ''),
                 inline: false,
             },
             {
