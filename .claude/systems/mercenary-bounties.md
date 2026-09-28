@@ -922,11 +922,12 @@ Elite/Legendary gate already uses) rather than an auto-escalating rare roll, gat
   tierChance = min(tier.baseChance + tier.chancePerRank * (rank - 1), tier.maxChance)
   riskAdjustedChance = tierChance - RobNpc.REWARD_ROLL_SUCCESS_SPREAD * (rewardRollT - 0.5)
   successChance = clamp(riskAdjustedChance, 0, 1)
-                  + companionFactory.getActivePerkValue(userDetails, "robChanceFlat")   // Barn Owl/Elder Rootbeard/Yukon — shared with real /rob
+                  + companionFactory.getActivePerkValue(userDetails, "robChanceFlat")   // Barn Owl/Yukon — shared with real /rob
   ```
   Simplified 2026-08-23, direct instruction: Yukon's own bonus used to be a separate
   `/rob-npc`-only `npcRobChanceFlat` perk; it now shares the same `robChanceFlat` perk Barn
-  Owl/Elder Rootbeard grant for real `/rob`, so any `robChanceFlat` companion boosts
+  Owl (and, until Elder Rootbeard's own copy was swapped for `starchCapacityPercent`
+  2026-09-28, Elder Rootbeard too) grants for real `/rob`, so any `robChanceFlat` companion boosts
   `/rob-npc` too (not just Yukon), and Yukon's own bonus applies to real `/rob` as well
   (mercenaries can still run it — never guild-gated). Still its own flat, rank-scaled thing
   per tier, not wealth-ratio-based like real `/rob`'s `calculateRobChance`.
@@ -1236,7 +1237,8 @@ correctly, with no special-casing needed:
 **Perks**:
 - `robChanceFlat` 12% — simplified 2026-08-23, direct instruction, from a separate
   `/rob-npc`-only `npcRobChanceFlat` perk type down to the same shared `robChanceFlat`
-  Barn Owl/Elder Rootbeard grant for real `/rob`. Now boosts both real `/rob` and
+  Barn Owl grants for real `/rob` (Elder Rootbeard also did, until its own copy was swapped
+  for `starchCapacityPercent` 2026-09-28). Now boosts both real `/rob` and
   `/rob-npc` identically — see `/rob-npc (RobNpc)` above.
 - `bountyRewardPercent` 13.5% — applied to the already-discounted Bounty payout,
   non-compounding, same "percentage of a computed payout" shape `starchSellBonusPercent`

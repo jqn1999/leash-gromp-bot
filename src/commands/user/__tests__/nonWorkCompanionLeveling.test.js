@@ -37,7 +37,7 @@ function companionsWith(id, instanceId, workCount = 10) {
 
 const NOTHING_EQUIPPED = { owned: [], active: null, ownedCount: 0, mythicOwnedCount: 0 };
 
-describe('/rob levels an equipped robChanceFlat companion (Barn Owl/Yukon/Elder Rootbeard), unconditional on win/loss', () => {
+describe('/rob levels an equipped robChanceFlat companion (Barn Owl/Yukon), unconditional on win/loss', () => {
     const { callback } = require('../rob');
 
     function actingUser(overrides = {}) {
@@ -420,39 +420,15 @@ describe('/regrade levels an equipped regradeChanceBoostPercent companion (Elder
     });
 });
 
-// Elder Rootbeard carries robChanceFlat + starchSellBonusPercent + regradeChanceBoostPercent all at
-// once — confirms the per-command, per-perk-type checks don't interfere with each other:
-// leveling through one command doesn't require, block, or get confused by the other two
-// perk types it also happens to carry.
-describe('Elder Rootbeard levels independently via /rob, /sell-starch, AND /regrade — the three perk-type checks do not interfere', () => {
+// Elder Rootbeard carries starchSellBonusPercent + regradeChanceBoostPercent at once (its
+// third leveling-relevant perk, starchCapacityPercent, swapped in for robChanceFlat
+// 2026-09-28, isn't leveled through any command — see roadmap.md) — confirms the
+// per-command, per-perk-type checks don't interfere with each other: leveling through one
+// command doesn't require, block, or get confused by the other perk type it also carries.
+describe('Elder Rootbeard levels independently via /sell-starch AND /regrade — the two perk-type checks do not interfere', () => {
     test('each command grants its own independently-computed amount off the same starting workCount', async () => {
-        const { callback: robCallback } = require('../rob');
         const { callback: sellCallback } = require('../../starch/sellStarch');
         const { callback: regradeCallback } = require('../../buying/regrade');
-
-        // --- /rob ---
-        dynamoHandler.findUser.mockImplementation((id) =>
-            Promise.resolve(id === 'user-1'
-                ? { userId: 'user-1', username: 'User', potatoes: 1000, totalEarnings: 1000, totalLosses: 0, robTimer: 0, guildId: 0, companions: companionsWith('elder_rootbeard', 'elder-a') }
-                : { userId: 'target-1', username: 'Target', potatoes: 10000, totalLosses: 0 })
-        );
-        const robConfirmation = { customId: 'rob_confirm', deferUpdate: jest.fn().mockResolvedValue() };
-        const robReply = { awaitMessageComponent: jest.fn().mockResolvedValue(robConfirmation), edit: jest.fn().mockResolvedValue() };
-        const robInteraction = {
-            deferReply: jest.fn().mockResolvedValue(),
-            editReply: jest.fn().mockResolvedValue(robReply),
-            user: { id: 'user-1', username: 'User', displayName: 'User' },
-            options: { get: (name) => (name === 'recipient' ? { value: 'target-1' } : undefined) },
-            guild: { members: { fetch: jest.fn().mockResolvedValue({ id: 'target-1', displayName: 'Target', user: { username: 'target' } }) } },
-        };
-        let randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.999999);
-        try {
-            await robCallback({ user: { id: 'bot-1' } }, robInteraction);
-        } finally {
-            randomSpy.mockRestore();
-        }
-        const robWrite = dynamoHandler.updateUserFields.mock.calls.find(([id]) => id === 'user-1')[1];
-        expect(robWrite.companions.owned[0].workCount).toBe(10 + ROB_GRANT);
 
         // --- /sell-starch --- (independent user fixture, own baseline workCount)
         jest.clearAllMocks();
@@ -505,7 +481,7 @@ describe('Elder Rootbeard levels independently via /rob, /sell-starch, AND /regr
             user: { id: 'user-1', username: 'User', displayName: 'User' },
             options: { get: (name) => (name === 'regrade-select' ? { value: 'work-multi' } : undefined) },
         };
-        randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.999999);
+        const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.999999);
         try {
             await regradeCallback({}, regradeInteraction);
         } finally {

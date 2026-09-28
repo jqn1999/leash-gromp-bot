@@ -1214,8 +1214,8 @@ describe('levelActiveCompanion', () => {
         });
 
         test('is not restricted to one specific companion id — any companion carrying the perk type levels', () => {
-            // Elder Rootbeard also carries robChanceFlat, distinct from Barn Owl.
-            const companions = { owned: [{ instanceId: 'elder-a', id: 'elder_rootbeard', workCount: 10 }], active: 'elder-a', maxLevelCount: 0, mythicMaxLevelCount: 0 };
+            // Yukon also carries robChanceFlat, distinct from Barn Owl.
+            const companions = { owned: [{ instanceId: 'yukon-a', id: 'yukon', workCount: 10 }], active: 'yukon-a', maxLevelCount: 0, mythicMaxLevelCount: 0 };
             const result = levelActiveCompanion(companions, 8, null, 'robChanceFlat');
             expect(result.owned[0].workCount).toBe(18);
         });

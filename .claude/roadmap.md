@@ -18589,3 +18589,66 @@ edit was an in-place recompute of an existing assertion, no new/removed tests ne
 
 **Cross-repo note.** Ported the identical constant change into `financial-project`'s
 `gromp-economy/handler.ts` the same session — see that repo's own `NOTES_GROMP_WEB_INTEGRATION.md`.
+
+## Elder Rootbeard's `robChanceFlat` swapped for `starchCapacityPercent` (2026-09-28)
+
+**Asked:** "what would be another bonus i can replace the rob chance on rootbeard with" — a
+follow-up to the regrade nerf earlier this session, no reason given beyond wanting a different
+identity for the perk slot. This was a design question, not a green light to implement, so I
+researched candidates and presented a recommendation before writing any code.
+
+**Found.** Two genuinely unused, already-wired perk types existed with zero current holders:
+`starchCapacityPercent` (raises `maxStarches`, read in `buyStarch.js`'s purchase cap and
+`give.js`'s recipient-capacity check; originally on Mole and an earlier version of Rootbeard, both
+moved off it to `starchSellBonusPercent` in an August balance pass, leaving the wiring dormant "for
+a future companion") and `guildRaidMultiplierPercent` (also fully dormant, no companion currently
+uses it). Recommended `starchCapacityPercent`: thematically fits Rootbeard's "deep pantry/vault"
+flavor better than a guild-raid bonus would, and doesn't collide with Barn Owl/Yukon's
+`robChanceFlat` identity the way keeping a diluted rob-chance perk would have. User confirmed with
+"use starch capacity 25%."
+
+**Changed.** `constants.js`: Elder Rootbeard's `perks` array — `{ type: "robChanceFlat", value:
+0.15 }` replaced with `{ type: "starchCapacityPercent", value: 0.25 }` (its other three perks —
+`regradeChanceBoostPercent` +10%, `passiveIncomePercent` +10%, `starchSellBonusPercent` +15% —
+untouched). `description` reworded to drop the "watches your back on a rob" clause and add "keeps a
+deeper pantry than anyone else." New explanatory comment above the `perks` array documents the
+swap, the two candidates considered, and why `starchCapacityPercent` won. `embedFactory.js`'s
+`PERK_LABELS` comment above `starchCapacityPercent` rewritten — no longer dormant, `
+guildRaidMultiplierPercent` is now the sole remaining unused perk type. `buyStarch.js`'s stale
+`// Mole —` comment (left over from that August reassignment) corrected to name the actual current
+holder and date.
+
+Swept every other live (non-historical) reference to "Elder Rootbeard carries robChanceFlat" across
+`src/` and `.claude/systems/*.md` and updated each to reflect Barn Owl/Yukon as the remaining
+holders, with a note on the swap where useful: `mercenaryFactory.js` (two comments on the Heist
+`robChanceFlat` bonus bucket), `rob.js` (the companion-leveling comment), `systems/companions.md`
+(roster table, Perk Magnitude Range Guide, `/rob` application-site bullet, `starchCapacityPercent`
+application-site table row — now describing its first live value since the August redesign — and a
+`passiveIncomePercent`-leveling paragraph), `systems/mercenary-bounties.md` (an inline code comment
+and two prose passages on Yukon/Barn Owl's shared bucket), and `systems/economy-and-work.md` (the
+`/rob` companion-leveling line). Left genuinely dated/historical mentions alone (e.g. Yukon's own
+2026-08-23 perk-consolidation comment in `constants.js`, which correctly describes what was true
+*at that time*) rather than rewriting history — only fixed the "Mythic 15%" value claim inside that
+comment block, since that asserted a number that no longer exists at all rather than framing past
+context.
+
+**Tests.** `nonWorkCompanionLeveling.test.js`: the `/rob` describe block's title dropped "Elder
+Rootbeard" (its test bodies never actually used that companion — only Barn Owl/Sprout fixtures —
+so no assertion changes needed there). The combined "one companion, multiple perk types, no
+interference" test previously drove Rootbeard through all three of `/rob`/`/sell-starch`/`/regrade`
+at once; since Rootbeard now only levels through two of those three commands
+(`starchSellBonusPercent`/`regradeChanceBoostPercent` — its third perk, `starchCapacityPercent`,
+isn't leveled by any command), dropped the `/rob` portion of that test and renamed the describe
+block accordingly, rather than force-fitting a companion that no longer matches the premise.
+`companionFactory.test.js`: the `restrictToPerkType` "not restricted to one specific companion id"
+test swapped its second example from Elder Rootbeard to Yukon (also a genuine `robChanceFlat`
+holder), since Rootbeard no longer demonstrates the point. `mercenaryFactory.test.js`: a stale
+comment on the Heist `robChanceFlat` regression test corrected the same way. `ACCELERATED_IDS` in
+`companionFactory.test.js` (still includes `elder_rootbeard` as an accelerant-perk example) needed
+no change — Rootbeard remains accelerant-eligible via its other three perks. Full suite: **122
+suites / 2220 tests, all passing** (net 0 new tests — existing assertions adjusted in place, one
+test scenario narrowed rather than removed).
+
+**Cross-repo note.** Needs porting to `financial-project`'s `gromp-economy/handler.ts` and
+`gromp-companions/handler.ts` duplicated Elder Rootbeard perk entries — tracked for this same
+session.

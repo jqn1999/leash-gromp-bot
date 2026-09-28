@@ -56,7 +56,7 @@ module.exports = {
             }
         }
 
-        // Mole — computed fresh here, never folded into the stored maxStarches.
+        // Elder Rootbeard (2026-09-28) — computed fresh here, never folded into the stored maxStarches.
         const starchCapacityPercent = companionFactory.getActivePerkValue(userDetails, "starchCapacityPercent");
         let maxStarches = Math.round(userDetails.maxStarches * (1 + starchCapacityPercent));
         let remainingAvailableStarches;
