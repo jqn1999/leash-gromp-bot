@@ -18320,10 +18320,16 @@ title/description). Plus 5 existing `festivalFactory.test.js` assertions updated
 catalog shape/pricing/no-cap-purchasedSlots behavior (not regressions — the old assertions were
 testing the pre-change catalog). Full suite: **121 suites / 2199 tests, all passing**.
 
-**Cross-repo note.** Not checked this pass — if `financial-project` has ported the Seasonal
-Festivals shop at all (unconfirmed), it would need the identical catalog/pricing/no-cap changes to
-stay in parity. Flagging rather than assuming; should be audited before considering this fully
-caught up cross-repo.
+**Cross-repo note, resolved.** Checked directly against `financial-project`'s `gromp-economy/
+handler.ts`: only two pieces of Seasonal Festivals were ever ported there — the odds-override
+composition (`applyFestivalOddsOverride`/`getActiveFestival`/`isFestivalLive`, wired into the
+work-scenario chance calc) and the `festivalCosmetic` Title condition (reads the shared
+`festivalCosmetics` DB field, so a bot-purchased cosmetic's Title still shows on web with zero
+web-side code). The shop/objectives/currency/voucher side of the feature was never built on web at
+all — its own comment says so explicitly ("Seasonal Festivals itself isn't ported to this repo
+yet... these 3 [Title conditions] stay permanently unreachable here UNTIL that happens"). Since
+there's no web shop feature to keep in sync, none of this session's catalog/pricing/voucher/no-cap
+changes have anything to port — confirmed, not just assumed clean.
 
 ## `/admin end-festival` — new command, manual early stop for a running Seasonal Festival
 
