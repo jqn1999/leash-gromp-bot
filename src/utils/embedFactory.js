@@ -3016,7 +3016,10 @@ class EmbedFactory {
 
         const fields = [];
 
-        const workTotal = cooldownFactory.combineSkipChance(workSources);
+        // /work's own companion-additive-and-uncapped rule (2026-09-28) — see
+        // cooldownFactory.combineSkipChanceWithCompanionBonus's own comment. Never drifts from
+        // the real roll since dynamoHandler.calculateWorkTimerValue uses this exact same function.
+        const workTotal = cooldownFactory.combineSkipChanceWithCompanionBonus(workSources);
         fields.push({
             name: `🔨 /work — ${(workTotal * 100).toFixed(0)}% chance to skip cooldown`,
             value: formatSources(workSources),
@@ -3055,7 +3058,7 @@ class EmbedFactory {
 
         const embed = new EmbedBuilder()
             .setTitle(`${userDisplayName}'s Cooldown Skip Chances`)
-            .setDescription(`A hit clears that cooldown to ready-now and lets you go again immediately. Each system's combined chance is capped at ${(cooldownFactory.DEFAULT_SKIP_CHANCE_CAP * 100).toFixed(0)}%. Bounty/Heist and Guild Raid only ever roll on a WIN — a loss always gets the full cooldown.`)
+            .setDescription(`A hit clears that cooldown to ready-now and lets you go again immediately. Each system's combined chance is capped at ${(cooldownFactory.DEFAULT_SKIP_CHANCE_CAP * 100).toFixed(0)}% — except /work's equipped companion, whose own bonus is added on top uncapped, so a strong companion can push /work's total past ${(cooldownFactory.DEFAULT_SKIP_CHANCE_CAP * 100).toFixed(0)}%. Bounty/Heist and Guild Raid only ever roll on a WIN — a loss always gets the full cooldown.`)
             .setColor('Blue')
             .setFooter({ text: "Made by Beggar" })
             .setTimestamp(Date.now())

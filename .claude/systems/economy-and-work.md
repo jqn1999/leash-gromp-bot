@@ -284,6 +284,54 @@ of the loss). Two changes, both in `workFactory.js`:
    instruction) plus the existing "sums multiple sources" test rewritten for the new expected
    value. Full suite green (1096/1096, up from 1095).
 
+   **Companion's own bonus made additive and uncapped (2026-09-28, direct instruction)** —
+   "make companion skip chance additive after the rest of the skip chances have calculated.
+   Also allow it to bring users over the 60% skip chance cap unbounded." A genuine carve-out
+   from the "every source stacks via `1-∏(1-pᵢ)`, capped at 60%" rule above:
+   `cooldownFactory.combineSkipChanceWithCompanionBonus(sources)` (new function) pulls the
+   `"companion"`-keyed source out of the list, runs `combineSkipChance` on the remaining five
+   (world buff, guild buff, Spud Keep, Mercenary Buff, Trading Post potion — still combined
+   and capped at `DEFAULT_SKIP_CHANCE_CAP` exactly as before), then adds the companion's raw
+   chance flat on top with no ceiling. `dynamoHandler.calculateWorkTimerValue` (the real roll)
+   and `embedFactory.createSkipChancesEmbed`'s `/work` field (the read-only `/skip-chances`
+   preview) both switched from `combineSkipChance` to this new function — the two can never
+   drift apart, same discipline every prior change to this mechanic followed. Only `/work`'s
+   own source list (`dynamoHandler.getWorkCooldownSkipSources`) ever carries a `"companion"`
+   key — Bounty/Heist's (`mercenaryFactory.getMercenaryCooldownSkipSources`) and Guild Raid's
+   (`startRaid.getRaidCooldownSkipSources`) own source lists never do, since a personal
+   companion perk has no meaning against a guild-scoped raid timer or has never been wired to
+   either of those two systems in the first place — so this is scoped purely to `/work`, both
+   of the other two systems' skip chances are entirely unchanged (still plain
+   `combineSkipChance`, still capped at 60%). `createSkipChancesEmbed`'s own description text
+   updated to say so explicitly, so a player checking `/skip-chances` isn't left thinking the
+   60%-cap line applies uniformly across all three systems when it no longer does for `/work`.
+   `pickSkipSource`'s own cosmetic attribution roll (which source's flavor text shows on a hit)
+   is untouched — still weighted by every source's raw chance from the FULL original list
+   (companion included), which stays sensible regardless of scale.
+
+   **DB-cost implication, flagged not blocked**: `roadmap.md`'s "Cooldown-skip chain read/write
+   consolidation" analysis (see this file's own "Cooldown-skip chain" section below) assumed
+   realistic `/work` skip chance tops out at 60%, averaging ~0.2-1.5 extra auto-chain links per
+   invocation even at that ceiling. A companion's own `workCooldownSkipChance` perk maxes out
+   around 20% (Mochi, Mythic tier) — stacked on top of an already-60%-capped rest of the stack,
+   a maxed-out player's real total can reach ~80%, averaging closer to ~3.5 extra chain links
+   per `/work` call (still hard-bounded by `Work.MAX_COOLDOWN_SKIP_CHAIN_LENGTH(10)` — see that
+   constant's own "a safety valve, not a balance lever" comment, which already anticipated a
+   high skip chance driving deeper chains). A real, bounded increase in per-call DB cost for a
+   companion-invested player, not a runaway/infinite risk — worth knowing given the existing
+   architectural analysis's own numbers, not a reason this change wasn't made as asked.
+
+   **Tests.** `combineSkipChanceWithCompanionBonus` — 5 new tests in `cooldownFactory.test.js`
+   (additive stacking, the other sources still cap at 60% before companion's addition, no-op
+   when `combineSkipChance` would already, a zero-chance/no-companion source adds nothing, a
+   strong enough companion can push the total past 100%). `dynamoHandler.test.js` — 3 new tests
+   under a new `calculateWorkTimerValue companion additive/uncapped skip chance` describe block
+   (the stamped `_cooldownSkipChance` reflects the new total; a roll that would have MISSED
+   under the old flat-60%-cap now HITS; with no companion equipped the total still caps at 60%
+   exactly as before). `embedFactory.test.js` — 1 new test confirming `/skip-chances`' own
+   `/work` field shows the same past-60% total. Full suite: **122 suites / 2219 tests, all
+   passing** (up from 2210).
+
    **Visibility**: the reduction has to actually show up on the result, or it's just a quieter
    cooldown nobody notices. `handlePoisonPotato` now returns `{ potatoesGained, immune,
    mitigationInfo }` instead of a plain number (same "return an object, not just the number" shape
@@ -972,14 +1020,23 @@ can be consolidated into one read-at-start + one write-at-end per top-level invo
 every chain link's deltas in memory instead. Summary of the findings, since this is exactly the kind
 of thing a future rebalance or refactor could get wrong in either direction:
 
-- **Realistic chain depth is short.** `cooldownFactory.combineSkipChance` caps the combined chance at
-  `DEFAULT_SKIP_CHANCE_CAP(0.60)`. A geometric process capped at 10 links averages `Σ pⁱ (i=1..10)`
-  extra links — roughly 0.2-0.25 extra for a typical single-source `/work` player (one companion's
-  `workCooldownSkipChance`, no other stacked source), up to ~1.5 extra even at the theoretical 60%
-  ceiling with every source stacked. Reaching the full 10-link cap needs ten consecutive hits at
-  p=0.6, ≈1% probability per invocation even for a maxed-out player. The DB-cost problem this
-  mechanic creates is real but bounded — most invocations chain 0-1 times, not the 5-10 the "how
-  often does this run deep" question might assume.
+- **Realistic chain depth is short — was true as written 2026-09-20, no longer the ceiling for a
+  companion-boosted `/work` player as of 2026-09-28.** As originally written: `cooldownFactory.
+  combineSkipChance` caps the combined chance at `DEFAULT_SKIP_CHANCE_CAP(0.60)`. A geometric
+  process capped at 10 links averages `Σ pⁱ (i=1..10)` extra links — roughly 0.2-0.25 extra for a
+  typical single-source `/work` player (one companion's `workCooldownSkipChance`, no other stacked
+  source), up to ~1.5 extra even at the theoretical 60% ceiling with every source stacked. Reaching
+  the full 10-link cap needs ten consecutive hits at p=0.6, ≈1% probability per invocation even for
+  a maxed-out player. **Since the "companion added additively, uncapped" change** (see this file's
+  own "Companion's own bonus made additive and uncapped" entry above), a companion-equipped
+  player's real `/work` skip chance is no longer bounded by 60% at all — the other five sources
+  still cap there, but a maxed companion (~20%, Mochi) adds on top, so a fully-stacked player can
+  reach ~80%. At p=0.8, `Σ pⁱ (i=1..10)` ≈ 3.5 extra links per invocation — a real, several-fold
+  increase in typical per-call DB cost for that specific player profile, though still hard-bounded
+  by the same `MAX_COOLDOWN_SKIP_CHAIN_LENGTH(10)` ceiling, never runaway/unbounded in the DB-cost
+  sense even though the SKIP CHANCE itself now is. The DB-cost problem this mechanic creates is
+  real but bounded — most invocations still chain far short of the 10-link cap, just no longer as
+  short as this section's original 2026-09-20 numbers assumed for every player.
 - **`/work`'s own chain links are NOT safe to fold into a single write.** Every one of the 10
   scenario handlers in `workFactory.js` (`handleGoldenPotato`, `handleLargePotato`, etc.) does its
   own direct `dynamoHandler.updateUserFields` write, and `calculateWorkTimerValue` (called from

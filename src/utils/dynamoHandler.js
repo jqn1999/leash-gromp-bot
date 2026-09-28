@@ -393,15 +393,20 @@ async function getWorkCooldownSkipSources(userDetails) {
 // Cooldown-skip overhaul (2026-09-05, direct instruction) — every source that used to shave
 // a flat percent off this cooldown (the guild's own workTimer buff, Spud Keep's holder-wide
 // perk) is now folded into the SAME combined skip-chance roll workCooldownSkipChance/the
-// World Boss cooldownSkip buff already used, via cooldownFactory.combineSkipChance/
-// rollCooldownSkip — one roll against the sum of all four sources (capped), not four
+// World Boss cooldownSkip buff already used, via cooldownFactory.combineSkipChanceWithCompanionBonus/
+// rollCooldownSkip — one roll against the combined chance of every source, not several
 // separate mechanisms. A hit sets the cooldown to "ready now"; a miss gets the FULL
-// cooldown, never a partial reduction. Mutates a transient, never-persisted
-// `_cooldownSkippedByCompanion` value onto the same userDetails object reference the caller
-// already holds, so work.js can show which source actually did it (and auto-chain off it)
-// without every /work scenario's handler needing its return shape changed to carry an extra
-// flag through. See cooldownFactory.js and .claude/systems/economy-and-work.md for the full
-// writeup of why this replaced the old flat-reduction mechanics.
+// cooldown, never a partial reduction. The equipped companion's own workCooldownSkipChance
+// perk is the one exception to the "combine and cap at 60%" rule (2026-09-28, direct
+// instruction) — it's added flat on top of the other five sources' combined-and-capped
+// total, uncapped, rather than folded into the same formula — see
+// cooldownFactory.combineSkipChanceWithCompanionBonus's own comment. Mutates a transient,
+// never-persisted `_cooldownSkippedByCompanion` value onto the same userDetails object
+// reference the caller already holds, so work.js can show which source actually did it (and
+// auto-chain off it) without every /work scenario's handler needing its return shape changed
+// to carry an extra flag through. See cooldownFactory.js and
+// .claude/systems/economy-and-work.md for the full writeup of why this replaced the old
+// flat-reduction mechanics.
 // skippable (new, optional, default true, 2026-09-06 direct instruction: "make poison and
 // mimics stop chained works") — a second, independent gate alongside the cooldownTime
 // check below. A non-immune Poison Potato hit's elevated lockoutSeconds already blocked
@@ -424,7 +429,10 @@ const calculateWorkTimerValue = async function (userDetails, cooldownTime, skipp
     // chain an immediate extra /work call, replacing the punishment with a bare cooldown.
     if (skippable && cooldownTime === Work.WORK_TIMER_SECONDS) {
         const sources = await getWorkCooldownSkipSources(userDetails);
-        const totalSkipChance = cooldownFactory.combineSkipChance(sources);
+        // Companion is added on top AFTER the rest of the sources combine, uncapped
+        // (2026-09-28, direct instruction) — see cooldownFactory.combineSkipChanceWithCompanionBonus's
+        // own comment for the full reasoning.
+        const totalSkipChance = cooldownFactory.combineSkipChanceWithCompanionBonus(sources);
         // Stamped unconditionally (hit or miss) — same transient, never-persisted pattern as
         // `_cooldownSkippedByCompanion` below, so work.js can show the % chance that was
         // actually rolled on a MISS (2026-09-05, player-reported: "the embeds no longer have

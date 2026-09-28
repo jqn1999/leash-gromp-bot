@@ -18432,3 +18432,36 @@ itself called out" entry for the full before/after.
 `embedFactory.test.js` Spud Keep coverage (pagination, Holder Buffs field, payout breakdown, the two
 crash-safety tests for guild/mercenary entrant shapes) all still pass unchanged, confirming this
 didn't alter any existing assertion. Full suite: **122 suites / 2210 tests, all passing**.
+
+## Companion's cooldown-skip bonus made additive and uncapped (all other sources unchanged)
+
+**Asked:** "make companion skip chance additive after the rest of the skip chances have
+calculated. Also allow it to bring users over the 60% skip chance cap unbounded."
+
+**Changed:** `cooldownFactory.js` gained `combineSkipChanceWithCompanionBonus(sources, cap)` —
+pulls the `"companion"`-keyed source out of a `/work` skip-chance source list, runs the existing
+`combineSkipChance` (unchanged `1-∏(1-pᵢ)`, still capped at 60%) on the remaining five sources
+(world buff, guild buff, Spud Keep, Mercenary Buff, Trading Post potion), then adds the
+companion's own raw chance flat on top with no ceiling. `dynamoHandler.calculateWorkTimerValue`
+(the actual roll) and `embedFactory.createSkipChancesEmbed`'s `/work` field (the `/skip-chances`
+read-only preview) both switched to it, so the two can never show a different number than what
+actually gets rolled. Scoped purely to `/work` — Bounty/Heist and Guild Raid's own skip-chance
+source lists never carry a `"companion"` key at all (a personal companion perk was never wired to
+either), so both are entirely unaffected, still plain `combineSkipChance`, still capped at 60%.
+`createSkipChancesEmbed`'s description text updated to say the 60% cap no longer applies
+uniformly. See `systems/economy-and-work.md`'s "Companion's own bonus made additive and uncapped"
+entry for the full writeup, including a flagged (not blocking) DB-cost implication: a
+companion-boosted player's real `/work` skip chance can now reach ~80% (world buff+guild buff
+capped at 60%, + Mochi's ~20%), which the existing "Cooldown-skip chain read/write consolidation"
+architectural analysis's own numbers didn't account for — averaging ~3.5 extra auto-chain links
+per `/work` call instead of the ~1.5 that analysis assumed as its ceiling, though still hard-bounded
+by `Work.MAX_COOLDOWN_SKIP_CHAIN_LENGTH(10)`, the same safety valve that already existed for
+exactly this kind of high-skip-chance scenario.
+
+**Tests.** 9 new: `cooldownFactory.test.js` (+5 — additive stacking, other sources still cap
+before companion's addition, matches `combineSkipChance` when no companion source is present, a
+zero-chance companion source adds nothing, a strong companion can push the total past 100%),
+`dynamoHandler.test.js` (+3 — the stamped `_cooldownSkipChance` reflects the new past-60% total, a
+roll that would've missed under the old cap now hits, no companion equipped still caps at 60%
+unchanged), `embedFactory.test.js` (+1 — `/skip-chances`' own `/work` field shows the new total).
+Full suite: **122 suites / 2219 tests, all passing** (up from 2210).

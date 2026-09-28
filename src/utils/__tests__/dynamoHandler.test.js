@@ -958,6 +958,59 @@ describe('calculateWorkTimerValue', () => {
     });
 });
 
+// Companion added AFTER the rest of the sources combine, uncapped (2026-09-28, direct
+// instruction: "make companion skip chance additive after the rest of the skip chances have
+// calculated. Also allow it to bring users over the 60% skip chance cap unbounded"). See
+// cooldownFactory.test.js's combineSkipChanceWithCompanionBonus tests for the math itself;
+// these confirm the real wiring through calculateWorkTimerValue's actual roll.
+describe('calculateWorkTimerValue companion additive/uncapped skip chance', () => {
+    let randomSpy;
+    afterEach(() => { if (randomSpy) randomSpy.mockRestore(); });
+
+    test('companion pushes the stamped total past 60% once the other sources are already capped there', async () => {
+        // Spud Keep alone mocked at 0.7 -> combineSkipChance caps the OTHER-sources group at
+        // 0.6. Mochi's real workCooldownSkipChance perk (0.20) is added on top -> 0.80 total.
+        docClient.query.mockReturnValue(resolved({ Items: [{ trackingId: 'spud_keep_cooldown_buff', holderType: 'guild', holderId: 'g1', buffType: 'cooldownReduction', value: 0.7, expiresAt: Date.now() + 60000 }] }));
+        const userDetails = {
+            guildId: 'g1',
+            companions: { owned: [{ instanceId: 'mochi-a', id: 'mochi', workCount: 0 }], active: 'mochi-a' },
+        };
+
+        await dynamoHandler.calculateWorkTimerValue(userDetails, Work.WORK_TIMER_SECONDS);
+
+        expect(userDetails._cooldownSkipChance).toBeCloseTo(0.80, 5);
+    });
+
+    test('a roll that would have MISSED under the old flat-60%-cap behavior now HITS, thanks to companion\'s uncapped addition', async () => {
+        docClient.query.mockReturnValue(resolved({ Items: [{ trackingId: 'spud_keep_cooldown_buff', holderType: 'guild', holderId: 'g1', buffType: 'cooldownReduction', value: 0.7, expiresAt: Date.now() + 60000 }] }));
+        randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.75); // > old 0.60 cap, < new 0.80 total
+        const userDetails = {
+            guildId: 'g1',
+            companions: { owned: [{ instanceId: 'mochi-a', id: 'mochi', workCount: 0 }], active: 'mochi-a' },
+        };
+
+        const before = Date.now();
+        const result = await dynamoHandler.calculateWorkTimerValue(userDetails, Work.WORK_TIMER_SECONDS);
+
+        // A hit either way (pickSkipSource's own attribution roll is a separate, cosmetic-only
+        // concern — see cooldownFactory.test.js's pickSkipSource tests) — what this test locks
+        // in is that the roll succeeded at all, which only happens because the total exceeded
+        // the old 60% cap.
+        expect(result).toBeGreaterThanOrEqual(before);
+        expect(result).toBeLessThan(before + Work.WORK_TIMER_SECONDS * 1000);
+        expect(userDetails._cooldownSkippedByCompanion).toBeDefined();
+    });
+
+    test('with no companion equipped, the total still caps at 60% exactly as before (unchanged behavior)', async () => {
+        docClient.query.mockReturnValue(resolved({ Items: [{ trackingId: 'spud_keep_cooldown_buff', holderType: 'guild', holderId: 'g1', buffType: 'cooldownReduction', value: 0.7, expiresAt: Date.now() + 60000 }] }));
+        const userDetails = { guildId: 'g1' }; // no companions field at all
+
+        await dynamoHandler.calculateWorkTimerValue(userDetails, Work.WORK_TIMER_SECONDS);
+
+        expect(userDetails._cooldownSkipChance).toBeCloseTo(0.60, 5);
+    });
+});
+
 describe('World Boss buff (getActiveWorldBuff / setActiveWorldBuff / isWorldBuffLive)', () => {
     test('getActiveWorldBuff reads the world_buff stats doc', async () => {
         docClient.query.mockReturnValue(resolved({ Items: [{ trackingId: 'world_buff', buffType: 'workMulti', value: 0.10 }] }));
