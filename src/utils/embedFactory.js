@@ -176,8 +176,9 @@ const PERK_LABELS = {
     // once the EV math (not just its own small per-hit payout) argued against it. See
     // workFactory.js's PROSPECTOR_DOUBLED_SCENARIOS for the full history. Companion gets
     // its own separate, higher percentage (2026-09-28) — PROSPECTOR_COMPANION_SCENARIO_
-    // MULTIPLIER (1.5x) applied to the SAME live, level-scaled `value` every other listed
-    // scenario uses, so the two numbers shown here can never drift from what actually rolls.
+    // MULTIPLIER (2x, a full double) applied to the SAME live, level-scaled `value` every
+    // other listed scenario uses, so the two numbers shown here can never drift from what
+    // actually rolls.
     specialEncounterMultiplierBonus: value => `+${(value * 100).toFixed(0)}% chance to find Poison Potato, Large Potato & Mimic Potato, +${(value * PROSPECTOR_COMPANION_SCENARIO_MULTIPLIER * 100).toFixed(0)}% chance to find a Wandering Companion`,
     bountyRewardPercent: value => `+${(value * 100).toFixed(1)}% Bounty Reward`,
     rivalSuccessChanceFlat: value => `+${(value * 100).toFixed(1)}% Rival Confrontation Success Chance`,

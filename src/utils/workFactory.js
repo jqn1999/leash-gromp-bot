@@ -39,15 +39,15 @@ const { WORK_SCENARIO_INDICES } = require("../utils/eventFactory");
 // or the biggest one-shot currency spike gets widened" basis.
 //
 // Companion (the Wandering Companion encounter) gets its own widening scaled
-// PROSPECTOR_COMPANION_SCENARIO_MULTIPLIER (1.5x) higher than Poison/Large/Mimic's shared
-// base value (2026-09-28, direct instruction — "increase the companion % specifically by
-// 1.5x the rest... instead of 75% base, make the companion one specifically 112.5%
-// starting"). Applied to whatever the perk's OWN live, level-scaled value already is (the
-// `multiplierBonus` param below), so companion-leveling's usual scaling still applies
-// exactly as it always has — this is a flat 1.5x on top of that, not a separate stored
-// value or a different scaling curve. At base (level 1): Poison/Large/Mimic +75%,
-// Companion +112.5%. At max level (1.45x scaling): Poison/Large/Mimic +108.75%,
-// Companion +163.125%.
+// PROSPECTOR_COMPANION_SCENARIO_MULTIPLIER (2x — a full double, not just 1.5x) higher than
+// Poison/Large/Mimic's shared base value (2026-09-28, direct instruction — first "increase
+// the companion % specifically by 1.5x the rest," same-day follow-up "make companion
+// scenario double instead of 50% higher... its 100%"). Applied to whatever the perk's OWN
+// live, level-scaled value already is (the `multiplierBonus` param below), so
+// companion-leveling's usual scaling still applies exactly as it always has — this is a
+// flat 2x on top of that, not a separate stored value or a different scaling curve. At base
+// (level 1): Poison/Large/Mimic +75%, Companion +150%. At max level (1.45x scaling):
+// Poison/Large/Mimic +108.75%, Companion +217.5%.
 //
 // Computes every scenario's new effective cumulative threshold in ONE pass over the whole
 // table (rather than incremental per-iteration bookkeeping in work.js's own roll loop), so
@@ -64,7 +64,7 @@ const PROSPECTOR_DOUBLED_SCENARIOS = [
     WORK_SCENARIO_INDICES.MIMIC,
 ];
 
-const PROSPECTOR_COMPANION_SCENARIO_MULTIPLIER = 1.5;
+const PROSPECTOR_COMPANION_SCENARIO_MULTIPLIER = 2;
 
 function getEffectiveScenarioChances(scenarios, multiplierBonus) {
     let previousChance = 0;

@@ -73,8 +73,8 @@ test('Prospector equipped: widens Poison/Large/Mimic, leaves Taro Trader untouch
 });
 
 // 2026-09-28, direct instruction: Companion widens PROSPECTOR_COMPANION_SCENARIO_MULTIPLIER
-// (1.5x) more than Poison/Large/Mimic's shared base value.
-test('Prospector equipped: Companion widens by 1.5x as much (proportionally) as Poison/Large/Mimic', async () => {
+// (2x, a full double) more than Poison/Large/Mimic's shared base value.
+test('Prospector equipped: Companion widens by 2x as much (proportionally) as Poison/Large/Mimic', async () => {
     const withoutProspector = baseUser();
     const withProspector = baseUser({ companions: { owned: [{ instanceId: 'p-1', id: 'prospector', workCount: 0 }], active: 'p-1' } });
 
@@ -94,7 +94,7 @@ test('Prospector equipped: Companion widens by 1.5x as much (proportionally) as 
 
     const poisonGrowth = boostedPoison / baselinePoison;
     const companionGrowth = boostedCompanion / baselineCompanion;
-    // Not an exact 1.5x on the final percentages (each scenario's own widening also shifts
+    // Not an exact 2x on the final percentages (each scenario's own widening also shifts
     // by however much widened BEFORE it in roll order, same as every other
     // getEffectiveScenarioChances test in workFactory.test.js) — just confirms Companion's
     // own growth is meaningfully larger than Poison's, not identical.

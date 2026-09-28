@@ -18564,3 +18564,28 @@ again) all updated.
 of `PROSPECTOR_WIDENED_SCENARIOS`/`getEffectiveScenarioChances`, confirmed and ported the same
 session this entry was written — see that repo's own `NOTES_GROMP_WEB_INTEGRATION.md` for the
 matching numbered entry.
+
+## Prospector's Companion multiplier raised from 1.5x to a full 2x (same-day follow-up)
+
+**Asked:** Immediate follow-up to the entry above — "can we make companion scenario double instead
+of 50% higher than the other stuff its 100%?" A straight numeric raise, not a design change: the
+mechanism (Companion widens by `PROSPECTOR_COMPANION_SCENARIO_MULTIPLIER` × whatever Poison/Large/
+Mimic's shared, already-level-scaled bonus is) is untouched — only the multiplier itself moved.
+
+**Changed:** `workFactory.js`'s `PROSPECTOR_COMPANION_SCENARIO_MULTIPLIER`: 1.5 → 2. New numbers:
+base (level 1) Poison/Large/Mimic +75%, Companion +150% (was +112.5%). Max level (1.45x scaling)
+Poison/Large/Mimic +108.75%, Companion +217.5% (was +163.125%). `constants.js`'s explanatory
+comment, `embedFactory.js`'s own comment above the `specialEncounterMultiplierBonus` label
+(the label itself already reads the constant dynamically, no code change needed there), and
+`systems/companions.md`'s roster row/Perk Magnitude Range Guide/history section all updated to the
+new numbers.
+
+**Tests.** `workFactory.test.js`'s dedicated Companion-widening test recomputed for the 2x factor
+(width now 3x base at `multiplierBonus=1`, was 2.5x) — same for the "accumulated shift never
+resets" test's running total. `workOdds.test.js`'s Companion-growth test and its comments updated
+(the assertion itself, `companionGrowth > poisonGrowth`, needed no numeric change — it was never an
+exact-ratio check). Full suite: **122 suites / 2220 tests, all passing** (no count change — every
+edit was an in-place recompute of an existing assertion, no new/removed tests needed).
+
+**Cross-repo note.** Ported the identical constant change into `financial-project`'s
+`gromp-economy/handler.ts` the same session — see that repo's own `NOTES_GROMP_WEB_INTEGRATION.md`.

@@ -516,7 +516,7 @@ a Legendary-or-better find rather than something you can roll on your very first
 | Barn Owl | Rare | `robChanceFlat` +10% |
 | Mole | Rare | `starchSellBonusPercent` +9% |
 | Firefly | Rare | `workMultiplierPercent` +9% |
-| Prospector | Rare | `specialEncounterMultiplierBonus` +0.75 (+75% of Poison/Large/Mimic's own encounter chance, +112.5% of Companion's — 1.5x higher, nerfed-then-re-nerfed Taro Trader stays excluded alongside Metal/Sweet/Ancient/Golden/Golden Yam, see below) + `workMultiplierPercent` -8% (the cost) |
+| Prospector | Rare | `specialEncounterMultiplierBonus` +0.75 (+75% of Poison/Large/Mimic's own encounter chance, +150% of Companion's — a full double, not just 1.5x — nerfed-then-re-nerfed Taro Trader stays excluded alongside Metal/Sweet/Ancient/Golden/Golden Yam, see below) + `workMultiplierPercent` -8% (the cost) |
 | Spudsprite | Legendary | `workCooldownSkipChance` 15% + `workMultiplierPercent` +8% |
 | Rootcarver, the Cellar Keeper | Legendary | `starchSellBonusPercent` +12% + `passiveIncomePercent` +8% |
 | Elder Rootbeard | Mythic | `regradeChanceBoostPercent` +10% (multiplicative — boosts the regrade tier's own chance, e.g. 50% -> 55%; nerfed from +50% 2026-09-28) + `passiveIncomePercent` +10% + `robChanceFlat` +15% + `starchSellBonusPercent` +15% |
@@ -573,7 +573,7 @@ Per-perk-type progression (blank = no companion currently grants that perk at th
 | Rebirth Bonus | — | — | — | 20% (Mochi) |
 | Poison Immunity | Guinea Pig only | — | — | — |
 | Special Encounter Chance (Poison/Large/Mimic) | — | +75% (Prospector) | — | — |
-| Special Encounter Chance (Companion, 1.5x the rest) | — | +112.5% (Prospector) | — | — |
+| Special Encounter Chance (Companion, 2x the rest) | — | +150% (Prospector) | — | — |
 
 Passive Income is the one perk type two companions share *within the same rarity tier* (both
 Mythics, different magnitudes) — see the 2026-08-22 Mythic rebalance below for why. The Work
@@ -756,19 +756,20 @@ excluded on one consistent basis: nothing that touches the scarce currency (star
 one-shot currency spike gets widened.
 
 Same instruction, a second change: Companion (the Wandering Companion encounter) now widens by
-`PROSPECTOR_COMPANION_SCENARIO_MULTIPLIER` (1.5x) the shared base value instead of the plain 0.75
-Poison/Large/Mimic still use — "increase the companion % specifically by 1.5x the rest... instead
-of 75% base, make the companion one specifically 112.5% starting then scale as normal." Implemented
-as a multiplier applied to the perk's own live, level-scaled `multiplierBonus` inside
-`getEffectiveScenarioChances` (`workFactory.js`) — not a second stored perk value — so
-companion-leveling's usual level scaling still applies exactly as it always has, just with this
-extra 1.5x always layered on top for Companion specifically. At base (level 1): Poison/Large/Mimic
-+75%, Companion +112.5%. At max level (1.45x scaling): Poison/Large/Mimic +108.75%,
-Companion +163.125%. `embedFactory.js`'s `specialEncounterMultiplierBonus` label and
+`PROSPECTOR_COMPANION_SCENARIO_MULTIPLIER` (2x — a full double) the shared base value instead of
+the plain 0.75 Poison/Large/Mimic still use — first "increase the companion % specifically by 1.5x
+the rest... instead of 75% base, make the companion one specifically 112.5% starting then scale as
+normal," raised to a full double the same day ("make companion scenario double instead of 50%
+higher... its 100%"). Implemented as a multiplier applied to the perk's own live, level-scaled
+`multiplierBonus` inside `getEffectiveScenarioChances` (`workFactory.js`) — not a second stored
+perk value — so companion-leveling's usual level scaling still applies exactly as it always has,
+just with this extra 2x always layered on top for Companion specifically. At base (level 1):
+Poison/Large/Mimic +75%, Companion +150%. At max level (1.45x scaling): Poison/Large/Mimic
++108.75%, Companion +217.5%. `embedFactory.js`'s `specialEncounterMultiplierBonus` label and
 `/work-odds`' own boost-note text both updated to show the two different percentages instead of one
 shared number.
 
-The widened set is now Poison Potato, Large Potato, Companion (at 1.5x), and Mimic Potato — 4
+The widened set is now Poison Potato, Large Potato, Companion (at 2x), and Mimic Potato — 4
 scenarios, not 5. No fresh EV simulation was run for this pass either (same reasoning as the prior
 narrowing) — the Taro removal is a pure scenario-membership edit, and the Companion multiplier is a
 targeted, requested magnitude change to one already-widened scenario, not a full redesign.

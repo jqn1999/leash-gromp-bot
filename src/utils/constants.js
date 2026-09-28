@@ -1577,12 +1577,13 @@ const Companions = [
         // PROSPECTOR_DOUBLED_SCENARIOS for the exact mechanism (generalizes the retired
         // Metal-only widening technique to several non-contiguous scenarios at once).
         // Companion (the Wandering Companion encounter) widens at
-        // PROSPECTOR_COMPANION_SCENARIO_MULTIPLIER (1.5x) this same value instead — 112.5%
-        // base, not 75% — see that constant's own comment for the full reasoning
-        // (2026-09-28, direct instruction).
+        // PROSPECTOR_COMPANION_SCENARIO_MULTIPLIER (2x — a full double) this same value
+        // instead — 150% base, not 75% — see that constant's own comment for the full
+        // reasoning (2026-09-28, direct instruction, raised from an initial 1.5x the same
+        // day: "make companion scenario double instead of 50% higher... its 100%").
         // Scales with companion level like every other perk
         // (CompanionLeveling.PERK_BONUS_PER_LEVEL), capping at +108.75% (0.75 * 1.45x) for
-        // Poison/Large/Mimic and +163.125% for Companion at max level 10 — NOT a round
+        // Poison/Large/Mimic and +217.5% for Companion at max level 10 — NOT a round
         // +75%->+150%; the level-10 multiplier itself is 1.45x, not 1.5x. Metal Potato,
         // Sweet Potato, and Ancient Potato are deliberately EXCLUDED from the widened set —
         // a full DOUBLING (value 1) of Sweet Potato was in an earlier draft of this

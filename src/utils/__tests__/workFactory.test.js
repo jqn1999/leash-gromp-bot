@@ -87,21 +87,20 @@ describe('getEffectiveScenarioChances', () => {
         expect(chanceFor(effective, WORK_SCENARIO_INDICES.LARGE)).toBeCloseTo(.051 + .01 + .04);
     });
 
-    // 2026-09-28, direct instruction: "increase the companion % specifically by 1.5x the
-    // rest... instead of 75% base, make the companion one specifically 112.5% starting then
-    // scale as normal" — at bonus=1 (a plain "double" for every other widened scenario),
-    // Companion's own effective bonus is 1*1.5=1.5, so its new width is rawWidth*(1+1.5)=2.5x,
-    // not 2x.
-    test('Companion widens by 1.5x as much as Poison/Large/Mimic at the same bonus value', () => {
+    // 2026-09-28, direct instruction: first "increase the companion % specifically by 1.5x
+    // the rest," same-day follow-up "make companion scenario double instead of 50%
+    // higher... its 100%" — at bonus=1 (a plain "double" for every other widened scenario),
+    // Companion's own effective bonus is 1*2=2, so its new width is rawWidth*(1+2)=3x, not 2x.
+    test('Companion widens by 2x as much (a full double) as Poison/Large/Mimic at the same bonus value', () => {
         const effective = getEffectiveScenarioChances(REAL_SCENARIOS, 1);
         // Companion's own base width is .015 (.096-.081); shifted up by Poison+Large's own
         // widening (.01+.04=.05 accumulated by the time Companion is reached), plus its own
-        // shift CONTRIBUTION (rawWidth*effectiveBonus = .015*1.5=.0225 — not its own new
-        // WIDTH, asserted separately below).
+        // shift CONTRIBUTION (rawWidth*effectiveBonus = .015*2=.03 — not its own new WIDTH,
+        // asserted separately below).
         const shiftThroughLarge = .01 + .04;
-        expect(chanceFor(effective, WORK_SCENARIO_INDICES.COMPANION)).toBeCloseTo(.096 + shiftThroughLarge + .0225);
+        expect(chanceFor(effective, WORK_SCENARIO_INDICES.COMPANION)).toBeCloseTo(.096 + shiftThroughLarge + .03);
         const companionWidth = chanceFor(effective, WORK_SCENARIO_INDICES.COMPANION) - chanceFor(effective, WORK_SCENARIO_INDICES.SWEET);
-        expect(companionWidth).toBeCloseTo(.0375); // 2.5x its own .015 base width
+        expect(companionWidth).toBeCloseTo(.045); // 3x its own .015 base width
     });
 
     test('Golden Potato, Taro Trader, and Golden Yam are no longer widened at all, even with a bonus active', () => {
@@ -142,9 +141,9 @@ describe('getEffectiveScenarioChances', () => {
         const effective = getEffectiveScenarioChances(REAL_SCENARIOS, 1);
         // By Golden Yam (well after the last doubled scenario, Mimic), the shift includes
         // Poison+Large+Mimic's own plain-doubled widening (+rawWidth each) plus Companion's
-        // own 1.5x-scaled widening (+rawWidth*1.5) — Metal/Sweet/Ancient/Golden/Taro's own
+        // own 2x-scaled widening (+rawWidth*2) — Metal/Sweet/Ancient/Golden/Taro's own
         // widths are skipped but don't reset the running total.
-        const totalShift = .01 + .04 + (.015 * 1.5) + .01; // poison + large + companion(1.5x) + mimic
+        const totalShift = .01 + .04 + (.015 * 2) + .01; // poison + large + companion(2x) + mimic
         expect(chanceFor(effective, WORK_SCENARIO_INDICES.GOLDEN_YAM)).toBeCloseTo(.1275 + totalShift);
     });
 });
