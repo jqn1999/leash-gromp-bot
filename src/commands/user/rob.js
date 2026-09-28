@@ -108,8 +108,9 @@ async function resolveRobAttempt(interaction, userId, username, userDisplayName,
 
     const userSuccessfulRob = determineRobOutcome(robChance);
 
-    // Non-work-focused companion leveling (Barn Owl/Yukon/Elder Rootbeard's robChanceFlat)
-    // — computed once here, unconditional on win/loss, since a FAILED rob costs the player
+    // Non-work-focused companion leveling (Barn Owl/Yukon's robChanceFlat; Elder Rootbeard's
+    // own copy was swapped for starchCapacityPercent 2026-09-28) — computed once here,
+    // unconditional on win/loss, since a FAILED rob costs the player
     // MORE than a win (a 25-50% liquid-potato fine plus an extra cooldown penalty on top of
     // the normal robTimer reset — see calculateFailedRobPenalty/Rob.WORK_TIMER_INCREASE_MS
     // below), so gating the grant on success would perversely under-reward the worse

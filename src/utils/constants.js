@@ -1698,7 +1698,7 @@ const Companions = [
         name: "Elder Rootbeard",
         rarity: CompanionRarity.MYTHIC,
         thumbnailUrl: "https://cdn.discordapp.com/attachments/533073599435636739/1543696791306899519/Ni5qcGc.png?ex=6a95cf2b&is=6a947dab&hm=94982c6df81cc8b2f41c9c828a5e5f48802e9437e569498c112d448f73a4f026&",
-        description: "An ancient root-vegetable elder who's seen every trick the vault, the streets, and the regrade tables have to offer — whispers the exact flaw in every attempt's technique, watches your back on a rob, quietly tends a slow-growing harvest in the background, and always finds room to get a better rate cashing out starches.",
+        description: "An ancient root-vegetable elder who's seen every trick the vault and the regrade tables have to offer — whispers the exact flaw in every attempt's technique, quietly tends a slow-growing harvest in the background, keeps a deeper pantry than anyone else, and always finds room to get a better rate cashing out starches.",
         scavengeFlavor: "Elder Rootbeard returned at its own unhurried pace, the way it does everything, and delivered a field report on exactly what it found and where — some things never change with age.",
         // Rebalanced 2026-08-22: bankCapacityPercent replaced with passiveIncomePercent
         // (per balance-audit.md's Mochi-vs-Rootbeard finding — bankCapacityPercent could
@@ -1730,10 +1730,25 @@ const Companions = [
         // no longer a dominant "always equip this before regrading" pick that made every
         // other Mythic-tier choice look wrong by comparison whenever a regrade was on the
         // table.
+        //
+        // robChanceFlat swapped for starchCapacityPercent (2026-09-28, direct instruction —
+        // "what would be another bonus i can replace the rob chance on rootbeard with,"
+        // followed by "use starch capacity 25%"). starchCapacityPercent had zero current
+        // holders (Mole/Rootbeard both moved off it to starchSellBonusPercent during an
+        // earlier balance pass — see this comment block's own history above — but the
+        // wiring, embedFactory.js's label and buyStarch.js's/give.js's own lookups, was
+        // deliberately left in place for a future companion) — reassigning it here gives
+        // Rootbeard a genuinely distinct niche (nobody else raises the starch storage cap)
+        // instead of overlapping Barn Owl/Yukon's existing robChanceFlat identity, and pairs
+        // naturally with its own starchSellBonusPercent: store more, sell for more, a real
+        // "starch specialist" kit. 25% raises `maxStarches` by a quarter wherever it's
+        // read — buyStarch.js's own purchase-cap check and give.js's recipient-capacity
+        // check (starchCapacityPercent has no effect on Taro Trader/Golden Yam's free
+        // grants, which aren't capped by maxStarches at all).
         perks: [
             { type: "regradeChanceBoostPercent", value: 0.1 },
             { type: "passiveIncomePercent", value: 0.10 },
-            { type: "robChanceFlat", value: 0.15 },
+            { type: "starchCapacityPercent", value: 0.25 },
             { type: "starchSellBonusPercent", value: 0.15 }
         ]
     },
@@ -1779,10 +1794,12 @@ const Companions = [
         // deliberate TRIPLE-perk exception, direct instruction 2026-08-23, once Rival Bounty
         // Hunters gave a Bounty-only companion a third action to plausibly help with.
         // robChanceFlat simplified from a separate /rob-npc-only npcRobChanceFlat perk type
-        // down to the same shared robChanceFlat Barn Owl/Elder Rootbeard already grant — now
-        // boosts BOTH real /rob and /rob-npc identically (mercenaries can still run real
-        // /rob, it's never guild-gated). Kept at 12%, still sitting between Barn Owl's Rare
-        // 10% and Elder Rootbeard's Mythic 15%. bountyRewardPercent (applied to the
+        // down to the same shared robChanceFlat Barn Owl/Elder Rootbeard both granted at the
+        // time — now boosts BOTH real /rob and /rob-npc identically (mercenaries can still
+        // run real /rob, it's never guild-gated). Kept at 12%, above Barn Owl's Rare 10%
+        // (Elder Rootbeard's own robChanceFlat was swapped for starchCapacityPercent
+        // 2026-09-28 — see roadmap.md — so Barn Owl is the only other current holder).
+        // bountyRewardPercent (applied to the
         // already-discounted Bounty payout, non-compounding) is anchored near Rootcarver's
         // 12% and Prospector's paired Rare-tier bump. rivalSuccessChanceFlat is new — a flat
         // additive bonus on /confront-rival's rolled successChance (mercenaryFactory

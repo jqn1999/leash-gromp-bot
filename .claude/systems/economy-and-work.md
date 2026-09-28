@@ -942,8 +942,9 @@ Failure fines the robber 25–50% of their own total wealth (or a flat `Rob.BASE
 if their computed wealth is negative), plus adds `Rob.WORK_TIMER_INCREASE_MS(6,900,000ms ≈ 1h55m)`
 onto their `/work` cooldown as a penalty.
 
-Also levels the robber's equipped companion if it carries `robChanceFlat` (Barn Owl/Yukon/Elder
-Rootbeard), cooldown-scaled against `/work` and unconditional on win/loss — see
+Also levels the robber's equipped companion if it carries `robChanceFlat` (Barn Owl/Yukon;
+Elder Rootbeard's own copy was swapped for `starchCapacityPercent` 2026-09-28), cooldown-scaled
+against `/work` and unconditional on win/loss — see
 [companions.md#leveling](companions.md#leveling).
 
 **No house cut on a failed rob (removed 2026-08-30, direct instruction).** A failed rob's fine used

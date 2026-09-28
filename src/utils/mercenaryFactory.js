@@ -237,7 +237,8 @@ async function resolveNpcRob(userDetails, workGainAmount, catchUpBonus = 0, heis
     const rankInfo = getMercenaryRankInfo(userDetails.mercenaryBountyWinCount);
     // Simplified 2026-08-23, direct instruction — this used to read a separate,
     // /rob-npc-only npcRobChanceFlat perk. Now shares the same robChanceFlat perk real
-    // /rob's own bonus already uses (Barn Owl/Elder Rootbeard/Yukon) — the base chance
+    // /rob's own bonus already uses (Barn Owl/Yukon; Elder Rootbeard also did, until its
+    // own copy was swapped for starchCapacityPercent 2026-09-28) — the base chance
     // formula below still stays its own flat/rank-based thing, not wealth-ratio-based like
     // real /rob's calculateRobChance, only the bonus source is now shared. Since the Heist
     // Ladder rework, the base/perRank/cap numbers themselves come from the picked tier
@@ -246,8 +247,8 @@ async function resolveNpcRob(userDetails, workGainAmount, catchUpBonus = 0, heis
     // extended to Heist alongside real /rob, unlike the rest of this feature which
     // deliberately stayed off RobNpc.TIERS entirely; see systems/mercenary-bounties.md's
     // Mercenary Buff section). Same rank lookup already computed above, same bucket as
-    // Yukon/Barn Owl/Elder Rootbeard's robChanceFlat perk — purely additive, no other term
-    // in this function changes.
+    // Yukon/Barn Owl's robChanceFlat perk — purely additive, no other term in this
+    // function changes.
     const mercenaryBuffRobChanceBonus = (userDetails.isMercenary && userDetails.mercenaryBuff === "robChance")
         ? mercenaryBuffFactory.getMercenaryBuffValue("robChance", rankInfo.rank)
         : 0;

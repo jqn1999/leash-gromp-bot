@@ -265,7 +265,9 @@ array (via `getCompanionById`), not the owned instance (which only carries `{ in
 workCount }`) — mirrors `getActivePerkValue`'s own lookup idiom. Takes a back seat to
 `restrictToCompanionId` if a caller somehow passed both (checked first); no real call site does.
 
-- **`/rob`** — `robChanceFlat` (Barn Owl/Yukon/Elder Rootbeard). Reuses the existing
+- **`/rob`** — `robChanceFlat` (Barn Owl/Yukon; Elder Rootbeard's own copy was swapped for
+  `starchCapacityPercent` 2026-09-28 — see `roadmap.md` for the swap's full reasoning). Reuses the
+  existing
   `getCooldownScaledWorkCountGrant(Rob.ROB_TIMER_SECONDS, CompanionLeveling.REALISTIC_PLAY_DISCOUNT)`
   formula Bounty/Heist already use (`/rob`'s own 1hr cooldown lands on the same **8** grant as
   Bounty's, since both share `REALISTIC_PLAY_DISCOUNT` against the same-length cooldown).
@@ -410,8 +412,8 @@ currently active if (and only if) it carries `passiveIncomePercent` — **additi
 never a replacement for, ordinary action-based leveling, per direct instruction (the broader of
 two scoping options): a passiveIncomePercent companion also actively used for `/work`/Bounty/etc.
 still levels from that too, which also means its OTHER perks (Rootcarver's
-`starchSellBonusPercent`, Elder Rootbeard's `regradeChanceBoostPercent`/`robChanceFlat`, Mochi's
-`workMultiplierPercent`/`workCooldownSkipChance`/`rebirthBonusPercent`) can grow just from
+`starchSellBonusPercent`, Elder Rootbeard's `regradeChanceBoostPercent`/`starchCapacityPercent`,
+Mochi's `workMultiplierPercent`/`workCooldownSkipChance`/`rebirthBonusPercent`) can grow just from
 sitting equipped too — an accepted tradeoff of the chosen scope, not an oversight.
 
 Rate: `CompanionLeveling.PASSIVE_LEVEL_SECONDS_PER_WORK_COUNT` (450s = 7.5 min per workCount) —
@@ -519,7 +521,7 @@ a Legendary-or-better find rather than something you can roll on your very first
 | Prospector | Rare | `specialEncounterMultiplierBonus` +0.75 (+75% of Poison/Large/Mimic's own encounter chance, +150% of Companion's — a full double, not just 1.5x — nerfed-then-re-nerfed Taro Trader stays excluded alongside Metal/Sweet/Ancient/Golden/Golden Yam, see below) + `workMultiplierPercent` -8% (the cost) |
 | Spudsprite | Legendary | `workCooldownSkipChance` 15% + `workMultiplierPercent` +8% |
 | Rootcarver, the Cellar Keeper | Legendary | `starchSellBonusPercent` +12% + `passiveIncomePercent` +8% |
-| Elder Rootbeard | Mythic | `regradeChanceBoostPercent` +10% (multiplicative — boosts the regrade tier's own chance, e.g. 50% -> 55%; nerfed from +50% 2026-09-28) + `passiveIncomePercent` +10% + `robChanceFlat` +15% + `starchSellBonusPercent` +15% |
+| Elder Rootbeard | Mythic | `regradeChanceBoostPercent` +10% (multiplicative — boosts the regrade tier's own chance, e.g. 50% -> 55%; nerfed from +50% 2026-09-28) + `passiveIncomePercent` +10% + `starchCapacityPercent` +25% (swapped in for `robChanceFlat` 2026-09-28) + `starchSellBonusPercent` +15% |
 | Mochi, the Undying Stray | Mythic | `passiveIncomePercent` +6% + `rebirthBonusPercent` +20% + `workMultiplierPercent` +12% + `workCooldownSkipChance` 20% |
 
 **Yukon, the Highwayman** (Legendary, **triple**-perk — a deliberate exception to the
@@ -531,10 +533,11 @@ for the full mechanism. Its `Companions` entry carries `dropSource: "bounty"`, w
 `companionFactory.getCompanionsByRarity` filters out of `rollCompanion`'s pool — the only
 roster entry that isn't implicitly `dropSource: "work"` by omission. Once owned, it behaves
 exactly like any other companion everywhere else (equip, market, `getActivePerkValue`,
-`/help topic:companions`). Perks: `robChanceFlat` +12% (the same shared perk type Barn
-Owl/Elder Rootbeard grant for real `/rob` — simplified 2026-08-23, direct instruction, from
-an earlier `/rob-npc`-only `npcRobChanceFlat` perk down to one shared perk that now boosts
-both real `/rob` and `/rob-npc` identically, since mercenaries can still run real `/rob`) +
+`/help topic:companions`). Perks: `robChanceFlat` +12% (the same shared perk type Barn Owl
+grants for real `/rob` — Elder Rootbeard also did, until its own copy was swapped for
+`starchCapacityPercent` 2026-09-28 — simplified 2026-08-23, direct instruction, from an
+earlier `/rob-npc`-only `npcRobChanceFlat` perk down to one shared perk that now boosts both
+real `/rob` and `/rob-npc` identically, since mercenaries can still run real `/rob`) +
 `bountyRewardPercent` +13.5% (applied to the already-discounted Bounty payout) +
 `rivalSuccessChanceFlat` +5% (adds to `/confront-rival`'s rolled success-chance range — see
 [mercenary-bounties.md](mercenary-bounties.md#rival-bounty-hunters), kept modest since Hard's
@@ -565,7 +568,8 @@ Per-perk-type progression (blank = no companion currently grants that perk at th
 | Work Multiplier | 5% (Sprout) | 9% (Firefly) | 8% (Spudsprite) | 12% (Mochi) |
 | Work Cooldown Skip Chance | 5% (Fieldmouse) | — | 15% (Spudsprite) | 20% (Mochi) |
 | Bank Capacity | 12% (Ladybug) | — | — | — |
-| Rob Chance (real `/rob` + `/rob-npc`) | — | 10% (Barn Owl) | 12% (Yukon) | 15% (Elder Rootbeard) |
+| Starch Capacity | — | — | — | 25% (Elder Rootbeard) |
+| Rob Chance (real `/rob` + `/rob-npc`) | — | 10% (Barn Owl) | 12% (Yukon) | — |
 | Rival Confrontation Success Chance | — | — | 5% flat (Yukon) | — |
 | Starch Sell Bonus | — | 9% (Mole) | 12% (Rootcarver) | 15% (Elder Rootbeard) |
 | Passive Income | *(none by design)* | — | 8% (Rootcarver) | 6% (Mochi) / 10% (Elder Rootbeard) |
@@ -999,7 +1003,7 @@ site is guaranteed to have gone through `findUser`'s self-healing backfill (e.g.
 | `robChanceFlat` | `rob.js`'s `robChance`, alongside the guild `robChance` buff |
 | `regradeChanceBoostPercent` | `regrade.js`'s `chanceOfSuccess`, all 3 tracks — multiplies the tier's own chance (`currentTier.chance * (1 + boost) + failStack`), not a flat add |
 | `guildRaidMultiplierPercent` | `startRaid.js`'s `totalMultiplier` — best value among all raid participants, not summed, so multiple companions with this perk couldn't stack into an unintended snowball. Currently dormant: Firefly (the original holder) was reassigned to `workMultiplierPercent`, so no companion grants this perk right now — the wiring stays in place for a future one |
-| `starchCapacityPercent` | `buyStarch.js`'s purchase cap, `give.js`'s recipient-capacity check (reads the *recipient's* active companion). Currently dormant, same as `guildRaidMultiplierPercent` above: Mole and Elder Rootbeard (its only two holders) were both reassigned to `starchSellBonusPercent` in a balance pass — the wiring stays in place for a future companion |
+| `starchCapacityPercent` | `buyStarch.js`'s purchase cap, `give.js`'s recipient-capacity check (reads the *recipient's* active companion). Dormant for a while after Mole and Elder Rootbeard (its original two holders) were both reassigned to `starchSellBonusPercent` in a balance pass — reassigned back to Elder Rootbeard 2026-09-28 (swapped in for its own `robChanceFlat`) at 25%, its first live value since that redesign |
 | `starchSellBonusPercent` | `sellStarch.js` — folded directly into the per-unit `starch_sell` price before computing payout, so the displayed price and the actual credit never disagree |
 | `bankCapacityPercent` | `bank.js`'s deposit cap |
 | `rebirthBonusPercent` | `rebirthFactory.getLiveRebirthPercent` — multiplies the live rebirth bonus (see [economy-and-work.md](economy-and-work.md#rebirth-prestige-reset)) by +20%, recomputed fresh every time it's read same as every other companion perk; equip/unequip Mochi and your effective rebirth bonus changes immediately, there's no "moment of rebirth" tied to it anymore |

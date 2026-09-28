@@ -144,11 +144,14 @@ const PERK_LABELS = {
     // Shared by real /rob (rob.js) and /rob-npc (mercenaryFactory.js's resolveNpcRob) — see
     // that function's own comment on why this used to be two separate perk types.
     robChanceFlat: value => `+${(value * 100).toFixed(1)}% Rob Success Chance`,
-    // No companion currently grants this — Mole and Elder Rootbeard both moved to
-    // starchSellBonusPercent in a balance pass (it only gated /buy-starch, not the free
-    // starches Taro Trader/Golden Yam hand out). Wiring (this label, buyStarch.js's
-    // lookup) stays in place for a future companion, same as guildRaidMultiplierPercent
-    // below.
+    // Raises maxStarches wherever it's read — buyStarch.js's own purchase-cap check and
+    // give.js's recipient-capacity check (never Taro Trader/Golden Yam's free grants, which
+    // aren't capped by maxStarches at all). Had zero current holders for a while — Mole and
+    // Elder Rootbeard both moved off it to starchSellBonusPercent in an earlier balance
+    // pass — until Elder Rootbeard's own robChanceFlat perk was swapped for this
+    // (2026-09-28, direct instruction) to give it a genuinely distinct niche instead of
+    // overlapping Barn Owl/Yukon's rob-chance identity. guildRaidMultiplierPercent below
+    // remains the one perk type still with zero current holders.
     starchCapacityPercent: value => `+${(value * 100).toFixed(1)}% Starch Capacity`,
     starchSellBonusPercent: value => `+${(value * 100).toFixed(1)}% Starch Sell Value`,
     guildRaidMultiplierPercent: value => `+${(value * 100).toFixed(1)}% Guild Raid Success Chance`,
