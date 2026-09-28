@@ -13,6 +13,7 @@ jest.mock('../../guilds/guildChat', () => ({
 }));
 jest.mock('../../../utils/festivalFactory', () => ({
     startFestival: jest.fn(),
+    endFestival: jest.fn(),
 }));
 jest.mock('../../../utils/bigEventsChannel.js', () => ({
     postBigEvent: jest.fn().mockResolvedValue(),
@@ -22,7 +23,7 @@ const dynamoHandler = require('../../../utils/dynamoHandler');
 const { addChatChannelIndexEntry, removeChatChannelIndexEntry } = require('../../guilds/guildChat');
 const festivalFactory = require('../../../utils/festivalFactory');
 const bigEventsChannel = require('../../../utils/bigEventsChannel.js');
-const { resetTowerCallback, setActivityChannelCallback, setMercChatChannelCallback, startFestivalCallback, revokeImmuneToVenomCallback, grantTitleCallback } = require('../admin');
+const { resetTowerCallback, setActivityChannelCallback, setMercChatChannelCallback, startFestivalCallback, endFestivalCallback, revokeImmuneToVenomCallback, grantTitleCallback } = require('../admin');
 
 beforeEach(() => {
     jest.clearAllMocks();
@@ -581,6 +582,68 @@ describe('/admin start-festival', () => {
         const [payload] = bigEventsChannel.postBigEvent.mock.calls[0];
         expect(payload.title).toContain('Harvest Festival');
         expect(payload.description).toContain('/festival-shop');
+    });
+});
+
+// ---------------------------------------------------------------------------------------
+// /admin end-festival — manual early-stop counterpart to start-festival (2026-09-28, direct
+// instruction: "is there a way for me to stop the festival? if not add admin command for
+// it"). festivalFactory.endFestival() itself needed zero changes — it already ends whatever
+// is live on demand, with no Date.now() >= endsAt gate of its own (only the daily cron's
+// caller checks that before calling it).
+// ---------------------------------------------------------------------------------------
+describe('/admin end-festival', () => {
+    function fakeInteraction() {
+        return {
+            deferReply: jest.fn().mockResolvedValue(),
+            editReply: jest.fn().mockResolvedValue(),
+            options: { get: () => undefined },
+        };
+    }
+
+    function fakeClient() {
+        const channel = { send: jest.fn().mockResolvedValue() };
+        return { channels: { fetch: jest.fn().mockResolvedValue(channel) }, __channel: channel };
+    }
+
+    test('reports there\'s nothing to stop when no festival is running, without touching any channel', async () => {
+        festivalFactory.endFestival.mockResolvedValue(null);
+        const interaction = fakeInteraction();
+        const client = fakeClient();
+
+        await endFestivalCallback(client, interaction);
+
+        expect(interaction.editReply).toHaveBeenCalledWith(expect.stringMatching(/no festival currently running/i));
+        expect(client.channels.fetch).not.toHaveBeenCalled();
+    });
+
+    test('stops a live festival early, posts the same end-of-festival embed the daily cron would post, to the festival events channel', async () => {
+        festivalFactory.endFestival.mockResolvedValue({ festivalId: 'frost_fair' });
+        const interaction = fakeInteraction();
+        const client = fakeClient();
+
+        await endFestivalCallback(client, interaction);
+
+        expect(festivalFactory.endFestival).toHaveBeenCalledTimes(1);
+        expect(client.channels.fetch).toHaveBeenCalledWith('1188525931346792498');
+        expect(client.__channel.send).toHaveBeenCalledTimes(1);
+        const [{ embeds }] = client.__channel.send.mock.calls[0];
+        expect(embeds[0].data.title).toContain('Frost Fair');
+        expect(interaction.editReply).toHaveBeenCalledWith(expect.stringContaining('Stopped Frost Fair early'));
+    });
+
+    // Direct instruction's own stated scope was starting only ("wire festival START into big
+    // events channel") — a manual stop mirrors the daily cron's own natural-end behavior,
+    // which also never posted to Big Events, so this stays symmetric rather than inventing a
+    // new announcement Big Events never had for an end before.
+    test('does not post to the Big Events channel, matching a natural end\'s own behavior', async () => {
+        festivalFactory.endFestival.mockResolvedValue({ festivalId: 'harvest_festival' });
+        const interaction = fakeInteraction();
+        const client = fakeClient();
+
+        await endFestivalCallback(client, interaction);
+
+        expect(bigEventsChannel.postBigEvent).not.toHaveBeenCalled();
     });
 });
 

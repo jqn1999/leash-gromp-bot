@@ -670,3 +670,27 @@ together off that finding:
   dedicated festival/events channel) is unchanged; a new, separate `bigEventsChannel.postBigEvent`
   call posts the same "a festival has begun" moment to the Big Events channel too, mirroring every
   other rare server-wide highlight already wired there (World Boss spawns, jackpot hits).
+
+## `/admin end-festival` — manual early stop (2026-09-28, direct instruction: "is there a way for
+## me to stop the festival? if not add admin command for it")
+
+There was no way to end a festival before its natural `endsAt` — only the daily 8pm ET cron
+(`backgroundEvents.js`) ever called `festivalFactory.endFestival()`, and only after checking
+`Date.now() >= activeFestival.endsAt` itself. `endFestival()` needed ZERO changes to support a
+manual stop: it has no such gate of its own — it just nulls out whatever festival doc is currently
+live, unconditionally, the instant it's called. The cron's own `Date.now() >= endsAt` check lives
+entirely in its caller, not the function itself, so a new admin-triggered caller with no such check
+ends the festival immediately regardless of how much of its week remains.
+
+New no-argument Subcommand, `runEndFestival` (right after `runStartFestival` in `admin.js`):
+1. Calls `festivalFactory.endFestival()`. Returns `null` if nothing's running — the command
+   replies "There's no festival currently running" and touches no channel.
+2. On a real stop, posts `embedFactory.createFestivalEndEmbed(ended.festivalId)` — the exact same
+   embed the daily cron posts on a natural end — to the same hardcoded festival events channel
+   (`FESTIVAL_EVENT_CHANNEL_ID`, `1188525931346792498`), so players see an identical announcement
+   whether the festival ran its full week or was cut short.
+
+**Deliberately NOT wired into the Big Events channel** — the direct instruction for that treatment
+was scoped to festival START only ("wire festival start into big events channel"), and a natural
+end (the daily cron) was never wired into Big Events either, so a manual stop stays symmetric with
+that existing behavior rather than inventing a new announcement pattern an end never had before.

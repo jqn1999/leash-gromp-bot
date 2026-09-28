@@ -18324,3 +18324,25 @@ testing the pre-change catalog). Full suite: **121 suites / 2199 tests, all pass
 Festivals shop at all (unconfirmed), it would need the identical catalog/pricing/no-cap changes to
 stay in parity. Flagging rather than assuming; should be audited before considering this fully
 caught up cross-repo.
+
+## `/admin end-festival` — new command, manual early stop for a running Seasonal Festival
+
+**What was asked.** "is there a way for me to stop the festival? if not add admin command for it."
+There wasn't — the only caller of `festivalFactory.endFestival()` was the daily 8pm ET cron
+(`backgroundEvents.js`), and only after it checked `Date.now() >= activeFestival.endsAt` itself.
+
+**What changed.** New no-argument `/admin end-festival` Subcommand (`runEndFestival`, right after
+`runStartFestival`). Needed zero changes to `festivalFactory.endFestival()` itself — that function
+already has no `endsAt` gate of its own (the cron's caller does the time check, not the function),
+so it already does exactly "end whatever's live, right now" — a new caller with no such check just
+works. Replies "There's no festival currently running" and touches nothing if none is live;
+otherwise posts the exact same `createFestivalEndEmbed` the daily cron posts on a natural end, to
+the same festival events channel, so the announcement is identical either way. Deliberately not
+wired into the Big Events channel — that treatment was scoped to festival START only in the prior
+entry above, and a natural end was never wired into Big Events either, so a manual stop stays
+symmetric with existing behavior.
+
+**Tests.** 3 new tests in `admin.test.js`'s new `/admin end-festival` describe block: no-op when
+nothing's running, a real stop posts the right embed to the right channel with the right admin
+reply, and confirmation it never touches the Big Events channel. Full suite: **121 suites / 2202
+tests, all passing**.
