@@ -421,10 +421,23 @@ function buildActiveWorldBuffField(worldBuff) {
 // conflicting numbers for the same entrant shape (spudKeepFactory.buildEntrantPreview's
 // own `entrants` array — see systems/spud-keep.md). Reuses getEffectiveRaidPowerBreakdown's
 // own teamPower/headcountBonus split, same display convention /current-raid already uses.
-function formatSpudKeepEntrantValue(entrant) {
+//
+// Power now shows entrant.effectivePower (post-Attacker's-Bonus, and post-world-buff) —
+// previously this showed breakdown.effectivePower (headcount-only, pre-bonus), a genuinely
+// different, smaller number than what the Lottery Chance line right below it was actually
+// computed from. A player reported not believing the Attacker's Bonus was real: "team 290,
+// +9% headcount" then a "Power: 477" that doesn't reconcile with either number shown in that
+// same field looks like a bug even though the underlying odds were correct all along
+// (2026-09-28). Now the headline number IS the one the roll uses, and the +51%-style
+// attacker bonus itself is called out explicitly in the same parenthetical instead of only
+// appearing once in the top-level "Attacker's Bonus (this cycle)" field, so a challenger's
+// own row fully explains its own total with no other field's context required.
+function formatSpudKeepEntrantValue(entrant, attackerBonusPercent = 0) {
     const breakdown = entrant.breakdown || { teamPower: 0, headcountBonus: 0, effectivePower: 0 };
+    const powerValue = Number.isFinite(entrant.effectivePower) ? entrant.effectivePower : breakdown.effectivePower;
+    const attackerBonusText = entrant.isHolder ? '' : `, +${(attackerBonusPercent * 100).toFixed(0)}% attacker bonus`;
     const lines = [
-        `Power: ${Math.round(breakdown.effectivePower).toLocaleString()} (team ${Math.round(breakdown.teamPower).toLocaleString()}, +${(breakdown.headcountBonus * 100).toFixed(0)}% headcount)`,
+        `Power: ${Math.round(powerValue).toLocaleString()} (team ${Math.round(breakdown.teamPower).toLocaleString()}, +${(breakdown.headcountBonus * 100).toFixed(0)}% headcount${attackerBonusText})`,
         `Lottery Chance: ${(entrant.chancePercent * 100).toFixed(1)}%${entrant.isHolder ? ' (current holder — no attacker bonus)' : ''}`,
     ];
     lines.push(entrant.type === 'mercenary'
@@ -440,10 +453,10 @@ function formatSpudKeepEntrantValue(entrant) {
 // a truncation note instead of full pagination — this is a single fire-and-forget cron
 // post / read-only status snapshot, not a multi-page interactive list.
 const SPUD_KEEP_MAX_ENTRANT_FIELDS = 20;
-function buildSpudKeepEntrantFields(entrants) {
+function buildSpudKeepEntrantFields(entrants, attackerBonusPercent = 0) {
     const fields = entrants.slice(0, SPUD_KEEP_MAX_ENTRANT_FIELDS).map(entrant => ({
         name: `${entrant.type === 'mercenary' ? '⚔️' : '🏰'} ${entrant.name}${entrant.isHolder ? ' 👑' : ''}`,
-        value: formatSpudKeepEntrantValue(entrant),
+        value: formatSpudKeepEntrantValue(entrant, attackerBonusPercent),
         inline: false,
     }));
     if (entrants.length > SPUD_KEEP_MAX_ENTRANT_FIELDS) {
@@ -5257,7 +5270,7 @@ class EmbedFactory {
             value: `+${(attackerBonusPercent * 100).toFixed(0)}% power for every challenger (the current holder, if any, is exempt)`,
             inline: false,
         });
-        fields.push(...buildSpudKeepEntrantFields(entrantsToShow));
+        fields.push(...buildSpudKeepEntrantFields(entrantsToShow, attackerBonusPercent));
 
         const lastResolvedLine = spudKeep.lastResolvedAt ? `Last resolved <t:${Math.floor(spudKeep.lastResolvedAt / 1000)}:R>.` : 'Never resolved yet.';
         const pageLine = totalPages > 1 ? `\nPage ${pageIndex + 1} / ${totalPages}` : '';
@@ -5368,7 +5381,7 @@ class EmbedFactory {
                 fields.push(buildSpudKeepPayoutShareField(payoutShares, payoutPageIndex));
             }
         }
-        fields.push(...buildSpudKeepEntrantFields(entrants));
+        fields.push(...buildSpudKeepEntrantFields(entrants, attackerBonusPercent));
 
         const embed = new EmbedBuilder()
             .setTitle('🥔🏰 Spud Keep Resolved!')

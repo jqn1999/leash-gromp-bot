@@ -18394,3 +18394,41 @@ passing**.
 **Cross-repo note.** Not checked this pass — if `financial-project`'s own `/gromp` page shows a
 comparable odds preview anywhere (unconfirmed), it would need the same naming fix for parity, but
 the web port doesn't have a `/work-odds` equivalent to add regardless.
+
+## Spud Keep's Power line now shows the post-Attacker's-Bonus number, with the bonus itself called out
+
+**Asked:** a player reported a live-status field that didn't reconcile — a challenger's own row read
+`Power: 477 (team 290, +9% headcount)`, and 290 × 1.09 ≈ 316, not 477. "Someone is saying they don't
+think the 51% [Attacker's Bonus] is applied." Confirmed both bot and web (walking the exact numbers
+from the player's own screenshot) were mathematically correct the entire time — the 51% genuinely
+was being applied — but nothing in that entrant's own row said so.
+
+**Found:** `formatSpudKeepEntrantValue` (`embedFactory.js`) built its "Power:" number off
+`entrant.breakdown.effectivePower` — a nested, headcount-only value computed BEFORE
+`buildEntrantPreview` applies the Attacker's Bonus. That function's own bonus-inflated result gets
+written to a DIFFERENT, top-level `entrant.effectivePower` field (via `{ ...e, effectivePower: ... }`
+— a spread that shadows rather than overwrites the nested one), which only the Lottery Chance line
+actually used. So the displayed Power and the displayed Lottery Chance were computed from two
+different numbers with the same name at different nesting depths, and the one visible bonus
+disclosure (the top-level "Attacker's Bonus (this cycle): +51%..." field) never connected itself to
+any individual entrant's own total. financial-project's own `doCurrentSpudKeep` had already gotten
+this right (its `entrantSummaries` maps `effectivePower: e.effectivePower`, the top-level post-bonus
+value) — only the explicit per-row bonus annotation was missing there too.
+
+**Changed:**
+- `formatSpudKeepEntrantValue` (bot) now reads `entrant.effectivePower` (falls back to
+  `breakdown.effectivePower` if absent) for the Power number, and appends
+  `, +{X}% attacker bonus` to every non-holder entrant's parenthetical — `attackerBonusPercent` is
+  now threaded through `buildSpudKeepEntrantFields` from both call sites
+  (`createSpudKeepStatusEmbed`, `createSpudKeepResultEmbed`), both of which already had it in scope.
+- `financial-project/gromp.component.html`'s entrant row (already showing the correct post-bonus
+  `effectivePower` as its headline number) gained the same `, +{X}% attacker` clause, conditioned on
+  `!e.isHolder`.
+
+See `systems/spud-keep.md`'s new "Per-entrant display now shows post-bonus Power, with the bonus
+itself called out" entry for the full before/after.
+
+**Tests.** No new tests needed (pure display formatting, no new branch of computation) — existing
+`embedFactory.test.js` Spud Keep coverage (pagination, Holder Buffs field, payout breakdown, the two
+crash-safety tests for guild/mercenary entrant shapes) all still pass unchanged, confirming this
+didn't alter any existing assertion. Full suite: **122 suites / 2210 tests, all passing**.
