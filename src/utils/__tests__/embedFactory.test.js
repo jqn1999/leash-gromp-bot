@@ -1656,6 +1656,25 @@ describe('createSkipChancesEmbed', () => {
         expect(field.value).toContain('Guild Level 3: 5%');
         expect(field.value).toContain('Cinderroot, the Hoardwarden: 2%');
     });
+
+    // 2026-09-28, direct instruction: companion is added AFTER the rest of /work's own
+    // sources combine, uncapped — /work's own field must show the same total
+    // calculateWorkTimerValue actually rolls against, past 60% when companion pushes it
+    // there, unlike Bounty/Heist and Guild Raid (neither has a companion source, both still
+    // cap at 60%).
+    test('/work shows a total past 60% once companion is added on top of an already-capped rest of the stack', () => {
+        const highWorkSources = [
+            { key: 'companion', chance: 0.2, label: 'Mochi' },
+            { key: 'worldBuff', chance: 0.6, label: 'Griseous' },
+            { key: 'guildBuff', chance: 0.6, label: 'Some Guild' },
+            { key: 'spudKeep', chance: 0, label: 'Spud Keep' },
+        ];
+        const embed = embedFactory.createSkipChancesEmbed('User', highWorkSources, null, null);
+        const field = embed.data.fields.find(f => f.name.includes('/work'));
+        // worldBuff+guildBuff alone combine to 1-(1-.6)(1-.6)=.84, capped to .60, + companion's
+        // own .20 = .80 total — NOT capped at 60% the way a plain combineSkipChance would.
+        expect(field.name).toContain('80%');
+    });
 });
 
 // Yamimic, the Thousand-Faced (Heirloom, 2026-09-06) — its own perks array carries

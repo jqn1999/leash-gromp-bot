@@ -387,6 +387,41 @@ stopping a single unbroken reign, not punishing a guild that fairly wins back so
 Left untouched on a skipped cycle. The optional streak-9 "+90%/96%" milestone jump from the original
 design was marked a nice-to-have, not a v1 requirement, and was **not implemented**.
 
+### Per-entrant display now shows post-bonus Power, with the bonus itself called out (2026-09-28)
+
+Player-reported: a challenger's own field showed `Power: 477 (team 290, +9% headcount)` — a number
+that doesn't reconcile with either figure actually printed in that same line (290 × 1.09 ≈ 316, not
+477), because `formatSpudKeepEntrantValue` was reading `entrant.breakdown.effectivePower`
+(headcount-only, pre-Attacker's-Bonus) for its headline "Power" number, while the Lottery Chance
+line right below it was computed off the real, bonus-inflated `entrant.effectivePower` (the
+top-level field `buildEntrantPreview` sets via `power * attackerBonusMultiplier` for every
+non-holder — see that function's own comment on why this shadows, rather than overwrites,
+`breakdown.effectivePower`). The 51% bonus WAS being applied correctly the entire time — the
+top-level "Attacker's Bonus (this cycle)" field said so — but nothing in a challenger's own row
+connected that number to their own inflated total, so a player doing the naive
+`team × headcount` arithmetic on their own row saw a gap with no visible explanation and assumed
+the bonus wasn't real.
+
+Fixed by changing `formatSpudKeepEntrantValue`'s "Power:" line to read `entrant.effectivePower`
+(falling back to `breakdown.effectivePower` if absent, for callers/tests that don't set it) instead
+of the nested pre-bonus value, and appending an explicit `, +51% attacker bonus` clause to the same
+parenthetical for every non-holder entrant (nothing added for the holder, since that entrant's own
+Lottery Chance line already says "current holder — no attacker bonus"). `attackerBonusPercent` is
+now threaded as a second parameter through `formatSpudKeepEntrantValue`/`buildSpudKeepEntrantFields`,
+sourced from `preview.attackerBonusPercent`/`result.attackerBonusPercent` at both of
+`buildSpudKeepEntrantFields`'s call sites (`createSpudKeepStatusEmbed`, `createSpudKeepResultEmbed`)
+— both already had that value in scope for their own top-level field, so no new data plumbing was
+needed. A challenger's own row now fully explains its own total (team power → +headcount% →
++attacker%) with no other field's context required, matching the same "surface the real effect,
+don't just apply it silently" fix Poison Potato's odds display got the same session
+(`/work-odds`/`/festival`'s "Boosted Odds" field).
+
+The website (`financial-project`'s `gromp.component.html`) already showed the post-bonus
+`effectivePower` as its own headline number (that port's `doCurrentSpudKeep` always set
+`effectivePower: e.effectivePower`, never the nested pre-bonus value) — only the missing explicit
+bonus annotation needed porting there, added to the same entrant-detail line, conditioned on
+`!e.isHolder`.
+
 ## Commands
 
 - `/join-spud-keep` (guilds) — officer-gated (Elder/Co-Leader/Leader, same tier `/start-raid` uses),

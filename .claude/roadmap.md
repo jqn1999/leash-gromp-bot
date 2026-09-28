@@ -18394,3 +18394,74 @@ passing**.
 **Cross-repo note.** Not checked this pass — if `financial-project`'s own `/gromp` page shows a
 comparable odds preview anywhere (unconfirmed), it would need the same naming fix for parity, but
 the web port doesn't have a `/work-odds` equivalent to add regardless.
+
+## Spud Keep's Power line now shows the post-Attacker's-Bonus number, with the bonus itself called out
+
+**Asked:** a player reported a live-status field that didn't reconcile — a challenger's own row read
+`Power: 477 (team 290, +9% headcount)`, and 290 × 1.09 ≈ 316, not 477. "Someone is saying they don't
+think the 51% [Attacker's Bonus] is applied." Confirmed both bot and web (walking the exact numbers
+from the player's own screenshot) were mathematically correct the entire time — the 51% genuinely
+was being applied — but nothing in that entrant's own row said so.
+
+**Found:** `formatSpudKeepEntrantValue` (`embedFactory.js`) built its "Power:" number off
+`entrant.breakdown.effectivePower` — a nested, headcount-only value computed BEFORE
+`buildEntrantPreview` applies the Attacker's Bonus. That function's own bonus-inflated result gets
+written to a DIFFERENT, top-level `entrant.effectivePower` field (via `{ ...e, effectivePower: ... }`
+— a spread that shadows rather than overwrites the nested one), which only the Lottery Chance line
+actually used. So the displayed Power and the displayed Lottery Chance were computed from two
+different numbers with the same name at different nesting depths, and the one visible bonus
+disclosure (the top-level "Attacker's Bonus (this cycle): +51%..." field) never connected itself to
+any individual entrant's own total. financial-project's own `doCurrentSpudKeep` had already gotten
+this right (its `entrantSummaries` maps `effectivePower: e.effectivePower`, the top-level post-bonus
+value) — only the explicit per-row bonus annotation was missing there too.
+
+**Changed:**
+- `formatSpudKeepEntrantValue` (bot) now reads `entrant.effectivePower` (falls back to
+  `breakdown.effectivePower` if absent) for the Power number, and appends
+  `, +{X}% attacker bonus` to every non-holder entrant's parenthetical — `attackerBonusPercent` is
+  now threaded through `buildSpudKeepEntrantFields` from both call sites
+  (`createSpudKeepStatusEmbed`, `createSpudKeepResultEmbed`), both of which already had it in scope.
+- `financial-project/gromp.component.html`'s entrant row (already showing the correct post-bonus
+  `effectivePower` as its headline number) gained the same `, +{X}% attacker` clause, conditioned on
+  `!e.isHolder`.
+
+See `systems/spud-keep.md`'s new "Per-entrant display now shows post-bonus Power, with the bonus
+itself called out" entry for the full before/after.
+
+**Tests.** No new tests needed (pure display formatting, no new branch of computation) — existing
+`embedFactory.test.js` Spud Keep coverage (pagination, Holder Buffs field, payout breakdown, the two
+crash-safety tests for guild/mercenary entrant shapes) all still pass unchanged, confirming this
+didn't alter any existing assertion. Full suite: **122 suites / 2210 tests, all passing**.
+
+## Companion's cooldown-skip bonus made additive and uncapped (all other sources unchanged)
+
+**Asked:** "make companion skip chance additive after the rest of the skip chances have
+calculated. Also allow it to bring users over the 60% skip chance cap unbounded."
+
+**Changed:** `cooldownFactory.js` gained `combineSkipChanceWithCompanionBonus(sources, cap)` —
+pulls the `"companion"`-keyed source out of a `/work` skip-chance source list, runs the existing
+`combineSkipChance` (unchanged `1-∏(1-pᵢ)`, still capped at 60%) on the remaining five sources
+(world buff, guild buff, Spud Keep, Mercenary Buff, Trading Post potion), then adds the
+companion's own raw chance flat on top with no ceiling. `dynamoHandler.calculateWorkTimerValue`
+(the actual roll) and `embedFactory.createSkipChancesEmbed`'s `/work` field (the `/skip-chances`
+read-only preview) both switched to it, so the two can never show a different number than what
+actually gets rolled. Scoped purely to `/work` — Bounty/Heist and Guild Raid's own skip-chance
+source lists never carry a `"companion"` key at all (a personal companion perk was never wired to
+either), so both are entirely unaffected, still plain `combineSkipChance`, still capped at 60%.
+`createSkipChancesEmbed`'s description text updated to say the 60% cap no longer applies
+uniformly. See `systems/economy-and-work.md`'s "Companion's own bonus made additive and uncapped"
+entry for the full writeup, including a flagged (not blocking) DB-cost implication: a
+companion-boosted player's real `/work` skip chance can now reach ~80% (world buff+guild buff
+capped at 60%, + Mochi's ~20%), which the existing "Cooldown-skip chain read/write consolidation"
+architectural analysis's own numbers didn't account for — averaging ~3.5 extra auto-chain links
+per `/work` call instead of the ~1.5 that analysis assumed as its ceiling, though still hard-bounded
+by `Work.MAX_COOLDOWN_SKIP_CHAIN_LENGTH(10)`, the same safety valve that already existed for
+exactly this kind of high-skip-chance scenario.
+
+**Tests.** 9 new: `cooldownFactory.test.js` (+5 — additive stacking, other sources still cap
+before companion's addition, matches `combineSkipChance` when no companion source is present, a
+zero-chance companion source adds nothing, a strong companion can push the total past 100%),
+`dynamoHandler.test.js` (+3 — the stamped `_cooldownSkipChance` reflects the new past-60% total, a
+roll that would've missed under the old cap now hits, no companion equipped still caps at 60%
+unchanged), `embedFactory.test.js` (+1 — `/skip-chances`' own `/work` field shows the new total).
+Full suite: **122 suites / 2219 tests, all passing** (up from 2210).

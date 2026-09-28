@@ -28,6 +28,28 @@ function combineSkipChance(sources, cap = DEFAULT_SKIP_CHANCE_CAP) {
     return Math.min(combined, cap);
 }
 
+// Companion's own workCooldownSkipChance perk (2026-09-28, direct instruction: "make
+// companion skip chance additive after the rest of the skip chances have calculated. Also
+// allow it to bring users over the 60% skip chance cap unbounded") — a genuine exception to
+// combineSkipChance's own "every source stacks via 1-∏(1-pᵢ), capped at 60%" rule. The other
+// five /work sources (world buff, guild buff, Spud Keep, Mercenary Buff, Trading Post potion)
+// still combine and cap exactly as before; only the equipped companion's contribution is
+// pulled out, combined the rest without it, and added on FLAT afterward with no ceiling —
+// a maxed-out companion investment is meant to be a real, uncapped edge on top of whatever
+// the rest of the stack already tops out at, not diminishing-returns'd into irrelevance by
+// getting folded into the same capped formula as everything else. Only
+// dynamoHandler.getWorkCooldownSkipSources' own source list ever carries a "companion"
+// key — Bounty/Heist's and Guild Raid's own source lists never do (a personal companion
+// perk has no meaning against a GUILD's raid timer or a solo mercenary's bounty timer that
+// isn't already covered by their own dedicated sources) — so this is a safe drop-in anywhere
+// a `sources` array might contain one, and behaves identically to combineSkipChance when it
+// doesn't.
+function combineSkipChanceWithCompanionBonus(sources, cap = DEFAULT_SKIP_CHANCE_CAP) {
+    const companionSource = sources.find(s => s.key === "companion");
+    const otherSources = sources.filter(s => s.key !== "companion");
+    return combineSkipChance(otherSources, cap) + (companionSource ? companionSource.chance : 0);
+}
+
 function rollCooldownSkip(totalSkipChance) {
     return totalSkipChance > 0 && Math.random() < totalSkipChance;
 }
@@ -51,6 +73,7 @@ function pickSkipSource(sources) {
 module.exports = {
     DEFAULT_SKIP_CHANCE_CAP,
     combineSkipChance,
+    combineSkipChanceWithCompanionBonus,
     rollCooldownSkip,
     pickSkipSource
 }
