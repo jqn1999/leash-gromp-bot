@@ -610,3 +610,63 @@ above (left as historical record of the design process, not corrected in place):
   unchanged, only the thresholds moved. Combined with the fixed 1-week window above, this is a
   real, deliberate increase in grind-per-day for that one objective (roughly 2x the old ceiling in
   half the old maximum window, in the worst case) — a scoped balance call, not a formula bug.
+
+## Shop cleanup + Sweet/Metal/Large vouchers everywhere + no purchase cap (2026-09-28, direct instruction)
+
+A follow-up conversation surfaced that most of each festival's own cosmetic catalog did literally
+nothing — only the "Grand" tier of each festival (Grand Harvest Laurel / Grand Frost Medallion /
+Grand Bloom Laurel) was ever wired to anything (the `{ type: "festivalCosmetic", cosmeticId }`
+Title condition — `harvest_laureate`/`frost_fair_laureate`/`bloom_laureate`). Every OTHER cosmetic
+(Harvest's Banner/Champion's Sash, Frost Fair's Ice Lantern Charm/Laureate's Cloak/Frost Crown,
+Spring Planting's Sprout Wreath/Planter's Sash/Bloom Crown) was a pure currency sink recorded into
+`festivalCosmetics[]` with no Title, no stat, no separate display anywhere. Several changes shipped
+together off that finding:
+
+- **All non-Grand cosmetics removed from all three festivals** ("remove the completely useless
+  items that dont do anything"). Each festival's catalog is now exactly 4 items: the one
+  Title-linked Grand cosmetic, plus 3 vouchers (below).
+- **Every Grand item re-priced 400 → 300 tokens, uniformly** ("lower Grand Frost Medallion to 300
+  tokens... do the same for rest of festivals... lower their title medallions too").
+- **Sweet/Metal/Large Potato vouchers added to every festival** ("I want each fair to get
+  opportunity for sweet/metal encounter vouchers" / "add the new vouchers for sweet/metal/large").
+  Harvest previously had only a Sweet Potato Charm (150 tokens) — re-priced to 50 for a uniform
+  per-voucher-type price across all three festivals (50 Sweet / 200 Metal / 30 Large). Frost Fair
+  and Spring Planting had no vouchers at all before this. Naming is per-festival flavor (e.g.
+  "Frosted Sweetroot Charm" for Frost Fair, "Budding Sweetroot Charm" for Spring Planting) over the
+  same three underlying `scenarioHandler`s — see `FestivalShop` in `constants.js` for the full
+  per-festival item list.
+  - **`handleLargePotato` gained the same `trackProgress` option `handleSweetPotato`/
+    `handleMetalPotato` already had** (`workFactory.js`) — it had never been a voucher candidate
+    before, so it never needed the option. A normal `/work` call never passes it, so real Large
+    Potato encounters are byte-for-byte unaffected.
+  - **Metal and Large Potato vouchers need `workGainAmount`/`multiplier`/`catchUpBonus`, which a
+    voucher redemption has no real `/work` call to source them from** (unlike Sweet Potato, which
+    needs none of these) — new `festivalFactory.computeVoucherWorkInputs` reproduces `work.js`'s
+    own callback formula exactly (same server-total-based `workGainAmount`, same `.8-1.2` random
+    `multiplier`, same `getCatchUpBonus` lookup), so a voucher's payout lands on the same
+    distribution a real roll would have used.
+  - **Worth knowing, not a bug**: work.js's own METAL scenario only calls `handleMetalPotato` (the
+    reward branch) after its OWN internal 10% success roll on top of the 1% base encounter chance
+    — a real, unassisted Metal Potato payout is really a 0.1%-per-`/work`-call event, not 1%. A
+    Metal voucher calls `handleMetalPotato` directly, guaranteeing the outcome per the Encounter
+    Voucher design's own intent — it's bypassing a considerably rarer real event than a Sweet or
+    Large voucher does, which the chosen pricing (200 vs. 50/30) already reflects.
+  - **The result-embed display bug this exposed, fixed in the same pass**: `festivalShop.js`'s
+    voucher confirmation embed used to hardcode `potatoesGained: 0` — harmless while Sweet Potato
+    (which never grants potatoes) was the only voucher, but Metal/Large both DO grant real
+    potatoes. Fixed by extracting the actual value regardless of the redeemed handler's return
+    shape (`handleLargePotato` returns a bare number; `handleMetalPotato` returns `{
+    potatoesGained, statGrant }`; `handleSweetPotato` returns `{ random, statGrant }` with no
+    potatoes at all).
+- **Vouchers are exempt from the one-purchase-per-festival cap** ("make sure sweet/metal/large
+  have no cap on how many they can buy with tokens") — `attemptPurchaseFestivalSlot`'s "already
+  bought" gate now only applies to `itemType: "cosmetic"`, and a voucher purchase never adds its id
+  to `purchasedSlots` at all (so `/festival-shop`'s embed never shows a voucher as "✅ Purchased,"
+  and its buy button never gets permanently disabled — the button only disables when the player
+  can't afford another one). A cosmetic still can't be re-bought — it just flips an owned-flag, so
+  buying it twice would do nothing a second time anyway.
+- **Festival start now also posts to the Big Events channel** ("wire festival start into big
+  events channel") — `/admin start-festival`'s existing plain-text role-ping announcement (to the
+  dedicated festival/events channel) is unchanged; a new, separate `bigEventsChannel.postBigEvent`
+  call posts the same "a festival has begun" moment to the Big Events channel too, mirroring every
+  other rare server-wide highlight already wired there (World Boss spawns, jackpot hits).

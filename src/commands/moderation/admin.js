@@ -12,6 +12,7 @@ const { setWorkScenarios } = require("../user/work.js");
 const work = require("./../user/work");
 const { ensureGuildChatCategory, addChatChannelIndexEntry, removeChatChannelIndexEntry } = require("../guilds/guildChat");
 const festivalFactory = require("../../utils/festivalFactory");
+const bigEventsChannel = require("../../utils/bigEventsChannel.js");
 
 const embedFactory = new EmbedFactory();
 const achievementFactory = new AchievementFactory();
@@ -590,7 +591,18 @@ async function runStartFestival(client, interaction) {
     if (announce) {
         const channel = await client.channels.fetch(FESTIVAL_EVENT_CHANNEL_ID);
         await channel.send(`<@&${FESTIVAL_EVENT_ROLE_ID}> The **${festivalName}** has begun! Check /festival for objectives and /festival-shop to spend ${tokenLabel} — ends <t:${endsAtSeconds}:R>.`);
-        interaction.editReply(`Started ${festivalName} for ${Math.round((festival.endsAt - festival.startsAt) / (24 * 60 * 60 * 1000))} day(s) — announced in <#${FESTIVAL_EVENT_CHANNEL_ID}>.`);
+        // Big Events channel (2026-09-28, direct instruction — "wire festival start into big
+        // events channel") — separate from the plain-text role-ping announcement above,
+        // which stays in the dedicated festival/events channel. This mirrors every other
+        // rare, server-wide moment already wired into bigEventsChannel.postBigEvent (World
+        // Boss spawns, jackpot hits) — best-effort, non-fatal on failure (postBigEvent's own
+        // try/catch), never blocks the real admin reply below.
+        await bigEventsChannel.postBigEvent({
+            title: `🎪 The ${festivalName} Has Begun!`,
+            description: `A new season opens its stalls — check /festival for this week's objectives and /festival-shop to spend ${tokenLabel} before it closes.`,
+            fields: [{ name: 'Ends', value: `<t:${endsAtSeconds}:R>`, inline: true }],
+        });
+        interaction.editReply(`Started ${festivalName} for ${Math.round((festival.endsAt - festival.startsAt) / (24 * 60 * 60 * 1000))} day(s) — announced in <#${FESTIVAL_EVENT_CHANNEL_ID}> and the Big Events channel.`);
     } else {
         interaction.editReply(`Started ${festivalName}, ending <t:${endsAtSeconds}:R> — no announcement sent.`);
     }

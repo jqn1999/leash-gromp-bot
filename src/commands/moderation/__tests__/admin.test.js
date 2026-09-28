@@ -14,10 +14,14 @@ jest.mock('../../guilds/guildChat', () => ({
 jest.mock('../../../utils/festivalFactory', () => ({
     startFestival: jest.fn(),
 }));
+jest.mock('../../../utils/bigEventsChannel.js', () => ({
+    postBigEvent: jest.fn().mockResolvedValue(),
+}));
 
 const dynamoHandler = require('../../../utils/dynamoHandler');
 const { addChatChannelIndexEntry, removeChatChannelIndexEntry } = require('../../guilds/guildChat');
 const festivalFactory = require('../../../utils/festivalFactory');
+const bigEventsChannel = require('../../../utils/bigEventsChannel.js');
 const { resetTowerCallback, setActivityChannelCallback, setMercChatChannelCallback, startFestivalCallback, revokeImmuneToVenomCallback, grantTitleCallback } = require('../admin');
 
 beforeEach(() => {
@@ -559,6 +563,24 @@ describe('/admin start-festival', () => {
 
         expect(client.channels.fetch).not.toHaveBeenCalled();
         expect(interaction.editReply).toHaveBeenCalledWith(expect.stringContaining('no announcement sent'));
+        expect(bigEventsChannel.postBigEvent).not.toHaveBeenCalled();
+    });
+
+    // Big Events channel (2026-09-28, direct instruction — "wire festival start into big
+    // events channel") — a SEPARATE post from the plain-text role-ping announcement above,
+    // not a replacement for it.
+    test('a default (announced) start also posts to the Big Events channel, naming the festival', async () => {
+        const now = Date.now();
+        festivalFactory.startFestival.mockResolvedValue({ festivalId: 'harvest_festival', startsAt: now, endsAt: now + 7 * 24 * 60 * 60 * 1000 });
+        const interaction = fakeInteraction({ festival: 'harvest_festival' });
+        const client = fakeClient();
+
+        await startFestivalCallback(client, interaction);
+
+        expect(bigEventsChannel.postBigEvent).toHaveBeenCalledTimes(1);
+        const [payload] = bigEventsChannel.postBigEvent.mock.calls[0];
+        expect(payload.title).toContain('Harvest Festival');
+        expect(payload.description).toContain('/festival-shop');
     });
 });
 

@@ -1,6 +1,7 @@
 const dynamoHandler = require("../utils/dynamoHandler");
 const { getStatValue } = require("../utils/achievementFactory");
-const { Festival, FestivalTemplates, FestivalShop, sweetPotato } = require("../utils/constants");
+const { getRandomFromInterval } = require("../utils/helperCommands");
+const { Festival, FestivalTemplates, FestivalShop, Work, sweetPotato, metalPotatoSuccess, largePotato } = require("../utils/constants");
 const { WorkFactory } = require("../utils/workFactory");
 const { WORK_SCENARIO_INDICES } = require("../utils/eventFactory");
 
@@ -196,14 +197,49 @@ function buildFestivalShopView(userDetails, activeFestival) {
 // is a GUARANTEED outcome instead of a rolled one. trackProgress: false (see
 // workFactory.js's own comment on that option) means this does NOT touch workCount, the
 // work cooldown timer, or workScenarioCounts — so it never counts toward Quest/Achievement
-// progress either, since those key directly off workScenarioCounts/workCount. Only Sweet
-// Potato is wired for v1 (Harvest Festival's own catalog entry) — adding another scenario
-// later is just a new entry here plus a matching FestivalShop catalog item, per the design
-// doc's own "the mechanism itself, not a full per-festival catalog" scope for v1.
+// progress either, since those key directly off workScenarioCounts/workCount.
+//
+// Sweet/Metal/Large all now wired, catalogued into every festival's own shop (2026-09-28,
+// direct instruction — "add the new vouchers for sweet/metal/large"). Metal and Large both
+// need workGainAmount/multiplier/catchUpBonus, which a voucher redemption has no real
+// /work call to source them from — computeVoucherWorkInputs below reproduces work.js's own
+// callback formula exactly (same PERCENT_OF_TOTAL-of-cached-server-total base, same .8-1.2
+// random multiplier, same getCatchUpBonus lookup), so a voucher's payout lands on the exact
+// same distribution a real roll landing on that scenario would have used, never a separate
+// or advantaged formula. Metal Potato is worth calling out specifically: work.js's own METAL
+// scenario only calls handleMetalPotato (the reward-granting branch) after its OWN internal
+// 10% success roll on top of the 1% base encounter chance — a real, unassisted Metal Potato
+// payout is really a 0.1%-per-/work-call event, not 1%. Calling handleMetalPotato directly
+// here (like every voucher) skips straight to the guaranteed-success branch, which is the
+// intended "guaranteed instead of rolled" behavior, but it's worth knowing a Metal voucher
+// is bypassing a considerably rarer real outcome than a Sweet or Large voucher does.
+async function computeVoucherWorkInputs(userDetails) {
+    const total = await dynamoHandler.getCachedServerTotal();
+    const serverWealthBasedWorkAmount = Math.floor(total * Work.PERCENT_OF_TOTAL);
+    const workGainAmount = serverWealthBasedWorkAmount < Work.MAX_BASE_WORK_GAIN ? Work.MAX_BASE_WORK_GAIN : serverWealthBasedWorkAmount;
+    const multiplier = getRandomFromInterval(.8, 1.2);
+    const catchUpBonus = await dynamoHandler.getCatchUpBonus(userDetails);
+    return { workGainAmount, multiplier, catchUpBonus };
+}
+
 const VOUCHER_SCENARIOS = {
     handleSweetPotato: {
         mob: sweetPotato,
         run: (userDetails) => workFactory.handleSweetPotato(userDetails, { trackProgress: false }),
+    },
+    handleMetalPotato: {
+        mob: metalPotatoSuccess,
+        run: async (userDetails) => {
+            const { workGainAmount, multiplier, catchUpBonus } = await computeVoucherWorkInputs(userDetails);
+            return workFactory.handleMetalPotato(userDetails, workGainAmount, multiplier, catchUpBonus, { trackProgress: false });
+        },
+    },
+    handleLargePotato: {
+        mob: largePotato,
+        run: async (userDetails) => {
+            const { workGainAmount, multiplier, catchUpBonus } = await computeVoucherWorkInputs(userDetails);
+            return workFactory.handleLargePotato(userDetails, workGainAmount, multiplier, catchUpBonus, { trackProgress: false });
+        },
     },
 };
 
@@ -249,7 +285,12 @@ async function attemptPurchaseFestivalSlot(userId, username, itemId) {
     const shopState = storedShop && storedShop.festivalId === activeFestival.festivalId
         ? storedShop
         : { festivalId: activeFestival.festivalId, purchasedSlots: [] };
-    if (shopState.purchasedSlots.includes(item.id)) {
+    // A voucher is deliberately exempt from the one-per-festival cap (2026-09-28, direct
+    // instruction — "make sure sweet/metal/large have no cap on how many they can buy with
+    // tokens") — repeatable, limited only by token balance below, same as any other
+    // spend-and-consume action in this game. A cosmetic still can't be re-bought (it just
+    // flips an owned-flag — buying it twice would do nothing a second time anyway).
+    if (item.itemType !== "voucher" && shopState.purchasedSlots.includes(item.id)) {
         return { ok: false, message: "you've already bought that item this festival." };
     }
 
@@ -260,7 +301,16 @@ async function attemptPurchaseFestivalSlot(userId, username, itemId) {
         return { ok: false, message: `you need ${item.cost.toLocaleString()} ${tokenLabel} for this but only have ${balance.toLocaleString()}.` };
     }
 
-    const updatedFestivalShop = { festivalId: activeFestival.festivalId, purchasedSlots: [...shopState.purchasedSlots, item.id] };
+    // purchasedSlots never records a voucher purchase — it exists purely to track one-time
+    // cosmetic ownership, and a voucher id sitting in it would incorrectly show "✅
+    // Purchased" (and permanently disable its buy button, per festivalShop.js's own
+    // buildRows) after the first buy, contradicting the "no cap" behavior above. festivalId
+    // is still synced unconditionally so gate 2 above stays correct on a player's very
+    // first-ever purchase (voucher or not).
+    const updatedFestivalShop = {
+        festivalId: activeFestival.festivalId,
+        purchasedSlots: item.itemType === "voucher" ? shopState.purchasedSlots : [...shopState.purchasedSlots, item.id],
+    };
     const setFields = {
         festivalTokens: balance - item.cost,
         festivalTokensFestivalId: activeFestival.festivalId,

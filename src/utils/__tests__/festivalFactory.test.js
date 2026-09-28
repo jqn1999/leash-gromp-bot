@@ -35,7 +35,7 @@ function baseUser(overrides = {}) {
         bankCapacity: 1000,
         sweetPotatoBuffs: { workMultiplierAmount: 0, passiveAmount: 0, bankCapacity: 0 },
         workCount: 10,
-        workScenarioCounts: { sweet: 0, companion: 0, poison: 0, taro: 0, goldenYam: 0 },
+        workScenarioCounts: { sweet: 0, companion: 0, poison: 0, taro: 0, goldenYam: 0, large: 0 },
         festivalQuests: {},
         festivalTokens: 0,
         festivalTokensFestivalId: null,
@@ -149,7 +149,7 @@ describe('attemptPurchaseFestivalSlot — 3-gate fail-closed validation', () => 
     test('gate 1: rejects outright when no festival is live, without even looking up the user', async () => {
         dynamoHandler.getActiveFestival.mockResolvedValue(null);
 
-        const result = await festivalFactory.attemptPurchaseFestivalSlot('u1', 'Tester', 'harvest_cosmetic_banner');
+        const result = await festivalFactory.attemptPurchaseFestivalSlot('u1', 'Tester', 'harvest_cosmetic_grand');
 
         expect(result.ok).toBe(false);
         expect(result.message).toMatch(/festival has ended/);
@@ -164,7 +164,7 @@ describe('attemptPurchaseFestivalSlot — 3-gate fail-closed validation', () => 
             festivalTokensFestivalId: 'frost_fair',
         }));
 
-        const result = await festivalFactory.attemptPurchaseFestivalSlot('u1', 'Tester', 'harvest_cosmetic_banner');
+        const result = await festivalFactory.attemptPurchaseFestivalSlot('u1', 'Tester', 'harvest_cosmetic_grand');
 
         expect(result.ok).toBe(false);
         expect(result.message).toMatch(/shop has already closed/);
@@ -176,14 +176,14 @@ describe('attemptPurchaseFestivalSlot — 3-gate fail-closed validation', () => 
 
         // Genuinely insufficient.
         dynamoHandler.findUser.mockResolvedValue(baseUser({ festivalTokens: 10, festivalTokensFestivalId: 'harvest_festival' }));
-        const insufficient = await festivalFactory.attemptPurchaseFestivalSlot('u1', 'Tester', 'harvest_cosmetic_banner');
+        const insufficient = await festivalFactory.attemptPurchaseFestivalSlot('u1', 'Tester', 'harvest_cosmetic_grand');
         expect(insufficient.ok).toBe(false);
         expect(insufficient.message).toMatch(/only have 10/);
 
         // A large leftover balance from a past festival (no stored festivalShop yet, so
         // gate 2 never fires) must still read as spendable-zero here, not as 5000.
         dynamoHandler.findUser.mockResolvedValue(baseUser({ festivalShop: null, festivalTokens: 5000, festivalTokensFestivalId: 'frost_fair' }));
-        const stale = await festivalFactory.attemptPurchaseFestivalSlot('u1', 'Tester', 'harvest_cosmetic_banner');
+        const stale = await festivalFactory.attemptPurchaseFestivalSlot('u1', 'Tester', 'harvest_cosmetic_grand');
         expect(stale.ok).toBe(false);
         expect(stale.message).toMatch(/only have 0/);
         expect(dynamoHandler.updateUserFields).not.toHaveBeenCalled();
@@ -193,13 +193,13 @@ describe('attemptPurchaseFestivalSlot — 3-gate fail-closed validation', () => 
         dynamoHandler.getActiveFestival.mockResolvedValue(liveFestival());
         dynamoHandler.findUser.mockResolvedValue(baseUser({ festivalTokens: 1000, festivalTokensFestivalId: 'harvest_festival' }));
 
-        const result = await festivalFactory.attemptPurchaseFestivalSlot('u1', 'Tester', 'harvest_cosmetic_banner');
+        const result = await festivalFactory.attemptPurchaseFestivalSlot('u1', 'Tester', 'harvest_cosmetic_grand');
 
         expect(result.ok).toBe(true);
         const [, calledFields] = dynamoHandler.updateUserFields.mock.calls[0];
-        expect(calledFields.festivalTokens).toBe(1000 - 60);
-        expect(calledFields.festivalShop.purchasedSlots).toEqual(['harvest_cosmetic_banner']);
-        expect(calledFields.festivalCosmetics).toEqual(['harvest_festival_banner']);
+        expect(calledFields.festivalTokens).toBe(1000 - 300);
+        expect(calledFields.festivalShop.purchasedSlots).toEqual(['harvest_cosmetic_grand']);
+        expect(calledFields.festivalCosmetics).toEqual(['harvest_festival_grand_laurel']);
     });
 
     test('rejects re-buying an item already purchased this festival', async () => {
@@ -207,10 +207,10 @@ describe('attemptPurchaseFestivalSlot — 3-gate fail-closed validation', () => 
         dynamoHandler.findUser.mockResolvedValue(baseUser({
             festivalTokens: 1000,
             festivalTokensFestivalId: 'harvest_festival',
-            festivalShop: { festivalId: 'harvest_festival', purchasedSlots: ['harvest_cosmetic_banner'] },
+            festivalShop: { festivalId: 'harvest_festival', purchasedSlots: ['harvest_cosmetic_grand'] },
         }));
 
-        const result = await festivalFactory.attemptPurchaseFestivalSlot('u1', 'Tester', 'harvest_cosmetic_banner');
+        const result = await festivalFactory.attemptPurchaseFestivalSlot('u1', 'Tester', 'harvest_cosmetic_grand');
 
         expect(result.ok).toBe(false);
         expect(dynamoHandler.updateUserFields).not.toHaveBeenCalled();
@@ -238,10 +238,16 @@ describe('Encounter Vouchers — a pure bonus payout, never touching workCount/c
             expect(addFields ? addFields.workCount : undefined).toBeUndefined();
         }
 
-        // Currency/shop bookkeeping still happened normally.
+        // Currency/shop bookkeeping still happened normally. 50 (not the original 150) —
+        // Sweet Potato Charm was re-priced 2026-09-28 for a uniform per-voucher-type price
+        // across all three festivals (see FestivalShop's own comment in constants.js).
         const shopWrite = dynamoHandler.updateUserFields.mock.calls.find(([, fields]) => fields.festivalShop);
-        expect(shopWrite[1].festivalTokens).toBe(1000 - 150);
-        expect(shopWrite[1].festivalShop.purchasedSlots).toEqual(['harvest_voucher_sweet']);
+        expect(shopWrite[1].festivalTokens).toBe(1000 - 50);
+        // purchasedSlots stays EMPTY, not ['harvest_voucher_sweet'] — vouchers are
+        // deliberately never recorded there (2026-09-28, "no cap on how many they can buy"),
+        // so the one-per-festival gate never fires for a repeat voucher purchase. See the
+        // dedicated "no purchase cap" describe block below for the repeat-buy assertion.
+        expect(shopWrite[1].festivalShop.purchasedSlots).toEqual([]);
     });
 
     test('a real /work-equivalent call (trackProgress default true) still sets workTimer/workScenarioCounts/workCount — the voucher path is the only exception', async () => {
@@ -255,6 +261,172 @@ describe('Encounter Vouchers — a pure bonus payout, never touching workCount/c
         expect(setFields.workTimer).toBe(123456);
         expect(setFields.workScenarioCounts.sweet).toBe(1);
         expect(addFields.workCount).toBe(1);
+    });
+
+    // Metal/Large added 2026-09-28, direct instruction — "add the new vouchers for
+    // sweet/metal/large". Both need workGainAmount/multiplier/catchUpBonus, which
+    // computeVoucherWorkInputs sources from dynamoHandler.getCachedServerTotal/
+    // getCatchUpBonus (mocked here) rather than a real /work call's own context.
+    test('redeeming a Metal Potato voucher guarantees success (skips the real 10% roll), grants all 3 stat types, and never touches progress tracking', async () => {
+        dynamoHandler.getActiveFestival.mockResolvedValue(liveFestival());
+        dynamoHandler.findUser.mockResolvedValue(baseUser({ festivalTokens: 1000, festivalTokensFestivalId: 'harvest_festival' }));
+        dynamoHandler.getCachedServerTotal.mockResolvedValue(100); // floors to Work.MAX_BASE_WORK_GAIN
+        dynamoHandler.getCatchUpBonus.mockResolvedValue(0);
+
+        const result = await festivalFactory.attemptPurchaseFestivalSlot('u1', 'Tester', 'harvest_voucher_metal');
+
+        expect(result.ok).toBe(true);
+        expect(result.voucherResult.result.statGrant).toHaveLength(3);
+        expect(result.voucherResult.result.potatoesGained).toBeGreaterThan(0);
+
+        for (const call of dynamoHandler.updateUserFields.mock.calls) {
+            const [, setFields, addFields] = call;
+            expect(setFields.workTimer).toBeUndefined();
+            expect(setFields.workScenarioCounts).toBeUndefined();
+            expect(addFields ? addFields.workCount : undefined).toBeUndefined();
+        }
+
+        const shopWrite = dynamoHandler.updateUserFields.mock.calls.find(([, fields]) => fields.festivalShop);
+        expect(shopWrite[1].festivalTokens).toBe(1000 - 200);
+    });
+
+    test('redeeming a Large Potato voucher grants potatoes (a bare number result, no stat grant) and never touches progress tracking', async () => {
+        dynamoHandler.getActiveFestival.mockResolvedValue(liveFestival());
+        dynamoHandler.findUser.mockResolvedValue(baseUser({ festivalTokens: 1000, festivalTokensFestivalId: 'harvest_festival' }));
+        dynamoHandler.getCachedServerTotal.mockResolvedValue(100);
+        dynamoHandler.getCatchUpBonus.mockResolvedValue(0);
+
+        const result = await festivalFactory.attemptPurchaseFestivalSlot('u1', 'Tester', 'harvest_voucher_large');
+
+        expect(result.ok).toBe(true);
+        expect(typeof result.voucherResult.result).toBe('number');
+        expect(result.voucherResult.result).toBeGreaterThan(0);
+
+        for (const call of dynamoHandler.updateUserFields.mock.calls) {
+            const [, setFields, addFields] = call;
+            expect(setFields.workTimer).toBeUndefined();
+            expect(setFields.workScenarioCounts).toBeUndefined();
+            expect(addFields ? addFields.workCount : undefined).toBeUndefined();
+        }
+
+        const shopWrite = dynamoHandler.updateUserFields.mock.calls.find(([, fields]) => fields.festivalShop);
+        expect(shopWrite[1].festivalTokens).toBe(1000 - 30);
+    });
+
+    test('a real handleLargePotato call (trackProgress default true) still sets workTimer/workScenarioCounts/workCount', async () => {
+        const workFactory = require('../workFactory');
+        const wf = new workFactory.WorkFactory();
+        dynamoHandler.calculateWorkTimerValue.mockResolvedValue(123456);
+
+        await wf.handleLargePotato(baseUser(), 1000, 1, 0);
+
+        const [, setFields, addFields] = dynamoHandler.updateUserFields.mock.calls[0];
+        expect(setFields.workTimer).toBe(123456);
+        expect(setFields.workScenarioCounts.large).toBe(1);
+        expect(addFields.workCount).toBe(1);
+    });
+});
+
+// 2026-09-28, direct instruction — "make sure sweet/metal/large have no cap on how many
+// they can buy with tokens". Cosmetics keep the one-per-festival cap (see the "rejects
+// re-buying" test above, still against harvest_cosmetic_grand).
+describe('Vouchers have no purchase cap — repeatable, limited only by token balance', () => {
+    test('a voucher can be bought a second time in the same festival, unlike a cosmetic', async () => {
+        dynamoHandler.getActiveFestival.mockResolvedValue(liveFestival());
+        dynamoHandler.getCachedServerTotal.mockResolvedValue(100);
+        dynamoHandler.getCatchUpBonus.mockResolvedValue(0);
+        // Already bought once this festival (per a real purchasedSlots-equivalent — except
+        // vouchers are never added there, see below) plus enough tokens for a second buy.
+        dynamoHandler.findUser.mockResolvedValue(baseUser({
+            festivalTokens: 1000,
+            festivalTokensFestivalId: 'harvest_festival',
+            festivalShop: { festivalId: 'harvest_festival', purchasedSlots: [] },
+        }));
+
+        const first = await festivalFactory.attemptPurchaseFestivalSlot('u1', 'Tester', 'harvest_voucher_large');
+        expect(first.ok).toBe(true);
+
+        // Re-fetch as attemptPurchaseFestivalSlot's own second call would (fresh balance,
+        // still an empty purchasedSlots since the first buy never added to it).
+        dynamoHandler.findUser.mockResolvedValue(baseUser({
+            festivalTokens: 1000 - 30,
+            festivalTokensFestivalId: 'harvest_festival',
+            festivalShop: { festivalId: 'harvest_festival', purchasedSlots: [] },
+        }));
+        const second = await festivalFactory.attemptPurchaseFestivalSlot('u1', 'Tester', 'harvest_voucher_large');
+
+        expect(second.ok).toBe(true);
+        const [, secondFields] = dynamoHandler.updateUserFields.mock.calls[dynamoHandler.updateUserFields.mock.calls.length - 1];
+        expect(secondFields.festivalTokens).toBe(1000 - 30 - 30);
+    });
+
+    test('a voucher purchase never adds its id to purchasedSlots at all', async () => {
+        dynamoHandler.getActiveFestival.mockResolvedValue(liveFestival());
+        dynamoHandler.getCachedServerTotal.mockResolvedValue(100);
+        dynamoHandler.getCatchUpBonus.mockResolvedValue(0);
+        dynamoHandler.findUser.mockResolvedValue(baseUser({ festivalTokens: 1000, festivalTokensFestivalId: 'harvest_festival' }));
+
+        await festivalFactory.attemptPurchaseFestivalSlot('u1', 'Tester', 'harvest_voucher_metal');
+
+        const shopWrite = dynamoHandler.updateUserFields.mock.calls.find(([, fields]) => fields.festivalShop);
+        expect(shopWrite[1].festivalShop.purchasedSlots).toEqual([]);
+    });
+
+    test('token balance still caps a voucher purchase the normal way — insufficient funds still rejects', async () => {
+        dynamoHandler.getActiveFestival.mockResolvedValue(liveFestival());
+        dynamoHandler.findUser.mockResolvedValue(baseUser({ festivalTokens: 10, festivalTokensFestivalId: 'harvest_festival' }));
+
+        const result = await festivalFactory.attemptPurchaseFestivalSlot('u1', 'Tester', 'harvest_voucher_metal');
+
+        expect(result.ok).toBe(false);
+        expect(result.message).toMatch(/only have 10/);
+    });
+});
+
+describe('FestivalShop catalog — cleanup + new vouchers everywhere, uniform Grand pricing (2026-09-28)', () => {
+    test('every festival dropped its non-Grand cosmetics, keeping only the Title-linked Grand item', () => {
+        expect(FestivalShop.harvest_festival.items.map(i => i.id)).not.toEqual(expect.arrayContaining(['harvest_cosmetic_banner', 'harvest_cosmetic_sash', 'harvest_cosmetic_crown']));
+        expect(FestivalShop.frost_fair.items.map(i => i.id)).not.toEqual(expect.arrayContaining(['frost_cosmetic_lantern', 'frost_cosmetic_cloak', 'frost_cosmetic_crown']));
+        expect(FestivalShop.spring_planting.items.map(i => i.id)).not.toEqual(expect.arrayContaining(['spring_cosmetic_wreath', 'spring_cosmetic_sash', 'spring_cosmetic_crown']));
+
+        expect(FestivalShop.harvest_festival.items.map(i => i.id)).toContain('harvest_cosmetic_grand');
+        expect(FestivalShop.frost_fair.items.map(i => i.id)).toContain('frost_cosmetic_grand');
+        expect(FestivalShop.spring_planting.items.map(i => i.id)).toContain('spring_cosmetic_grand');
+    });
+
+    test('every festival now offers all three vouchers (sweet/metal/large) at the same uniform price', () => {
+        for (const festivalId of Object.keys(FestivalShop)) {
+            const items = FestivalShop[festivalId].items;
+            const sweet = items.find(i => i.scenarioHandler === 'handleSweetPotato');
+            const metal = items.find(i => i.scenarioHandler === 'handleMetalPotato');
+            const large = items.find(i => i.scenarioHandler === 'handleLargePotato');
+            expect(sweet.cost).toBe(50);
+            expect(metal.cost).toBe(200);
+            expect(large.cost).toBe(30);
+        }
+    });
+
+    test('every festival\'s Grand (Title-linked) item is uniformly priced at 300, not the original 400', () => {
+        for (const festivalId of Object.keys(FestivalShop)) {
+            const grand = FestivalShop[festivalId].items.find(i => i.itemType === 'cosmetic');
+            expect(grand.cost).toBe(300);
+        }
+    });
+
+    test('every festival\'s catalog is exactly 4 items — the Grand cosmetic plus the 3 vouchers, nothing else', () => {
+        for (const festivalId of Object.keys(FestivalShop)) {
+            expect(FestivalShop[festivalId].items).toHaveLength(4);
+        }
+    });
+
+    test('every voucher in the catalog references one of the three known VOUCHER_SCENARIOS handlers', () => {
+        const handlers = new Set();
+        for (const festivalId of Object.keys(FestivalShop)) {
+            for (const item of FestivalShop[festivalId].items) {
+                if (item.itemType === 'voucher') handlers.add(item.scenarioHandler);
+            }
+        }
+        expect(handlers).toEqual(new Set(['handleSweetPotato', 'handleMetalPotato', 'handleLargePotato']));
     });
 });
 

@@ -18264,3 +18264,63 @@ suite: **120 suites / 2184 tests, all passing** (net +4 new tests, +1 new suite,
 **Cross-repo note.** Not checked — `financial-project` doesn't appear to have ported `/bounty-board`
 itself (only the actual bounty-resolution logic, per earlier parity passes), so there's likely
 nothing to port this into, but that assumption hasn't been directly verified this pass.
+
+## Seasonal Festivals shop cleanup: useless cosmetics removed, Sweet/Metal/Large vouchers everywhere, no purchase cap, festival start now hits Big Events
+
+**What was asked.** A conversation about how Frost Fair works surfaced that its non-Grand cosmetics
+(Ice Lantern Charm, Laureate's Cloak, Frost Crown) do nothing — only the Grand tier is wired to a
+Title. Follow-up instructions, across several turns: "add the new vouchers for sweet/metal/large";
+"remove the fully useless items they make no sense to keep... lets do metal at 200, sweet potato
+at 50, large potato at 30"; then "wire festival start into big events channel. lower Grand Frost
+Medallion to 300 tokens. Do the same for rest of festivals and remove the completely useless items
+that dont do anything and add large/metal/sweets... lower their title medallions too... make sure
+sweet/metal/large have no cap on how many they can buy with tokens."
+
+**What changed** (see `systems/seasonal-festivals.md`'s new "Shop cleanup" section for the full
+per-item breakdown):
+- **Every non-Grand cosmetic removed from all three festivals** — Harvest's Banner/Champion's Sash,
+  Frost Fair's Ice Lantern Charm/Laureate's Cloak/Frost Crown, Spring Planting's Sprout
+  Wreath/Planter's Sash/Bloom Crown. None were wired to a Title, a stat, or any display beyond
+  `festivalCosmetics[]` itself.
+- **Every Grand (Title-linked) item re-priced 400 → 300**, uniformly.
+- **Sweet (50) / Metal (200) / Large (30) Potato vouchers added to every festival's shop** — Harvest
+  previously had only Sweet at 150 (re-priced to 50 for uniformity); Frost Fair and Spring Planting
+  had none before. `handleLargePotato` (`workFactory.js`) gained the same `trackProgress` option
+  Sweet/Metal already had, since it had never been voucher-eligible before. New
+  `festivalFactory.computeVoucherWorkInputs` sources Metal/Large's `workGainAmount`/`multiplier`/
+  `catchUpBonus` (which a voucher redemption has no real `/work` call to draw from) by reproducing
+  `work.js`'s own callback formula exactly.
+- **Found and fixed along the way**: `festivalShop.js`'s voucher confirmation embed hardcoded
+  `potatoesGained: 0` — harmless while Sweet Potato (which grants no potatoes) was the only
+  voucher, but Metal/Large both genuinely grant potatoes, so this would have silently shown "0
+  potatoes gained" on a real payout. Fixed by extracting the value correctly regardless of which
+  handler's return shape it came from (a bare number for Large, an object for Metal/Sweet).
+- **Vouchers exempted from the one-purchase-per-festival cap** — `attemptPurchaseFestivalSlot`'s
+  "already bought" gate now only fires for cosmetics; a voucher purchase never gets added to
+  `purchasedSlots`, so the shop embed never shows a voucher as permanently "✅ Purchased" and its
+  buy button only disables when the player can't afford another one.
+- **`/admin start-festival` now also posts to the Big Events channel** via
+  `bigEventsChannel.postBigEvent`, alongside (not replacing) the existing plain-text role-ping
+  announcement to the dedicated festival/events channel — matching how every other rare
+  server-wide moment (World Boss spawns, jackpot hits) is already wired into that channel.
+
+**Worth knowing, surfaced during implementation, not a bug**: work.js's own METAL scenario only
+calls `handleMetalPotato` after its own internal 10% success roll on top of the 1% base encounter
+chance — a real, unassisted Metal Potato payout is really a 0.1%-per-`/work`-call event, not 1%. A
+Metal voucher bypasses both rolls (guaranteed success), so it's skipping a considerably rarer real
+event than a Sweet or Large voucher does — the chosen pricing (200 vs. 50/30) already reflects this.
+
+**Tests.** 19 new/updated tests across 3 files: `festivalFactory.test.js` (+11: Metal/Large voucher
+redemption paired with progress-tracking-exemption checks, a `handleLargePotato` trackProgress
+control test, the no-purchase-cap behavior in both directions, and full catalog-shape assertions —
+uniform Grand pricing, uniform voucher pricing, exactly 4 items per festival, no removed ids
+survive), `festivalShopVoucherDisplay.test.js` (new file, +3: the potatoesGained-extraction fix for
+all three return shapes), `admin.test.js` (+1: festival start posts to Big Events with the right
+title/description). Plus 5 existing `festivalFactory.test.js` assertions updated for the new
+catalog shape/pricing/no-cap-purchasedSlots behavior (not regressions — the old assertions were
+testing the pre-change catalog). Full suite: **121 suites / 2199 tests, all passing**.
+
+**Cross-repo note.** Not checked this pass — if `financial-project` has ported the Seasonal
+Festivals shop at all (unconfirmed), it would need the identical catalog/pricing/no-cap changes to
+stay in parity. Flagging rather than assuming; should be audited before considering this fully
+caught up cross-repo.
