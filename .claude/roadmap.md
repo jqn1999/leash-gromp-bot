@@ -18465,3 +18465,127 @@ zero-chance companion source adds nothing, a strong companion can push the total
 roll that would've missed under the old cap now hits, no companion equipped still caps at 60%
 unchanged), `embedFactory.test.js` (+1 — `/skip-chances`' own `/work` field shows the new total).
 Full suite: **122 suites / 2219 tests, all passing** (up from 2210).
+
+## Elder Rootbeard's regradeChanceBoostPercent nerfed 50% -> 10%
+
+**Asked:** "let's nerf rootbeard a bit... lower it to 10% maybe" — confirmed after walking through
+the concrete before/after across a few tiers (50% tier: 75%→55%; 10% tier: 15%→11%; 0.5% tier:
+0.75%→0.55%) and flagging that this was a much bigger cut than "a bit" (an 80% relative reduction,
+making the perk the weakest of Rootbeard's four Mythic perks by a wide margin). Confirmed: "yes make
+it 10%, it saves alot of potatoes."
+
+**Why it needed trimming:** the perk multiplies a regrade tier's own success chance
+(`currentTier.chance * (1 + boost) + failStack`) rather than adding flat, so at 50% it was cutting
+the EXPECTED number of attempts — and therefore the expected total potatoes spent — to clear a tier
+by roughly 1.5x (each attempt costs the same regardless of outcome, so a 1.5x chance multiplier
+roughly divides the expected attempt count by 1.5), on top of the failStack pity counter every
+player already accumulates regardless of companion. That made Rootbeard close to a mandatory
+equip-before-regrading pick, overshadowing every other companion's own value proposition whenever a
+regrade was on the table.
+
+**Changed:** `constants.js`'s `elder_rootbeard` perk value: `regradeChanceBoostPercent` 0.5 → 0.1.
+No formula change (still multiplicative, still `regrade.js`'s existing
+`currentTier.chance * (1 + boost) + failStack`) — a pure number tune. Updated
+`companions.md`'s roster table (Elder Rootbeard's own row) and its per-perk-type progression table
+(the "Regrade Success" row was ALSO found stale during this pass — still showing the pre-2026-09-04
+flat 3% value, missed during that rework — fixed to the current multiplicative 10% alongside this
+nerf), and `economy-and-work.md`'s own worked example (50%→75%/10%→15% updated to 50%→55%/10%→11%).
+
+**Tests.** 2 existing tests in `regrade.test.js` updated for the new 1.1x multiplier (was 1.5x) and
+a new `rollBetween` value that still lands between the un-boosted and boosted chance at the smaller
+gap (0.52, was 0.6) — no new tests needed since this is a pure constant change with no new branch of
+behavior; every structural test (companion classification, leveling scaling, no-companion baseline)
+was already value-agnostic and needed no change. Full suite: **122 suites / 2219 tests, all
+passing**.
+
+**Cross-repo note.** Not yet ported to `financial-project` — that repo's own regrade implementation
+(if it reads companion perk values directly off its own copy of the Companions roster rather than
+a shared source) would need the same 0.5 → 0.1 change to stay in parity. Flag this to the user and
+offer to port it in the same session, per this repo's own CLAUDE.md cross-repo discipline.
+
+## Prospector: Taro Trader removed again for good (EV-checked this time), Companion widens 1.5x more than Poison/Large/Mimic
+
+**Asked:** Follow-up to the same-session Rootbeard nerf discussion — "should i nerf prospector's
+taro logic at all," then "should i disinclude taro from prospector," confirmed after walking
+through the actual EV math (not just per-hit payout, which is what justified adding Taro back in
+an earlier session). Then, same turn: "Remove taro encounter, increase the companion % specifically
+by 1.5x the rest (so instead of 75% base, make the companion one specifically 112.5% starting then
+scale as normal."
+
+**Why Taro needed removing again.** Taro Trader was added back to Prospector's widened set in an
+earlier session on the reasoning that its own per-hit payout (1-1.5x `effectiveMultiplier` in
+starches) is small next to Golden Yam's (29.23-43.85x), so widening it "wasn't a big deal" the way
+widening Golden Yam would be. That reasoning never checked the other half of EV: rate. Taro's base
+encounter chance (2%) is ~20x Golden Yam's (0.1%) — so once Prospector widens Taro's RATE by up to
+~108.75% (max level), its total average starch contribution per `/work` call exceeds Golden Yam's
+full, un-widened contribution. That's exactly the outcome excluding Golden Yam was meant to
+prevent, just reached through the other starch source instead — the per-hit-magnitude framing used
+to restore Taro was the wrong lens.
+
+**Changed:**
+- `workFactory.js`'s `PROSPECTOR_DOUBLED_SCENARIOS`: `TARO` removed, back to 4 entries (Poison,
+  Large, Companion, Mimic) — Golden Potato/Taro Trader/Golden Yam all excluded now on one
+  consistent basis (nothing touching scarce currency or the biggest one-shot spike gets widened).
+- `getEffectiveScenarioChances` now applies a new `PROSPECTOR_COMPANION_SCENARIO_MULTIPLIER` (1.5)
+  specifically when widening the Companion scenario — `effectiveBonus = multiplierBonus *
+  PROSPECTOR_COMPANION_SCENARIO_MULTIPLIER` for Companion, plain `multiplierBonus` for
+  Poison/Large/Mimic. Applied to the perk's own already-level-scaled live value (not a second
+  stored constant), so companion-leveling's usual scaling curve still governs both numbers
+  identically — just a flat 1.5x layered onto Companion's own result. Base (level 1):
+  Poison/Large/Mimic +75%, Companion +112.5%. Max level (1.45x scaling): Poison/Large/Mimic
+  +108.75%, Companion +163.125%.
+- `constants.js`: Prospector's `description` (player-facing) no longer mentions Taro Traders, notes
+  Companions get "an even sharper nose." The perk's own explanatory comment block rewritten for the
+  new EV-based Taro reasoning and the Companion multiplier.
+- `embedFactory.js`'s `specialEncounterMultiplierBonus` perk-display label now shows two numbers
+  (Poison/Large/Mimic's shared percentage, Companion's own higher one) instead of one, and no
+  longer lists Taro Trader. Exported `PROSPECTOR_COMPANION_SCENARIO_MULTIPLIER` from
+  `workFactory.js` so this label can never drift from what the real widening applies.
+- `/work-odds` (`workOdds.js`)'s own boost-note text updated the same way (two numbers, no Taro).
+
+**Tests.** `workFactory.test.js`'s `getEffectiveScenarioChances` describe block: rewrote the "Taro
+Trader is widened again" test into "Golden Potato, Taro Trader, and Golden Yam are no longer
+widened" (extended to cover Taro), added a new dedicated test proving Companion's own width is
+2.5x its base at `multiplierBonus=1` (vs. a plain double for Poison/Large/Mimic), recomputed the
+"accumulated shift never resets" running total for the new 4-scenario set with Companion's 1.5x
+factor. `workOdds.test.js`: renamed/extended the existing Prospector test to also assert Taro Trader
+stays unwidened, added a new test proving Companion's odds growth is measurably larger than
+Poison's under the same equipped companion. Full suite: **122 suites / 2220 tests, all passing**
+(net +2 new tests — one test rewritten in place, three new leaf tests added, one net removal from
+consolidating the old Taro-specific test into the broader exclusion test).
+
+**Docs.** `systems/companions.md`'s Prospector roster row, Perk Magnitude Range Guide (split into
+two rows — Poison/Large/Mimic vs. Companion), and the Prospector history section (new
+"Taro Trader removed again for good, and Companion given its own higher percentage" subsection,
+plus a stale "make up the current widened set (5 scenarios)" sentence corrected to note it changed
+again) all updated.
+
+**Cross-repo note.** `financial-project`'s `gromp-economy/handler.ts` has a real reimplementation
+of `PROSPECTOR_WIDENED_SCENARIOS`/`getEffectiveScenarioChances`, confirmed and ported the same
+session this entry was written — see that repo's own `NOTES_GROMP_WEB_INTEGRATION.md` for the
+matching numbered entry.
+
+## Prospector's Companion multiplier raised from 1.5x to a full 2x (same-day follow-up)
+
+**Asked:** Immediate follow-up to the entry above — "can we make companion scenario double instead
+of 50% higher than the other stuff its 100%?" A straight numeric raise, not a design change: the
+mechanism (Companion widens by `PROSPECTOR_COMPANION_SCENARIO_MULTIPLIER` × whatever Poison/Large/
+Mimic's shared, already-level-scaled bonus is) is untouched — only the multiplier itself moved.
+
+**Changed:** `workFactory.js`'s `PROSPECTOR_COMPANION_SCENARIO_MULTIPLIER`: 1.5 → 2. New numbers:
+base (level 1) Poison/Large/Mimic +75%, Companion +150% (was +112.5%). Max level (1.45x scaling)
+Poison/Large/Mimic +108.75%, Companion +217.5% (was +163.125%). `constants.js`'s explanatory
+comment, `embedFactory.js`'s own comment above the `specialEncounterMultiplierBonus` label
+(the label itself already reads the constant dynamically, no code change needed there), and
+`systems/companions.md`'s roster row/Perk Magnitude Range Guide/history section all updated to the
+new numbers.
+
+**Tests.** `workFactory.test.js`'s dedicated Companion-widening test recomputed for the 2x factor
+(width now 3x base at `multiplierBonus=1`, was 2.5x) — same for the "accumulated shift never
+resets" test's running total. `workOdds.test.js`'s Companion-growth test and its comments updated
+(the assertion itself, `companionGrowth > poisonGrowth`, needed no numeric change — it was never an
+exact-ratio check). Full suite: **122 suites / 2220 tests, all passing** (no count change — every
+edit was an in-place recompute of an existing assertion, no new/removed tests needed).
+
+**Cross-repo note.** Ported the identical constant change into `financial-project`'s
+`gromp-economy/handler.ts` the same session — see that repo's own `NOTES_GROMP_WEB_INTEGRATION.md`.

@@ -16,6 +16,7 @@ const shopFactory = require("../utils/shopFactory");
 const guildShopFactory = require("../utils/guildShopFactory");
 const tradingPostFactory = require("../utils/tradingPostFactory");
 const { TitleFactory } = require("../utils/titleFactory");
+const { PROSPECTOR_COMPANION_SCENARIO_MULTIPLIER } = require("../utils/workFactory");
 const eventFactory = new EventFactory();
 const titleFactory = new TitleFactory();
 
@@ -171,9 +172,14 @@ const PERK_LABELS = {
     // removed alongside this redesign — see systems/companions.md's Prospector section
     // for that history if a future Metal-focused companion ever needs it re-added.
     // Golden Potato, Taro Trader, and Golden Yam dropped out of this list (2026-09-23
-    // nerf) — Taro Trader added back the same day (direct instruction). See
-    // workFactory.js's PROSPECTOR_DOUBLED_SCENARIOS for why.
-    specialEncounterMultiplierBonus: value => `+${(value * 100).toFixed(0)}% chance to find Poison Potato, Large Potato, Companion, Taro Trader & Mimic Potato`,
+    // nerf) — Taro Trader added back the same day, then removed again for good 2026-09-28
+    // once the EV math (not just its own small per-hit payout) argued against it. See
+    // workFactory.js's PROSPECTOR_DOUBLED_SCENARIOS for the full history. Companion gets
+    // its own separate, higher percentage (2026-09-28) — PROSPECTOR_COMPANION_SCENARIO_
+    // MULTIPLIER (2x, a full double) applied to the SAME live, level-scaled `value` every
+    // other listed scenario uses, so the two numbers shown here can never drift from what
+    // actually rolls.
+    specialEncounterMultiplierBonus: value => `+${(value * 100).toFixed(0)}% chance to find Poison Potato, Large Potato & Mimic Potato, +${(value * PROSPECTOR_COMPANION_SCENARIO_MULTIPLIER * 100).toFixed(0)}% chance to find a Wandering Companion`,
     bountyRewardPercent: value => `+${(value * 100).toFixed(1)}% Bounty Reward`,
     rivalSuccessChanceFlat: value => `+${(value * 100).toFixed(1)}% Rival Confrontation Success Chance`,
     // Bastion, the Tower Warden (2026-09-13) — boosts Tower's own three value-scaled reward

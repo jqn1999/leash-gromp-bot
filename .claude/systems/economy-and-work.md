@@ -781,8 +781,8 @@ only Elder Rootbeard), scaled by this attempt's cost relative to that track's ow
 unconditional on success/fail (the cost is a guaranteed sunk cost regardless of outcome) — see
 [companions.md#leveling](companions.md#leveling). That perk itself **multiplies** the tier's own
 chance rather than adding a flat amount (2026-09-04, direct instruction) —
-`currentTier.chance * (1 + boost) + failStack` — so Elder Rootbeard's 50% base value turns a 50%
-tier into 75%, a 10% tier into 15%, etc.
+`currentTier.chance * (1 + boost) + failStack` — so Elder Rootbeard's 10% base value (nerfed from
+50% 2026-09-28 — see roadmap.md) turns a 50% tier into 55%, a 10% tier into 11%, etc.
 
 **Confirm-preview step** (2026-09-26, direct instruction: "show an embed with the regrade info
 and buttons for regrading or not") — `/regrade` no longer spends/rolls the instant it's called.

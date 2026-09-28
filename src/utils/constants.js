@@ -1557,7 +1557,7 @@ const Companions = [
         name: "Prospector",
         rarity: CompanionRarity.RARE,
         thumbnailUrl: "https://cdn.discordapp.com/attachments/533073599435636739/1543695898683375788/ODE0NTkyMC5qcGc.png?ex=6a95ce56&is=6a947cd6&hm=b5b18ec4b311ffb254df06b6f908f3e5aae497759f05791a03c6c8cd1c94a06f&",
-        description: "A grizzled prospector with an uncanny nose for where the good stuff is buried — sharply improves your odds of stumbling into Large Potatoes, Poison Potatoes, wandering Companions, Taro Traders, and Mimics, though all that extra digging leaves them a little too worn out for steady work.",
+        description: "A grizzled prospector with an uncanny nose for where the good stuff is buried — sharply improves your odds of stumbling into Large Potatoes, Poison Potatoes, and Mimics, with an even sharper nose for wandering Companions, though all that extra digging leaves them a little too worn out for steady work.",
         scavengeFlavor: "Prospector staked out a promising patch of dirt and worked it methodically, panning and prying until something worthwhile finally came loose.",
         // Redesigned 2026-08-29, direct instruction — the original Metal-only kit
         // (metalSuccessChanceFlat/metalEncounterChanceFlat, fully retired — see
@@ -1573,23 +1573,28 @@ const Companions = [
         // leaving the higher special-hit rate fully felt.
         //
         // specialEncounterMultiplierBonus widens (value 0.75 = "+75% of own base width")
-        // Poison Potato, Large Potato, Companion, Taro Trader, and Mimic Potato — see
-        // workFactory.js's PROSPECTOR_DOUBLED_SCENARIOS for the exact mechanism
-        // (generalizes the retired Metal-only widening technique to several
-        // non-contiguous scenarios at once).
+        // Poison Potato, Large Potato, and Mimic Potato — see workFactory.js's
+        // PROSPECTOR_DOUBLED_SCENARIOS for the exact mechanism (generalizes the retired
+        // Metal-only widening technique to several non-contiguous scenarios at once).
+        // Companion (the Wandering Companion encounter) widens at
+        // PROSPECTOR_COMPANION_SCENARIO_MULTIPLIER (2x — a full double) this same value
+        // instead — 150% base, not 75% — see that constant's own comment for the full
+        // reasoning (2026-09-28, direct instruction, raised from an initial 1.5x the same
+        // day: "make companion scenario double instead of 50% higher... its 100%").
         // Scales with companion level like every other perk
-        // (CompanionLeveling.PERK_BONUS_PER_LEVEL), capping at +108.75% (0.75 * 1.45x) at
-        // max level 10 — NOT a round +75%->+150%; the level-10 multiplier itself is
-        // 1.45x, not 1.5x. Metal Potato, Sweet Potato, and Ancient Potato are deliberately
-        // EXCLUDED from the widened set — a full DOUBLING (value 1) of Sweet Potato was in
-        // an earlier draft of this redesign until a 1000-/work EV check (2026-08-29,
-        // comparing against Spudsprite, chain mechanic included) found it let this Rare
-        // out-earn a Legendary by ~25-30%, driven entirely by Sweet's flat +0.2
-        // workMultiplierAmount grant (1/3 of its own rolls) compounding into every later
-        // roll for the rest of the account's life — the same snowball shape the original
-        // Metal-only kit already caused once. Metal itself was left out of the redesign
-        // from the start (its own uncapped workMultiplierReward carries the identical
-        // risk); Ancient was never proposed for inclusion.
+        // (CompanionLeveling.PERK_BONUS_PER_LEVEL), capping at +108.75% (0.75 * 1.45x) for
+        // Poison/Large/Mimic and +217.5% for Companion at max level 10 — NOT a round
+        // +75%->+150%; the level-10 multiplier itself is 1.45x, not 1.5x. Metal Potato,
+        // Sweet Potato, and Ancient Potato are deliberately EXCLUDED from the widened set —
+        // a full DOUBLING (value 1) of Sweet Potato was in an earlier draft of this
+        // redesign until a 1000-/work EV check (2026-08-29, comparing against Spudsprite,
+        // chain mechanic included) found it let this Rare out-earn a Legendary by ~25-30%,
+        // driven entirely by Sweet's flat +0.2 workMultiplierAmount grant (1/3 of its own
+        // rolls) compounding into every later roll for the rest of the account's life — the
+        // same snowball shape the original Metal-only kit already caused once. Metal itself
+        // was left out of the redesign from the start (its own uncapped
+        // workMultiplierReward carries the identical risk); Ancient was never proposed for
+        // inclusion.
         //
         // Golden Potato, Taro Trader, and Golden Yam were ALSO REMOVED from the widened
         // set (2026-09-23, direct instruction — a nerf) — unlike Sweet/Metal's snowball
@@ -1597,11 +1602,19 @@ const Companions = [
         // game's highest one-shot-value scavenge scenarios (Taro/Golden Yam both grant
         // starches, Golden Potato is the rare big currency spike), and Prospector was
         // making all three meaningfully more common than intended for a Rare-tier
-        // companion. Taro Trader was ADDED BACK the same day (direct instruction) — Golden
-        // Potato and Golden Yam remain excluded on that basis. Poison/Large/Companion/
-        // Mimic/Taro all pay out a bounded, non-compounding reward (potatoes, starches, or
-        // a companion pull) without Golden Potato/Golden Yam's outsized one-shot-payout
-        // profile, so they stay widened.
+        // companion. Taro Trader was ADDED BACK the same day (direct instruction) on the
+        // reasoning that its own per-hit payout is small (1-1.5x effectiveMultiplier in
+        // starches, vs. Golden Yam's 29.23-43.85x) — then REMOVED AGAIN 2026-09-28 (direct
+        // instruction) once that per-hit reasoning was checked against actual EV: Taro's
+        // base encounter rate (2%) is ~20x Golden Yam's (0.1%), so a maxed Prospector's
+        // widened Taro alone produces MORE average starch EV per /work call than Golden
+        // Yam's full, un-widened contribution — exactly the outcome excluding Golden Yam
+        // was meant to prevent, just reached through the other starch source instead.
+        // Golden Potato/Taro Trader/Golden Yam all stay excluded now on one consistent
+        // basis: nothing that touches the scarce currency (starch) or the biggest one-shot
+        // currency spike gets widened. Poison/Large/Companion/Mimic pay out a bounded,
+        // non-compounding reward (potatoes or a companion pull) with no such profile, so
+        // they stay widened.
         //
         // Value tuned down from an initial 1 (double) to 0.75 after the SAME EV check
         // (chain mechanic — work.js's cooldown-skip auto-chain, capped at
@@ -1700,12 +1713,25 @@ const Companions = [
         // diversified perk on this companion.
         // Regrade perk reworked 2026-09-04, direct instruction — was regradeChanceFlat
         // (0.03, ADDED onto a regrade tier's own chance, e.g. 50% -> 53%). Renamed to
-        // regradeChanceBoostPercent (0.5) and now MULTIPLIES the tier's own chance instead
-        // (regrade.js: `currentTier.chance * (1 + boost) + failStack`) — 50% -> 75%, 10% ->
-        // 15%, matching every other tier proportionally rather than a flat +3 points that
-        // barely mattered on high-roll tiers and did nothing for the sub-5% late tiers.
+        // regradeChanceBoostPercent and now MULTIPLIES the tier's own chance instead
+        // (regrade.js: `currentTier.chance * (1 + boost) + failStack`), matching every
+        // other tier proportionally rather than a flat +3 points that barely mattered on
+        // high-roll tiers and did nothing for the sub-5% late tiers.
+        //
+        // Nerfed 0.5 -> 0.1 (2026-09-28, direct instruction — "it saves alot of
+        // potatoes"): at 0.5 the perk was cutting the EXPECTED potato cost of clearing a
+        // regrade tier by up to 1/3 (each attempt costs the same regardless of outcome, so
+        // a 1.5x success-chance multiplier roughly divides the expected number of attempts
+        // — and therefore the expected total potatoes spent — needed to clear a tier by
+        // 1.5x too), on top of the failStack this player already accumulates toward every
+        // future attempt regardless of companion. At 0.1, a 50%-chance tier goes 50% -> 55%
+        // instead of 50% -> 75%, and the sub-5% late tiers barely move at all (2% -> 2.2%)
+        // — still a real, felt edge at the tiers most players actually grind through, but
+        // no longer a dominant "always equip this before regrading" pick that made every
+        // other Mythic-tier choice look wrong by comparison whenever a regrade was on the
+        // table.
         perks: [
-            { type: "regradeChanceBoostPercent", value: 0.5 },
+            { type: "regradeChanceBoostPercent", value: 0.1 },
             { type: "passiveIncomePercent", value: 0.10 },
             { type: "robChanceFlat", value: 0.15 },
             { type: "starchSellBonusPercent", value: 0.15 }
