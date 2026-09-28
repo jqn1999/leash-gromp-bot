@@ -2901,40 +2901,57 @@ const FestivalTemplates = {
 // rarity table) since there's no rarity concept for a cosmetic/voucher — every item is
 // hand-authored, flat `festivalTokens`-priced. Two item shapes:
 //   - `{ itemType: "cosmetic", cosmeticId }` — flips an entry into the owner's
-//     festivalCosmetics array (systems/seasonal-festivals.md's "Rewards" section; Titles
-//     integration is a deferred follow-up once titleFactory.js lands).
+//     festivalCosmetics array (systems/seasonal-festivals.md's "Rewards" section). Only
+//     each festival's own "Grand" tier item is actually wired to anything — the matching
+//     `{ type: "festivalCosmetic", cosmeticId }` Title condition (Titles' own data,
+//     harvest_laureate/frost_fair_laureate/bloom_laureate). Every OTHER cosmetic tier
+//     (Harvest's Banner/Champion's Sash, Frost Fair's Ice Lantern Charm/Laureate's Cloak/
+//     Frost Crown, Spring Planting's Sprout Wreath/Planter's Sash) was a pure currency sink
+//     with no Title/stat/display payoff of any kind — removed entirely 2026-09-28, direct
+//     instruction ("remove the completely useless items that dont do anything"). Each
+//     festival's own Grand item is kept and re-priced 400 -> 300, uniform across all three
+//     (same instruction — "lower Grand Frost Medallion to 300 tokens... do the same for
+//     rest of festivals... lower their title medallions too").
 //   - `{ itemType: "voucher", scenarioHandler }` — guarantees one specific /work scenario's
 //     outcome on demand (CONFIRMED by product owner 2026-09-20, "Encounter Vouchers"),
 //     dispatched by festivalFactory.redeemVoucher directly against workFactory's own
 //     standalone scenario handler, bypassing performWork's roll/cooldown/workCount wrapper
-//     entirely. Only Harvest Festival catalogs one for v1 (Sweet Potato, matching that
-//     festival's own "Sweet Potato Bounty" objective's theme) — the mechanism itself is
-//     generic (see workFactory.js's `trackProgress` option on handleSweetPotato/
-//     handleMetalPotato), so cataloging more is purely a data addition later.
+//     entirely. All three of Sweet/Metal/Large Potato are now catalogued into every
+//     festival (2026-09-28, direct instruction — "add the new vouchers for sweet/metal/
+//     large"; Harvest previously only had Sweet, re-priced from 150 to 50 here for a
+//     uniform per-voucher-type price across all three festivals). See workFactory.js's
+//     `trackProgress` option on handleSweetPotato/handleMetalPotato/handleLargePotato, and
+//     festivalFactory.js's VOUCHER_SCENARIOS/computeVoucherWorkInputs for how Metal/Large
+//     (unlike Sweet) source the workGainAmount/multiplier/catchUpBonus a voucher redemption
+//     has no real /work call to draw from. Vouchers are also the one item type NOT capped
+//     at one purchase per festival (2026-09-28, direct instruction — "make sure sweet/
+//     metal/large have no cap on how many they can buy with tokens") — see
+//     festivalFactory.attemptPurchaseFestivalSlot's own itemType branch for how the
+//     "already purchased" gate is skipped, and purchasedSlots never records a voucher buy,
+//     for exactly this item type.
 const FestivalShop = {
     harvest_festival: {
         items: [
-            { id: "harvest_cosmetic_banner", itemType: "cosmetic", cosmeticId: "harvest_festival_banner", name: "Harvest Banner", description: "A banner to fly proudly over your stall for the rest of the season.", cost: 60 },
-            { id: "harvest_cosmetic_sash", itemType: "cosmetic", cosmeticId: "harvest_festival_champion_flair", name: "Harvest Champion's Sash", description: "A woven sash marking a champion of the Harvest Festival.", cost: 120 },
-            { id: "harvest_voucher_sweet", itemType: "voucher", scenarioHandler: "handleSweetPotato", name: "Sweet Potato Charm", description: "A charmed root that guarantees a Sweet Potato encounter the moment it's used.", cost: 150 },
-            { id: "harvest_cosmetic_crown", itemType: "cosmetic", cosmeticId: "harvest_festival_potato_crown", name: "Potato King's Harvest Crown", description: "A crown of gilded potato leaves, awarded only during the Harvest Festival.", cost: 250 },
-            { id: "harvest_cosmetic_grand", itemType: "cosmetic", cosmeticId: "harvest_festival_grand_laurel", name: "Grand Harvest Laurel", description: "The rarest laurel of the season, for those who cleared every ladder.", cost: 400 },
+            { id: "harvest_voucher_sweet", itemType: "voucher", scenarioHandler: "handleSweetPotato", name: "Sweet Potato Charm", description: "A charmed root that guarantees a Sweet Potato encounter the moment it's used.", cost: 50 },
+            { id: "harvest_voucher_large", itemType: "voucher", scenarioHandler: "handleLargePotato", name: "Harvest Bounty Charm", description: "A charmed potato that guarantees a Large Potato encounter the moment it's used.", cost: 30 },
+            { id: "harvest_voucher_metal", itemType: "voucher", scenarioHandler: "handleMetalPotato", name: "Harvest Iron Charm", description: "A charmed shard of blackened metal that guarantees a Metal Potato encounter — and this one won't slip away.", cost: 200 },
+            { id: "harvest_cosmetic_grand", itemType: "cosmetic", cosmeticId: "harvest_festival_grand_laurel", name: "Grand Harvest Laurel", description: "The rarest laurel of the season, for those who cleared every ladder.", cost: 300 },
         ]
     },
     frost_fair: {
         items: [
-            { id: "frost_cosmetic_lantern", itemType: "cosmetic", cosmeticId: "frost_fair_ice_lantern", name: "Ice Lantern Charm", description: "A charm shaped like the fair's own frozen-river lanterns.", cost: 60 },
-            { id: "frost_cosmetic_cloak", itemType: "cosmetic", cosmeticId: "frost_fair_laureate_cloak", name: "Frost Fair Laureate's Cloak", description: "A frost-rimed cloak awarded to Frost Fair laureates.", cost: 120 },
-            { id: "frost_cosmetic_crown", itemType: "cosmetic", cosmeticId: "frost_fair_frost_crown", name: "Frost Fair Crown", description: "A crown of woven frost, granted to the fair's champions.", cost: 250 },
-            { id: "frost_cosmetic_grand", itemType: "cosmetic", cosmeticId: "frost_fair_grand_medallion", name: "Grand Frost Medallion", description: "The rarest medallion of the fair, for those who cleared every ladder.", cost: 400 },
+            { id: "frost_voucher_sweet", itemType: "voucher", scenarioHandler: "handleSweetPotato", name: "Frosted Sweetroot Charm", description: "A charmed root, kept warm through the frost, that guarantees a Sweet Potato encounter the moment it's used.", cost: 50 },
+            { id: "frost_voucher_large", itemType: "voucher", scenarioHandler: "handleLargePotato", name: "Frosted Bounty Charm", description: "A charmed potato that guarantees a Large Potato encounter the moment it's used.", cost: 30 },
+            { id: "frost_voucher_metal", itemType: "voucher", scenarioHandler: "handleMetalPotato", name: "Frostforged Iron Charm", description: "A charmed shard of frost-hardened metal that guarantees a Metal Potato encounter — and this one won't slip away.", cost: 200 },
+            { id: "frost_cosmetic_grand", itemType: "cosmetic", cosmeticId: "frost_fair_grand_medallion", name: "Grand Frost Medallion", description: "The rarest medallion of the fair, for those who cleared every ladder.", cost: 300 },
         ]
     },
     spring_planting: {
         items: [
-            { id: "spring_cosmetic_wreath", itemType: "cosmetic", cosmeticId: "spring_planting_sprout_wreath", name: "Sprout Wreath", description: "A wreath of the season's first new sprouts.", cost: 60 },
-            { id: "spring_cosmetic_sash", itemType: "cosmetic", cosmeticId: "spring_planting_planters_sash", name: "Planter's Sash", description: "A sash worn by the season's most dedicated planters.", cost: 120 },
-            { id: "spring_cosmetic_crown", itemType: "cosmetic", cosmeticId: "spring_planting_bloom_crown", name: "Bloom Crown", description: "A crown of the season's first blooms.", cost: 250 },
-            { id: "spring_cosmetic_grand", itemType: "cosmetic", cosmeticId: "spring_planting_grand_bloom", name: "Grand Bloom Laurel", description: "The rarest laurel of Spring Planting, for those who cleared every ladder.", cost: 400 },
+            { id: "spring_voucher_sweet", itemType: "voucher", scenarioHandler: "handleSweetPotato", name: "Budding Sweetroot Charm", description: "A charmed root that guarantees a Sweet Potato encounter the moment it's used.", cost: 50 },
+            { id: "spring_voucher_large", itemType: "voucher", scenarioHandler: "handleLargePotato", name: "Sprouting Bounty Charm", description: "A charmed potato that guarantees a Large Potato encounter the moment it's used.", cost: 30 },
+            { id: "spring_voucher_metal", itemType: "voucher", scenarioHandler: "handleMetalPotato", name: "Plowman's Iron Charm", description: "A charmed shard of freshly tempered metal that guarantees a Metal Potato encounter — and this one won't slip away.", cost: 200 },
+            { id: "spring_cosmetic_grand", itemType: "cosmetic", cosmeticId: "spring_planting_grand_bloom", name: "Grand Bloom Laurel", description: "The rarest laurel of Spring Planting, for those who cleared every ladder.", cost: 300 },
         ]
     },
 }

@@ -12,6 +12,7 @@ const { setWorkScenarios } = require("../user/work.js");
 const work = require("./../user/work");
 const { ensureGuildChatCategory, addChatChannelIndexEntry, removeChatChannelIndexEntry } = require("../guilds/guildChat");
 const festivalFactory = require("../../utils/festivalFactory");
+const bigEventsChannel = require("../../utils/bigEventsChannel.js");
 
 const embedFactory = new EmbedFactory();
 const achievementFactory = new AchievementFactory();
@@ -590,10 +591,48 @@ async function runStartFestival(client, interaction) {
     if (announce) {
         const channel = await client.channels.fetch(FESTIVAL_EVENT_CHANNEL_ID);
         await channel.send(`<@&${FESTIVAL_EVENT_ROLE_ID}> The **${festivalName}** has begun! Check /festival for objectives and /festival-shop to spend ${tokenLabel} — ends <t:${endsAtSeconds}:R>.`);
-        interaction.editReply(`Started ${festivalName} for ${Math.round((festival.endsAt - festival.startsAt) / (24 * 60 * 60 * 1000))} day(s) — announced in <#${FESTIVAL_EVENT_CHANNEL_ID}>.`);
+        // Big Events channel (2026-09-28, direct instruction — "wire festival start into big
+        // events channel") — separate from the plain-text role-ping announcement above,
+        // which stays in the dedicated festival/events channel. This mirrors every other
+        // rare, server-wide moment already wired into bigEventsChannel.postBigEvent (World
+        // Boss spawns, jackpot hits) — best-effort, non-fatal on failure (postBigEvent's own
+        // try/catch), never blocks the real admin reply below.
+        await bigEventsChannel.postBigEvent({
+            title: `🎪 The ${festivalName} Has Begun!`,
+            description: `A new season opens its stalls — check /festival for this week's objectives and /festival-shop to spend ${tokenLabel} before it closes.`,
+            fields: [{ name: 'Ends', value: `<t:${endsAtSeconds}:R>`, inline: true }],
+        });
+        interaction.editReply(`Started ${festivalName} for ${Math.round((festival.endsAt - festival.startsAt) / (24 * 60 * 60 * 1000))} day(s) — announced in <#${FESTIVAL_EVENT_CHANNEL_ID}> and the Big Events channel.`);
     } else {
         interaction.editReply(`Started ${festivalName}, ending <t:${endsAtSeconds}:R> — no announcement sent.`);
     }
+}
+
+// Manual early-stop counterpart to start-festival (2026-09-28, direct instruction: "is
+// there a way for me to stop the festival? if not add admin command for it") — no such
+// command existed before this; festivalFactory.endFestival() itself already needed zero
+// changes to support this, since it doesn't gate on Date.now() >= endsAt at all (only the
+// daily cron's OWN caller in backgroundEvents.js checks that before calling it) — it just
+// ends whatever's currently live, on demand, exactly what a manual stop needs. Posts the
+// same createFestivalEndEmbed the daily cron posts on a natural end, to the same festival
+// events channel, so players see an identical announcement either way — deliberately NOT
+// also wired into the Big Events channel, matching how a NATURAL end isn't either (only
+// festival START got that treatment this session).
+async function runEndFestival(client, interaction) {
+    await interaction.deferReply({ ephemeral: true });
+
+    const ended = await festivalFactory.endFestival();
+    if (!ended) {
+        interaction.editReply(`There's no festival currently running.`);
+        return;
+    }
+
+    const festivalName = Festival.NAME[ended.festivalId] || ended.festivalId;
+    const channel = await client.channels.fetch(FESTIVAL_EVENT_CHANNEL_ID);
+    const festivalEndEmbed = embedFactory.createFestivalEndEmbed(ended.festivalId);
+    await channel.send({ embeds: [festivalEndEmbed] });
+
+    interaction.editReply(`Stopped ${festivalName} early — announced in <#${FESTIVAL_EVENT_CHANNEL_ID}>.`);
 }
 
 // Titles with a manualGrant condition (systems/titles.md) — the only kind an admin can ever
@@ -849,6 +888,12 @@ module.exports = {
             ],
         },
         {
+            name: 'end-festival',
+            description: 'Stop the currently running Seasonal Festival early',
+            type: ApplicationCommandOptionType.Subcommand,
+            options: [],
+        },
+        {
             name: 'revoke-immune-to-venom',
             description: 'One-time fix: revoke Immune to Venom earned under the old 20-hit threshold (now 40)',
             type: ApplicationCommandOptionType.Subcommand,
@@ -904,6 +949,9 @@ module.exports = {
             case 'start-festival':
                 await runStartFestival(client, interaction);
                 break;
+            case 'end-festival':
+                await runEndFestival(client, interaction);
+                break;
             case 'revoke-immune-to-venom':
                 await runRevokeImmuneToVenom(client, interaction);
                 break;
@@ -923,6 +971,7 @@ module.exports = {
     setActivityChannelCallback: runSetActivityChannel,
     setMercChatChannelCallback: runSetMercChatChannel,
     startFestivalCallback: runStartFestival,
+    endFestivalCallback: runEndFestival,
     revokeImmuneToVenomCallback: runRevokeImmuneToVenom,
     grantTitleCallback: runGrantTitle,
 }

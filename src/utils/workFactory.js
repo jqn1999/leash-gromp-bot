@@ -913,7 +913,12 @@ class WorkFactory {
         return potatoesGained;
     }
 
-    async handleLargePotato(userDetails, workGainAmount, multiplier, catchUpBonus = 0) {
+    // trackProgress — see handleMetalPotato's own comment on this option. Added 2026-09-28
+    // so Large Potato can join Sweet/Metal as a Festival Encounter Voucher option (the
+    // festival shop's own redeemVoucher calls this directly, guaranteeing the outcome
+    // instead of leaving it to a real /work roll) — a normal /work call never passes this
+    // option, so its own behavior is unchanged byte-for-byte.
+    async handleLargePotato(userDetails, workGainAmount, multiplier, catchUpBonus = 0, { trackProgress = true } = {}) {
         const userId = userDetails.userId;
         let userPotatoes = userDetails.potatoes;
         let userTotalEarnings = userDetails.totalEarnings;
@@ -932,17 +937,18 @@ class WorkFactory {
         userPotatoes += potatoesGained
         userTotalEarnings += potatoesGained
 
-        let workScenarioCounts = userDetails.workScenarioCounts;
-        workScenarioCounts.large += 1;
+        const setFields = { potatoes: userPotatoes, totalEarnings: userTotalEarnings };
+        const addFields = {};
 
-        const workTimer = await dynamoHandler.calculateWorkTimerValue(userDetails, Work.WORK_TIMER_SECONDS);
+        if (trackProgress) {
+            let workScenarioCounts = userDetails.workScenarioCounts;
+            workScenarioCounts.large += 1;
+            setFields.workScenarioCounts = workScenarioCounts;
+            setFields.workTimer = await dynamoHandler.calculateWorkTimerValue(userDetails, Work.WORK_TIMER_SECONDS);
+            addFields.workCount = 1;
+        }
 
-        await dynamoHandler.updateUserFields(userId, {
-            potatoes: userPotatoes,
-            totalEarnings: userTotalEarnings,
-            workScenarioCounts: workScenarioCounts,
-            workTimer: workTimer
-        }, { workCount: 1 });
+        await dynamoHandler.updateUserFields(userId, setFields, addFields);
 
         return potatoesGained;
     }

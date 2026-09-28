@@ -95,9 +95,16 @@ module.exports = {
             // Encounter Vouchers (systems/seasonal-festivals.md) — a successful voucher
             // purchase renders the redeemed scenario's OWN existing result embed as a
             // separate follow-up, same as a normal /work hit would, distinct from the shop
-            // update itself.
+            // update itself. potatoesGained's shape genuinely differs per handler — Sweet
+            // Potato returns { random, statGrant } (no potatoes at all), Metal Potato
+            // returns { potatoesGained, statGrant }, and Large Potato (added 2026-09-28)
+            // returns a bare number — hardcoding 0 here (fine while Sweet Potato was the
+            // only voucher, since it never grants potatoes) would have silently shown "0
+            // potatoes gained" on a real Metal/Large payout the player actually received.
             if (result.ok && result.voucherResult) {
-                const voucherEmbed = embedFactory.createWorkEmbed(userDisplayName, userDetails.workCount, 0, result.voucherResult.mob, false, 0, null, 0, result.voucherResult.result.statGrant);
+                const voucherResultValue = result.voucherResult.result;
+                const voucherPotatoesGained = typeof voucherResultValue === 'number' ? voucherResultValue : (voucherResultValue.potatoesGained || 0);
+                const voucherEmbed = embedFactory.createWorkEmbed(userDisplayName, userDetails.workCount, voucherPotatoesGained, result.voucherResult.mob, false, 0, null, 0, voucherResultValue.statGrant);
                 await interaction.followUp({ embeds: [voucherEmbed] });
             }
 
