@@ -18649,6 +18649,62 @@ no change — Rootbeard remains accelerant-eligible via its other three perks. F
 suites / 2220 tests, all passing** (net 0 new tests — existing assertions adjusted in place, one
 test scenario narrowed rather than removed).
 
-**Cross-repo note.** Needs porting to `financial-project`'s `gromp-economy/handler.ts` and
-`gromp-companions/handler.ts` duplicated Elder Rootbeard perk entries — tracked for this same
-session.
+**Cross-repo note.** Ported the identical swap into all THREE of `financial-project`'s duplicated
+Elder Rootbeard perk entries the same session — `gromp-economy/handler.ts`, `gromp-companions/
+handler.ts`, and (real behavioral parity, not just cosmetic — its `robChanceFlat` is actually live,
+feeding Heist's `npcRobChanceBonus` and companion leveling) `gromp-mercenary/handler.ts`. See that
+repo's own `NOTES_GROMP_WEB_INTEGRATION.md` entry #100. Both repos' feature branches were pushed to
+`main`/`master` the same session (full test suite and `tsc` re-verified clean post-merge).
+
+## Elder Rootbeard's regradeChanceBoostPercent restored 10% -> 50%, same day as the nerf
+
+**Asked:** Same-session follow-up to the 50%->10% nerf above — "make the regrade chance boost 25%
+for rootbeard," interrupted mid-implementation with "How much would it cost for a full regrade for
+work multi with and without rootbeard and check for rootbeard lvl 1 vs lvl 10," then "make it 50%
+again" once the numbers were in hand.
+
+**Found.** The original nerf's reasoning ("at 0.5 the perk was cutting the EXPECTED potato cost of
+clearing a regrade tier by up to 1/3... a 1.5x success-chance multiplier roughly divides the
+expected number of attempts... by 1.5x too") was correct **per tier** but never accounted for the
+failStack pity mechanic's effect on the **full ladder** a player actually grinds through. Built a
+proper expected-value simulation (`E[attempts] = sum of survival probabilities under chance_k =
+min(1, tier.chance*(1+boost) + k*failStackIncrease)`, summed cost-weighted across all 14
+work-multi tiers) instead of reasoning from the naive per-tier multiplier:
+
+- Full-ladder expected potato cost, no companion: **~458.0B**.
+- At boost=0.10 (the just-applied nerf): **452.2B** — only a **1.25%** reduction.
+- At boost=0.25 (the user's first follow-up ask, not implemented — see below): **444.0B**, **3.05%**.
+- At boost=0.50 (the original, pre-nerf value): **431.1B** — only **5.87%**.
+
+The late, low-chance, high-cost tiers (tier 13 alone is ~26% of the full ladder's expected cost)
+are dominated by failStack's additive pity climb regardless of the multiplicative boost — a 25%
+or even 50% boost on a 0.5%-1% base chance is a fraction-of-a-point nudge, swamped by successive
+failStack increments. Early tiers (50%/45%/40% base chance) DO see the naive-estimate-sized swing
+(0.5 boost cuts tier 0's own expected attempts by ~30%, matching "up to 1/3") but those tiers are
+cheap and a small fraction of the ladder's total cost — so the felt effect that drove "it saves
+alot of potatoes" is real and concentrated early, while the aggregate EV the nerf was trying to
+tame barely moves at all.
+
+Compared against `balance-audit.md`'s own established Mochi-vs-Rootbeard baseline (Mochi's
+continuous, always-on work-axis Income Power: **40.0%** fresh, **65.4%** maxed, realized on every
+single `/work` call and passive tick) — even the original 50% boost's 5.87% full-ladder reduction
+is a small fraction of that. Presented this analysis (full table, plus absolute potato figures for
+Rootbeard level 1 vs. level 10 at both 10% and the then-proposed 25%) before implementing anything,
+per this repo's "flag before implementing, don't implement design questions until asked" rule —
+the user reviewed the numbers and asked for 50% outright rather than 25%.
+
+**Changed.** `constants.js`: Elder Rootbeard's `regradeChanceBoostPercent` perk value, 0.1 -> 0.5
+(back to its original pre-nerf value). Rewrote the perk's explanatory comment block to replace the
+nerf's naive per-tier reasoning with the real full-ladder simulation numbers above, and to state
+explicitly that 0.5 is, if anything, still undervalued relative to Mochi rather than overtuned —
+correcting the record the original nerf comment left behind, not just re-flipping the number.
+`regrade.test.js`'s "Elder Rootbeard equipped" test updated from `TIER.chance * 1.1` (+10%) to
+`TIER.chance * 1.5` (+50%). `systems/companions.md`: roster table row and Perk Magnitude Range
+Guide's Regrade Success row both updated to +50%, with a pointer back to this entry for the
+same-day nerf/restore history rather than re-explaining it in the doc.
+
+**Tests.** Full suite: **122 suites / 2220 tests, all passing** (net 0 new tests — one existing
+assertion's expected multiplier updated in place).
+
+**Cross-repo note.** Still needs porting to `financial-project`'s three duplicated Elder Rootbeard
+perk entries this session — see below.

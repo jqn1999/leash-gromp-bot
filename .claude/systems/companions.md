@@ -521,7 +521,7 @@ a Legendary-or-better find rather than something you can roll on your very first
 | Prospector | Rare | `specialEncounterMultiplierBonus` +0.75 (+75% of Poison/Large/Mimic's own encounter chance, +150% of Companion's — a full double, not just 1.5x — nerfed-then-re-nerfed Taro Trader stays excluded alongside Metal/Sweet/Ancient/Golden/Golden Yam, see below) + `workMultiplierPercent` -8% (the cost) |
 | Spudsprite | Legendary | `workCooldownSkipChance` 15% + `workMultiplierPercent` +8% |
 | Rootcarver, the Cellar Keeper | Legendary | `starchSellBonusPercent` +12% + `passiveIncomePercent` +8% |
-| Elder Rootbeard | Mythic | `regradeChanceBoostPercent` +10% (multiplicative — boosts the regrade tier's own chance, e.g. 50% -> 55%; nerfed from +50% 2026-09-28) + `passiveIncomePercent` +10% + `starchCapacityPercent` +25% (swapped in for `robChanceFlat` 2026-09-28) + `starchSellBonusPercent` +15% |
+| Elder Rootbeard | Mythic | `regradeChanceBoostPercent` +50% (multiplicative — boosts the regrade tier's own chance, e.g. 50% -> 75%; nerfed to +10% then restored to +50% same-day 2026-09-28, see roadmap.md) + `passiveIncomePercent` +10% + `starchCapacityPercent` +25% (swapped in for `robChanceFlat` 2026-09-28) + `starchSellBonusPercent` +15% |
 | Mochi, the Undying Stray | Mythic | `passiveIncomePercent` +6% + `rebirthBonusPercent` +20% + `workMultiplierPercent` +12% + `workCooldownSkipChance` 20% |
 
 **Yukon, the Highwayman** (Legendary, **triple**-perk — a deliberate exception to the
@@ -573,7 +573,7 @@ Per-perk-type progression (blank = no companion currently grants that perk at th
 | Rival Confrontation Success Chance | — | — | 5% flat (Yukon) | — |
 | Starch Sell Bonus | — | 9% (Mole) | 12% (Rootcarver) | 15% (Elder Rootbeard) |
 | Passive Income | *(none by design)* | — | 8% (Rootcarver) | 6% (Mochi) / 10% (Elder Rootbeard) |
-| Regrade Success | — | — | — | +10% multiplicative (Elder Rootbeard) |
+| Regrade Success | — | — | — | +50% multiplicative (Elder Rootbeard) |
 | Rebirth Bonus | — | — | — | 20% (Mochi) |
 | Poison Immunity | Guinea Pig only | — | — | — |
 | Special Encounter Chance (Poison/Large/Mimic) | — | +75% (Prospector) | — | — |

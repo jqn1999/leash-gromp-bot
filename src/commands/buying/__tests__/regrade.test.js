@@ -90,10 +90,10 @@ test('no companion equipped: chanceOfSuccess is exactly the tier\'s own chance, 
     expect(call[7]).toBeCloseTo(TIER.chance);
 });
 
-test('Elder Rootbeard equipped (level 1, +10%): chanceOfSuccess is the tier\'s chance multiplied by 1.1, not added to', async () => {
+test('Elder Rootbeard equipped (level 1, +50%): chanceOfSuccess is the tier\'s chance multiplied by 1.5, not added to', async () => {
     const call = await runRegrade({ owned: [{ instanceId: 'elder-a', id: 'elder_rootbeard', workCount: 10 }], active: 'elder-a' }, 0.999999);
-    // TIER.chance (.5) * 1.1 = .55 — a flat +3% add would have given .53, not .55.
-    expect(call[7]).toBeCloseTo(TIER.chance * 1.1);
+    // TIER.chance (.5) * 1.5 = .75 — a flat +3% add would have given .53, not .75.
+    expect(call[7]).toBeCloseTo(TIER.chance * 1.5);
     expect(call[7]).not.toBeCloseTo(TIER.chance + 0.03);
 });
 
