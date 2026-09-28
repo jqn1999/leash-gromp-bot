@@ -1700,12 +1700,25 @@ const Companions = [
         // diversified perk on this companion.
         // Regrade perk reworked 2026-09-04, direct instruction — was regradeChanceFlat
         // (0.03, ADDED onto a regrade tier's own chance, e.g. 50% -> 53%). Renamed to
-        // regradeChanceBoostPercent (0.5) and now MULTIPLIES the tier's own chance instead
-        // (regrade.js: `currentTier.chance * (1 + boost) + failStack`) — 50% -> 75%, 10% ->
-        // 15%, matching every other tier proportionally rather than a flat +3 points that
-        // barely mattered on high-roll tiers and did nothing for the sub-5% late tiers.
+        // regradeChanceBoostPercent and now MULTIPLIES the tier's own chance instead
+        // (regrade.js: `currentTier.chance * (1 + boost) + failStack`), matching every
+        // other tier proportionally rather than a flat +3 points that barely mattered on
+        // high-roll tiers and did nothing for the sub-5% late tiers.
+        //
+        // Nerfed 0.5 -> 0.1 (2026-09-28, direct instruction — "it saves alot of
+        // potatoes"): at 0.5 the perk was cutting the EXPECTED potato cost of clearing a
+        // regrade tier by up to 1/3 (each attempt costs the same regardless of outcome, so
+        // a 1.5x success-chance multiplier roughly divides the expected number of attempts
+        // — and therefore the expected total potatoes spent — needed to clear a tier by
+        // 1.5x too), on top of the failStack this player already accumulates toward every
+        // future attempt regardless of companion. At 0.1, a 50%-chance tier goes 50% -> 55%
+        // instead of 50% -> 75%, and the sub-5% late tiers barely move at all (2% -> 2.2%)
+        // — still a real, felt edge at the tiers most players actually grind through, but
+        // no longer a dominant "always equip this before regrading" pick that made every
+        // other Mythic-tier choice look wrong by comparison whenever a regrade was on the
+        // table.
         perks: [
-            { type: "regradeChanceBoostPercent", value: 0.5 },
+            { type: "regradeChanceBoostPercent", value: 0.1 },
             { type: "passiveIncomePercent", value: 0.10 },
             { type: "robChanceFlat", value: 0.15 },
             { type: "starchSellBonusPercent", value: 0.15 }

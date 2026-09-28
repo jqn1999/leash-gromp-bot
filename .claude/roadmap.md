@@ -18465,3 +18465,40 @@ zero-chance companion source adds nothing, a strong companion can push the total
 roll that would've missed under the old cap now hits, no companion equipped still caps at 60%
 unchanged), `embedFactory.test.js` (+1 — `/skip-chances`' own `/work` field shows the new total).
 Full suite: **122 suites / 2219 tests, all passing** (up from 2210).
+
+## Elder Rootbeard's regradeChanceBoostPercent nerfed 50% -> 10%
+
+**Asked:** "let's nerf rootbeard a bit... lower it to 10% maybe" — confirmed after walking through
+the concrete before/after across a few tiers (50% tier: 75%→55%; 10% tier: 15%→11%; 0.5% tier:
+0.75%→0.55%) and flagging that this was a much bigger cut than "a bit" (an 80% relative reduction,
+making the perk the weakest of Rootbeard's four Mythic perks by a wide margin). Confirmed: "yes make
+it 10%, it saves alot of potatoes."
+
+**Why it needed trimming:** the perk multiplies a regrade tier's own success chance
+(`currentTier.chance * (1 + boost) + failStack`) rather than adding flat, so at 50% it was cutting
+the EXPECTED number of attempts — and therefore the expected total potatoes spent — to clear a tier
+by roughly 1.5x (each attempt costs the same regardless of outcome, so a 1.5x chance multiplier
+roughly divides the expected attempt count by 1.5), on top of the failStack pity counter every
+player already accumulates regardless of companion. That made Rootbeard close to a mandatory
+equip-before-regrading pick, overshadowing every other companion's own value proposition whenever a
+regrade was on the table.
+
+**Changed:** `constants.js`'s `elder_rootbeard` perk value: `regradeChanceBoostPercent` 0.5 → 0.1.
+No formula change (still multiplicative, still `regrade.js`'s existing
+`currentTier.chance * (1 + boost) + failStack`) — a pure number tune. Updated
+`companions.md`'s roster table (Elder Rootbeard's own row) and its per-perk-type progression table
+(the "Regrade Success" row was ALSO found stale during this pass — still showing the pre-2026-09-04
+flat 3% value, missed during that rework — fixed to the current multiplicative 10% alongside this
+nerf), and `economy-and-work.md`'s own worked example (50%→75%/10%→15% updated to 50%→55%/10%→11%).
+
+**Tests.** 2 existing tests in `regrade.test.js` updated for the new 1.1x multiplier (was 1.5x) and
+a new `rollBetween` value that still lands between the un-boosted and boosted chance at the smaller
+gap (0.52, was 0.6) — no new tests needed since this is a pure constant change with no new branch of
+behavior; every structural test (companion classification, leveling scaling, no-companion baseline)
+was already value-agnostic and needed no change. Full suite: **122 suites / 2219 tests, all
+passing**.
+
+**Cross-repo note.** Not yet ported to `financial-project` — that repo's own regrade implementation
+(if it reads companion perk values directly off its own copy of the Companions roster rather than
+a shared source) would need the same 0.5 → 0.1 change to stay in parity. Flag this to the user and
+offer to port it in the same session, per this repo's own CLAUDE.md cross-repo discipline.
