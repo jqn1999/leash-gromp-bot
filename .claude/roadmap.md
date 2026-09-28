@@ -18706,5 +18706,52 @@ same-day nerf/restore history rather than re-explaining it in the doc.
 **Tests.** Full suite: **122 suites / 2220 tests, all passing** (net 0 new tests — one existing
 assertion's expected multiplier updated in place).
 
-**Cross-repo note.** Still needs porting to `financial-project`'s three duplicated Elder Rootbeard
-perk entries this session — see below.
+**Cross-repo note.** Ported to `financial-project`'s two duplicated Elder Rootbeard perk entries
+that carry `regradeChanceBoostPercent` (`gromp-economy/handler.ts`, `gromp-companions/handler.ts`
+— `gromp-mercenary/handler.ts`'s own copy still carries the unrelated pre-rework
+`regradeChanceFlat` dead data, untouched per established precedent) the same session — see that
+repo's `NOTES_GROMP_WEB_INTEGRATION.md` entry #101. Both repos' feature branches were pushed to
+`main`/`master` the same session (full test suite / `tsc` re-verified clean post-merge).
+
+## Starch Capacity display bug: "Live:" companion bonus was missing from both profile embeds
+
+**Asked:** Player report — "it seems like my starch capacity didn't increase with rootbeard on.
+check." Investigated the actual code path rather than guessing from the symptom, per this repo's
+own root-cause-first convention.
+
+**Found.** The underlying mechanic was never broken — `buyStarch.js`'s purchase-cap check and
+`give.js`'s recipient-capacity check both already read `starchCapacityPercent` live and correctly
+(`Math.round(userDetails.maxStarches * (1 + starchCapacityPercent))`), so Rootbeard's +25% capacity
+genuinely does apply whenever a player actually buys or receives starches. The bug was purely in
+what the player could *see*: both profile embeds display the player's stats, and every analogous
+stat next to Starch Capacity — Work Multiplier, Passive Income, Bank Capacity — folds every live
+modifier (companion perk, rebirth's live %, guild/world buffs, potions) into a "Live: X (+Y)"
+figure. Starch Capacity never got this treatment:
+- `embedFactory.js`'s `createUserEmbed` (`/profile`, page 1) — "Current Starch Capacity:" printed
+  the raw `userDetails.maxStarches` with zero live-bonus computation at all, unlike the Bank
+  Capacity field directly above it.
+- `createUserStatsEmbed` (`/user-stats`) — "Current Starch Capacity Upgrade:" hardcoded a literal
+  `+ 0 + 0` (correct — starch has no `sweetPotatoBuffs`/regrade track, unlike the other three
+  stats) but had no "Live:" line at all, where Work Multiplier/Passive Income/Bank Capacity all do.
+
+Same failure class as the earlier Spud Keep Power display bug this session — a display read the
+wrong/incomplete thing while the real mechanic underneath was correct the whole time. Confirmed no
+other live modifier applies to `maxStarches` at all (`rebirthFactory.computeRebirthState` resets it
+to `Starch.STARTING_CAPACITY` with no buff term; no World Boss buff or Trading Post potion type
+targets starch capacity, only `starchDiscount` on the buy *price*) — so `starchCapacityPercent` is
+the only bonus these fields ever needed to fold in.
+
+**Changed.** `embedFactory.js`: both fields now compute
+`companionFactory.getActivePerkValue(userDetails, "starchCapacityPercent")` and show a "+bonus"
+figure when nonzero, mirroring the Bank Capacity field's exact pattern (`createUserEmbed`) and the
+Work Multiplier/Passive Income "Live:" line pattern (`createUserStatsEmbed`).
+
+**Tests.** New `embedFactory.test.js` describe block ("Starch Capacity 'Live:' figure reflects
+starchCapacityPercent") — 4 new tests: `createUserEmbed` with/without an equipped
+starchCapacityPercent companion, `createUserStatsEmbed`'s Live line present/absent the same way.
+No prior test covered either field's exact text, which is how this shipped unnoticed. Full suite:
+**122 suites / 2224 tests, all passing** (net +4 new tests).
+
+**Cross-repo note.** `financial-project` doesn't have an equivalent player-facing profile display
+for this stat in its own duplicated handlers (confirmed — no `maxStarches`/starch-capacity display
+logic in `gromp-economy`/`gromp-companions`), so nothing to port here.
