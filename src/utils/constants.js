@@ -14,6 +14,15 @@ const Work = {
     // DEFAULT_SKIP_CHANCE_CAP 90% -> 60% — both still purely safety valves at these odds,
     // just tighter ones now that the combined chance itself is capped lower.
     MAX_COOLDOWN_SKIP_CHAIN_LENGTH: 10,
+    // Bounty/Heist(/rob-npc)/Guild Raid's own separate chain-length safety valve, lowered
+    // 10 -> 5, 2026-09-29 direct instruction ("make the maximum amount of times bounty/
+    // rob-npc/guild raids can skip 5 times instead of 10") — deliberately its OWN constant
+    // rather than lowering MAX_COOLDOWN_SKIP_CHAIN_LENGTH itself, since that one is also
+    // /work's own chain cap and /work wasn't named in the instruction. Same "purely a
+    // safety valve, not a balance lever" reasoning as the constant above — a run of N skips
+    // in a row has probability chance^N, so this only bounds a pathological luck streak,
+    // never a realistic outcome at either 10 or 5.
+    MAX_BOUNTY_RAID_COOLDOWN_SKIP_CHAIN_LENGTH: 5,
     // Guinea Pig's poison rebate base — the fraction of a hit's raw (unmitigated) loss
     // it converts into a gain instead, at level 1 and hit #1 this week. Scales UP with
     // level via companionFactory.getGuineaPigRebate (level 10 = this * 1.45 =
@@ -2200,12 +2209,22 @@ const Raid = {
     // 2026-09-09 specifically via an INDEPENDENT constant so it wouldn't touch this one).
     // This is the single shared ceiling mercenaryFactory.js's Bounty success-chance calc,
     // bountyBoard.js's preview, and every Regular/Baby Guild Raid bracket (T1-T4 + Metal
-    // King) all read directly — bumping it here covers "merc bounties and guild raids" in
-    // one place, matching the instruction's own scope. Elite/Legendary/Stat Raid keep their
-    // own deliberately lower caps (0.75/0.6/0.5) — a real difficulty curve, not touched.
+    // King) all read directly.
+    //
+    // Elite/Legendary caps REMOVED 2026-09-29, direct instruction ("remove the caps for
+    // elite and legendary and let it also be 95% like everything else") — both used to sit
+    // at their own deliberately lower ceilings (0.75/0.6), a real difficulty curve on top of
+    // the difficulty ladder itself. Folded into the same combined retune that pulled every
+    // Elite/Legendary bracket's own DIFFICULTY down (see ELITE_T1_DIFFICULTY's own comment
+    // below) — the two together are what actually closes the gap: a higher cap alone would
+    // have done nothing for a roster that could never reach the OLD cap's own totalMultiplier
+    // threshold in the first place. MAXIMUM_STAT_RAID_SUCCESS_RATE (.5) was not part of this
+    // instruction and stays untouched — Stat Raid is a different reward shape (permanent
+    // stat grants, not potatoes) with no matching before/after EV comparison driving this
+    // change.
     REGULAR_MAXIMUM_RAID_SUCCESS_RATE: .95,
-    ELITE_MAXIMUM_RAID_SUCCESS_RATE: .75,
-    LEGENDARY_MAXIMUM_RAID_SUCCESS_RATE: .6,
+    ELITE_MAXIMUM_RAID_SUCCESS_RATE: .95,
+    LEGENDARY_MAXIMUM_RAID_SUCCESS_RATE: .95,
     MAXIMUM_STAT_RAID_SUCCESS_RATE: .5,
     RAID_TIMER_SECONDS: 3600,
     // Guild Raid race-condition fix (2026-09-18, direct instruction) — two elders/leaders
@@ -2430,19 +2449,38 @@ const Raid = {
     // 3x target once compared to the correct reference point. Penalty:reward ratios
     // (1.5x Elite, 2.0x Legendary) preserved exactly, same as every prior retune. See
     // balance-audit.md's 2026-09-12 entry (fifth retune) for the full derivation.
-    ELITE_T1_DIFFICULTY: 885,
+    // Difficulty cut 2026-09-29, direct instruction, same session as the cap removal
+    // above: "pull down difficulty across the board a bit so that max elite t1 difficulty
+    // is around 250/player to cap. T4 elite around 400. Legendary t1 600. Legendary t4
+    // 800." REWARD/PENALTY below are UNCHANGED — only these DIFFICULTY values moved, so
+    // this is a pure "reachable sooner" cut, not a payout buff (though removing the old
+    // 0.75/0.6 caps above means the effective peak EV at very high power did also rise,
+    // since a roster can now push success chance all the way to 95% instead of plateauing
+    // early — that's the cap-removal's own effect, not this difficulty cut's).
+    //
+    // "250/player" read the same way the Raid EV Curves artifact (`.claude/roadmap.md`,
+    // 2026-09-19) and this same session's own EV analysis already established: a 4-person
+    // EQUAL-power roster run through the live team-power formula (getEffectiveRaidPower-
+    // Breakdown — rank-weighted decay 0.5/0.5²/floor 0.25 + 0.25, sum 2.0, times a 9%
+    // headcount bonus at 4 members) converts a raw per-player power P into totalMultiplier
+    // = P * 2.18. Difficulty is solved so that totalMultiplier hits the NEW shared 95% cap
+    // exactly at the target power: difficulty = P * 2.18 * 0.95. T1/T4 were the two values
+    // actually specified; T2/T3 fill the ramp geometrically between them (same "smooth
+    // ramp, no cliff" shape every T1-T4 ladder in this file already follows) rather than
+    // being independently chosen.
+    ELITE_T1_DIFFICULTY: 518,
     ELITE_T1_REWARD: 29127291,
     ELITE_T1_PENALTY: -43690937,
 
-    ELITE_T2_DIFFICULTY: 1053,
+    ELITE_T2_DIFFICULTY: 606,
     ELITE_T2_REWARD: 40411972,
     ELITE_T2_PENALTY: -60617958,
 
-    ELITE_T3_DIFFICULTY: 1252,
+    ELITE_T3_DIFFICULTY: 708,
     ELITE_T3_REWARD: 54938872,
     ELITE_T3_PENALTY: -82408308,
 
-    ELITE_T4_DIFFICULTY: 1489,
+    ELITE_T4_DIFFICULTY: 828,
     ELITE_T4_REWARD: 73491902,
     ELITE_T4_PENALTY: -110237853,
 
@@ -2456,20 +2494,23 @@ const Raid = {
     // See ELITE_T1_DIFFICULTY's own comment above for the full 2026-09-12 accessibility
     // retune (both brackets solved together, same methodology, same commit), and its
     // "Fifth pass" addendum for the 2026-09-12 x2.1833 reward buff (Legendary scaled by
-    // the same factor as Elite, same commit).
-    LEGENDARY_T1_DIFFICULTY: 3000,
+    // the same factor as Elite, same commit). Difficulty cut again 2026-09-29 — see
+    // ELITE_T1_DIFFICULTY's own 2026-09-29 comment for the full derivation (same session,
+    // same "600/player T1, 800/player T4 to cap" instruction, same P*2.18*0.95 formula and
+    // geometric T2/T3 fill). REWARD/PENALTY unchanged.
+    LEGENDARY_T1_DIFFICULTY: 1243,
     LEGENDARY_T1_REWARD: 101698148,
     LEGENDARY_T1_PENALTY: -203396296,
 
-    LEGENDARY_T2_DIFFICULTY: 3568,
+    LEGENDARY_T2_DIFFICULTY: 1368,
     LEGENDARY_T2_REWARD: 147818701,
     LEGENDARY_T2_PENALTY: -295637402,
 
-    LEGENDARY_T3_DIFFICULTY: 4244,
+    LEGENDARY_T3_DIFFICULTY: 1506,
     LEGENDARY_T3_REWARD: 207805497,
     LEGENDARY_T3_PENALTY: -415610994,
 
-    LEGENDARY_T4_DIFFICULTY: 5047,
+    LEGENDARY_T4_DIFFICULTY: 1657,
     LEGENDARY_T4_REWARD: 285108348,
     LEGENDARY_T4_PENALTY: -570216696,
 
@@ -3666,6 +3707,18 @@ const RobNpc = {
     // matching penalty off of.
     REWARD_ROLL_SUCCESS_SPREAD: 0.12,
 
+    // Overall success-chance ceiling, added 2026-09-29, direct instruction ("make rob-npc
+    // have a cap of 95% success") — matches Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE's own
+    // 0.95. Before this, each tier's own maxChance (0.50-0.80) bounded the flat rank-based
+    // formula, but the companion (`robChanceFlat`) and Mercenary Buff (`robChance`) bonuses
+    // were added AFTER that clamp with no ceiling of their own — a stacked Yukon (+12%) plus
+    // a maxed robChance Mercenary Buff could in theory push successChance past 100%.
+    // mercenaryFactory.resolveNpcRob applies this as the final clamp, after every bonus is
+    // added — the one place in the whole successChance formula that needed it, since every
+    // earlier term (tierChance, the reward-roll risk adjustment) was already internally
+    // bounded to [0,1] on its own.
+    MAXIMUM_SUCCESS_RATE: 0.95,
+
     TIERS: [
         {
             key: 'market_stall',
@@ -3712,7 +3765,10 @@ const RobNpc = {
             payoutCap: 4500,          // was 10,000 (matched Work.MAX_LARGE_POTATO) — cut x0.4580, see royal_treasury's own "Fourth pass" comment
             hasPenalty: true,         // real stakes start here — a whiff costs potatoes, not just the timer
             penaltyPercentOfCap: 0.5, // x1.0 — unchanged base rate
-            notorietyPerWin: 2,
+            // Lowered 2 -> 1, 2026-09-29, direct instruction ("Lower merchant wagon to 1,
+            // power noble vault and royal treasury to 2") — no longer a clean 1/2/3/4
+            // per-tier ascent; see noble_vault/royal_treasury's own comments below.
+            notorietyPerWin: 1,
             statGrantChanceOnWin: 0
         },
         {
@@ -3740,7 +3796,10 @@ const RobNpc = {
             payoutCap: 9000,           // was 20,000 — cut x0.4580, see royal_treasury's own "Fourth pass" comment
             hasPenalty: true,
             penaltyPercentOfCap: 0.75, // x1.5, same factor Guild Raid's own Elite penalty uses
-            notorietyPerWin: 3,
+            // Lowered 3 -> 2, 2026-09-29, direct instruction ("Lower merchant wagon to 1,
+            // power noble vault and royal treasury to 2") — now ties with royal_treasury's
+            // own notorietyPerWin below, deliberately (same instruction covers both).
+            notorietyPerWin: 2,
             statGrantChanceOnWin: 0
         },
         {
@@ -3815,7 +3874,12 @@ const RobNpc = {
             payoutCap: 20500,          // was 45,000 — cut x0.4580
             hasPenalty: true,
             penaltyPercentOfCap: 1.0, // x2.0, same factor Guild Raid's own Legendary penalty uses — unchanged
-            notorietyPerWin: 4,
+            // Lowered 4 -> 2, 2026-09-29, direct instruction ("Lower merchant wagon to 1,
+            // power noble vault and royal treasury to 2") — ties with noble_vault's own
+            // notorietyPerWin above, deliberately (same instruction covers both). The
+            // per-tier ladder is no longer a clean 1/2/3/4 ascent: market_stall 1,
+            // merchant_wagon 1, noble_vault 2, royal_treasury 2.
+            notorietyPerWin: 2,
             // The one thing Tiers I-III never offer — a 5% roll on a WIN into
             // mercenaryFactory.pickStatGrant('I', userDetails), reusing BountyStatReward's
             // existing TIER_I_GRANT pool rather than a new grant table — gives Rank 6 a
@@ -3865,9 +3929,11 @@ const Rival = {
     // than a tier letter the resolver itself no longer produces.
     NOTORIETY_PER_BOUNTY_TIER: { I: 1, II: 2, III: 3 },
     // Per-tier notoriety on a /rob-npc win now lives on each RobNpc.TIERS entry's own
-    // notorietyPerWin (1/2/3/4 for Market Stall/Merchant's Wagon/Noble's Vault/The Royal Treasury)
-    // instead of a single flat constant here — removed alongside roadmap #50's Heist
-    // Ladder rework, mirroring NOTORIETY_PER_BOUNTY_TIER's own per-tier shape just above.
+    // notorietyPerWin (1/1/2/2 for Market Stall/Merchant's Wagon/Noble's Vault/The Royal
+    // Treasury — was 1/2/3/4 until 2026-09-29, direct instruction: "Lower merchant wagon to
+    // 1, power noble vault and royal treasury to 2") instead of a single flat constant here
+    // — originally removed alongside roadmap #50's Heist Ladder rework, mirroring
+    // NOTORIETY_PER_BOUNTY_TIER's own per-tier shape just above.
     CONFRONTATION_THRESHOLD: 20,
     // Gain-taper threshold for mercenaryFactory.getNotorietyGain (2026-09-12, direct
     // instruction, raised 20 -> 50 on 2026-09-13: "make the notoriety halving start at 50
@@ -3984,12 +4050,19 @@ const RivalMercenaries = {
 // stable at any power level" design goal). getRaidLevelInfo's guild LEVEL (not raw power)
 // does feed in as of 2026-09-11 — see LEVEL_SUCCESS_BONUS below for why.
 const GuildRival = {
-    // Baby/Regular win: +1 (Baby reuses Regular's own T1 closure object literally, so no
-    // special-casing is needed — see startRaid.js's babyRaidScenarios). Elite: +2,
-    // Legendary: +3 — same 1/2/3 escalation NOTORIETY_PER_BOUNTY_TIER already uses for
-    // Bounty's I/II/III bands. Stat Raid is excluded entirely (not present as a key here) —
-    // a flat-cost gamble for a permanent multiplier, not a combat-flavored win/loss.
-    INFAMY_PER_RAID_MODE: { baby: 1, regular: 1, elite: 2, legendary: 3 },
+    // Baby/Regular win: +2 (Baby reuses Regular's own T1 closure object literally, so no
+    // special-casing is needed — see startRaid.js's babyRaidScenarios). Elite: +4,
+    // Legendary: +6. Stat Raid is excluded entirely (not present as a key here) — a
+    // flat-cost gamble for a permanent multiplier, not a combat-flavored win/loss.
+    //
+    // Doubled 2026-09-29, direct instruction ("Is it 1/2/3 for regular elite legendary
+    // right now? If so double it") — was baby:1/regular:1/elite:2/legendary:3, the same
+    // 1/2/3 escalation NOTORIETY_PER_BOUNTY_TIER uses for Bounty's I/II/III bands. `baby`
+    // doubled too even though only regular/elite/legendary were named — it's designed to
+    // always mirror regular's own value exactly (see this comment's own first sentence),
+    // so leaving it at 1 while regular moved to 2 would have broken that invariant rather
+    // than just not touching an unrelated value.
+    INFAMY_PER_RAID_MODE: { baby: 2, regular: 2, elite: 4, legendary: 6 },
     // 10, not Rival's 20 — a guild has exactly ONE accrual stream (raid wins, on
     // Raid.RAID_TIMER_SECONDS, identical to Bounty's own cooldown) versus a mercenary's TWO
     // independent streams (Bounty + the twice-as-fast Heist), so real-time pacing to unlock

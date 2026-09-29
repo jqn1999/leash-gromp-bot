@@ -74,8 +74,11 @@ module.exports = {
 // a WIN (2026-09-05 cooldown-skip overhaul, direct instruction: "on a loss there is no
 // cooldown skip and no auto trigger") — mirrors work.js's performWork/takeBounty.js's
 // runBountyAttempt exactly, right down to the isChainedReply/chainDepth/
-// MAX_COOLDOWN_SKIP_CHAIN_LENGTH shape (see cooldownFactory.js and
-// .claude/systems/mercenary-bounties.md for the full writeup).
+// MAX_BOUNTY_RAID_COOLDOWN_SKIP_CHAIN_LENGTH shape (see cooldownFactory.js and
+// .claude/systems/mercenary-bounties.md for the full writeup). Chain cap lowered from the
+// shared Work.MAX_COOLDOWN_SKIP_CHAIN_LENGTH (10, still /work's own) to its own separate
+// Work.MAX_BOUNTY_RAID_COOLDOWN_SKIP_CHAIN_LENGTH (5) 2026-09-29, direct instruction — see
+// that constant's own comment in constants.js.
 async function runNpcRobAttempt(interaction, userId, username, userDisplayName, heistTierKey, isChainedReply, chainDepth) {
     const userDetails = await requireUserDetails(interaction, userId, username, userDisplayName);
     if (!userDetails) return;
@@ -283,7 +286,7 @@ async function runNpcRobAttempt(interaction, userId, username, userDisplayName, 
         }
     }
 
-    if (shouldChain && chainDepth < Work.MAX_COOLDOWN_SKIP_CHAIN_LENGTH) {
+    if (shouldChain && chainDepth < Work.MAX_BOUNTY_RAID_COOLDOWN_SKIP_CHAIN_LENGTH) {
         await runNpcRobAttempt(interaction, userId, username, userDisplayName, heistTierKey, true, chainDepth + 1);
     }
 }

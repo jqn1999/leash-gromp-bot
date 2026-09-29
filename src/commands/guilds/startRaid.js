@@ -1805,8 +1805,10 @@ async function resolveRaid(interaction, raidSelection, isChainedReply, chainDept
     // cooldown skip and no auto trigger") — shouldChain is only ever set true inside
     // resolveRaidCooldown's own WIN branch on a roll hit, so a loss (or a win that missed
     // the roll) never reaches here. Mirrors takeBounty.js's runBountyAttempt/robNpc.js's
-    // runNpcRobAttempt chain check exactly.
-    if (shouldChain && chainDepth < Work.MAX_COOLDOWN_SKIP_CHAIN_LENGTH) {
+    // runNpcRobAttempt chain check exactly, including the shared (not /work's own)
+    // Work.MAX_BOUNTY_RAID_COOLDOWN_SKIP_CHAIN_LENGTH cap (5, lowered from the shared 10
+    // 2026-09-29 — see that constant's own comment in constants.js).
+    if (shouldChain && chainDepth < Work.MAX_BOUNTY_RAID_COOLDOWN_SKIP_CHAIN_LENGTH) {
         await resolveRaid(interaction, raidSelection, true, chainDepth + 1);
     }
 }

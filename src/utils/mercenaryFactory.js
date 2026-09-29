@@ -269,7 +269,10 @@ async function resolveNpcRob(userDetails, workGainAmount, catchUpBonus = 0, heis
     const rewardRoll = getRandomFromInterval(.8, 1.2);
     const rewardRollT = (rewardRoll - .8) / .4; // 0 (smallest reward) .. 1 (largest reward)
     const riskAdjustedChance = tierChance - RobNpc.REWARD_ROLL_SUCCESS_SPREAD * (rewardRollT - 0.5);
-    const successChance = Math.max(0, Math.min(1, riskAdjustedChance)) + npcRobChanceBonus;
+    // RobNpc.MAXIMUM_SUCCESS_RATE (2026-09-29) is the final clamp, applied AFTER
+    // npcRobChanceBonus — every earlier term is already bounded to [0,1] on its own, but the
+    // companion/Mercenary Buff bonus added here never had a ceiling of its own before this.
+    const successChance = Math.min(RobNpc.MAXIMUM_SUCCESS_RATE, Math.max(0, Math.min(1, riskAdjustedChance)) + npcRobChanceBonus);
     const won = Math.random() < successChance;
 
     // Computed either way now (win or loss) — the loss side scales gently off the same
