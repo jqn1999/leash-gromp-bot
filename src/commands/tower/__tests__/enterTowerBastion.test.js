@@ -64,6 +64,10 @@ beforeEach(() => {
     dynamoHandler.updateUserFields.mockResolvedValue({ Attributes: {} });
 });
 
+// Kill switch (2026-09-29) — TOWER_DISABLED in enter-tower.js short-circuits the callback
+// before any of this logic runs; see enter-tower.test.js's own matching comment. Skipped
+// (not deleted/rewritten) so this coverage comes right back once TOWER_DISABLED flips off.
+describe.skip('Bastion wiring (skipped while TOWER_DISABLED is true — see tower.md)', () => {
 test("a Bastion-equipped user's level-1 towerRewardBonus (0.10) and available ward are resolved and passed into towerFactory's constructor", async () => {
     const user = bastionOwner();
     dynamoHandler.findUser.mockResolvedValue(user);
@@ -169,3 +173,4 @@ test('a player with no companion equipped at all gets rewardBonus 0 and hasWard 
 
     expect(towerFactory).toHaveBeenCalledWith(interaction, 'User', tC.ENTRY_GATE_MULTI, false, 0, false);
 });
+}); // end describe.skip('Bastion wiring ...')

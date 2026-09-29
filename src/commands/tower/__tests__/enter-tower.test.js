@@ -54,6 +54,12 @@ beforeEach(() => {
     dynamoHandler.updateUserFields.mockResolvedValue({ Attributes: {} });
 });
 
+// Kill switch (2026-09-29) — TOWER_DISABLED in enter-tower.js short-circuits the callback
+// before any of the logic these tests exercise ever runs. Confirmed separately below; every
+// test in this describe block still documents real, correct behavior for when the flag flips
+// back to false, so they're skipped (not deleted/rewritten) rather than left to fail against
+// the disabled path. Un-skip this block in the same commit that flips TOWER_DISABLED back off.
+describe.skip('normal gameplay (skipped while TOWER_DISABLED is true — see tower.md)', () => {
 test('a player below ENTRY_GATE_MULTI on raw workMultiplierAmount alone is barred', () => {
     // rebirthCount 0 => 0% live rebirth bonus, so effective power === raw power here.
     dynamoHandler.findUser.mockResolvedValue(baseUser({ workMultiplierAmount: tC.ENTRY_GATE_MULTI - 1, rebirthCount: 0 }));
@@ -280,4 +286,15 @@ describe('processRewardPayouts stat crediting (batched write)', () => {
         expect(fieldValues).toContain('5,000'); // potatoes
         expect(fieldValues).toContain('0.20'); // work multiplier
     });
+});
+}); // end describe.skip('normal gameplay ...')
+
+test('TOWER_DISABLED replies with a maintenance message and never reads or writes anything', async () => {
+    const interaction = fakeInteraction();
+
+    await callback({}, interaction);
+
+    expect(interaction.editReply).toHaveBeenCalledWith(expect.stringMatching(/temporarily disabled/i));
+    expect(dynamoHandler.findUser).not.toHaveBeenCalled();
+    expect(towerFactory).not.toHaveBeenCalled();
 });

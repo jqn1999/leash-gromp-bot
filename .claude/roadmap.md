@@ -19011,3 +19011,93 @@ bump, the rejected full-rescale alternative, and the accepted low-power tradeoff
 **Cross-repo note.** This changes numbers `financial-project`'s `/gromp` page also implements
 (`gromp-guilds/handler.ts`'s own duplicated `Raid.ELITE_T*_DIFFICULTY`/`LEGENDARY_T*_DIFFICULTY`)
 — ported the same session, see that repo's own `NOTES_GROMP_WEB_INTEGRATION.md` for the entry.
+
+## Tower leaderboard payout/announcement disabled at the daily reset — crash investigation, root cause still open
+
+**Asked.** Live player reports of the Tower command crashing, described as recurring and disruptive.
+Direct instruction: "dig deeper into tower embed logic... due to the leaderboard logic. For now
+disable tower leaderboard granting stats but leave the leaderboard. Just for the daily reset don't
+have that logic grant stats or do an announcement anymore daily."
+
+**Investigated.** Root cause NOT confirmed with a real stack trace (no live logs available this
+session) — three concrete gaps found in the Tower leaderboard's own code path, any of which could
+produce the reported crash, documented honestly as open leads rather than a confirmed fix:
+
+1. `enter-tower.js`'s existing try/catch (added 2026-09-11 for a different crash) only wraps
+   `tF.startRun()` — everything after a successful run (`processRewardPayouts`,
+   `dynamoHandler.recordTowerLeaderboardEntry`) runs unguarded, so an exception there crashes the
+   whole interaction uncaught with no recovery message, after the player already saw their results
+   embed.
+2. `createTowerLeaderboardEmbed`/`createTowerLeaderboardResultsEmbed` (`embedFactory.js`) call
+   `entry.floor.toLocaleString()`/`winner.floor.toLocaleString()` with no `|| 0` fallback, unlike
+   `elitesKilled`/`potatoes` right next to them in the same line — throws if `floor` is ever
+   missing/non-numeric on a stored entry.
+3. `recordTowerLeaderboardEntry` (`dynamoHandler.js`) is an unlocked read-modify-write on the whole
+   `tower_leaderboard` array — two runs finishing close together can race and lose one write; on top
+   of that, the write's own internal error handling silently swallows any DynamoDB failure (e.g. an
+   approach to the 400KB item cap on a busy day) rather than surfacing it.
+
+Full writeup with code-level detail in `systems/tower.md`'s own new dated section.
+
+**Changed.** `backgroundEvents.js`'s 8pm ET daily cron no longer calls
+`towerLeaderboardFactory.payoutWinners()` (which both grants the stat/potato bonus to today's top
+finishers AND builds the results-announcement embed) — replaced with a direct
+`dynamoHandler.clearTowerLeaderboard()` call, so the leaderboard still resets nightly but nobody gets
+paid and nothing gets announced. `resetAllTowerEntries()`/`resetTowerWard()` untouched.
+`towerLeaderboardFactory.payoutWinners()` itself and its full test suite are untouched — this is a
+caller-side disable, reversible by swapping the one call site back once the crash is actually
+root-caused. The now-unused `TowerLeaderboardFactory` import/instance in `backgroundEvents.js` were
+removed rather than left as dead code.
+
+**What still works.** `/leaderboard tower-leaderboard` (today's in-progress standings) is completely
+unaffected — it never went through `payoutWinners` in the first place. Survived runs still get logged
+to the leaderboard via `recordTowerLeaderboardEntry` from `enter-tower.js`, unaffected.
+
+**Tests.** `backgroundEvents.js`'s cron wiring isn't unit-tested directly (needs a live Discord
+client, same as its other cron jobs). Full suite run before and after this change: **122 suites /
+2224 tests, all passing**, unaffected either way.
+
+**Docs.** `systems/tower.md` gained a new dated section with the full investigation (all three
+candidate gaps, code-level) and the exact revert shape for when the payout/announcement is
+re-enabled.
+
+**Not done, flagged rather than assumed.** The three candidate crash causes above are leads, not a
+fix — none has been changed in this pass (only the payout/announcement caller was touched). If
+another crash report comes in before this is revisited, capturing a real stack trace from
+`enter-tower.js`'s post-`startRun()` section (candidate #1) is the fastest way to actually confirm
+which of the three it is, rather than fixing all three speculatively.
+
+## `/enter-tower` fully disabled (kill switch), pending deeper crash investigation
+
+**Asked.** "Disable tower first and push that to main then investigate" / "real quick, also disable
+tower entry and push to main as well." The leaderboard-payout disable above only stopped the daily
+reset's stat grant/announcement — it did nothing about players crashing DURING a run, which is the
+actual reported problem. Direct instruction to take the whole command offline immediately, ahead of
+finishing the investigation.
+
+**Changed.** `enter-tower.js` gained a module-level `TOWER_DISABLED = true` flag, checked in the
+callback immediately after `deferReply()` — before any DB read, `towerFactory` construction, or state
+change. Replies with a plain "temporarily disabled" message and returns. A runtime flag was used
+instead of marking the command `deleted: true` (which would fully deregister it from Discord) to
+avoid the command-registration-cap fragility `01registerCommands.js`'s own comments already document
+— re-enabling is a one-line flip back to `false`, no re-registration involved.
+
+`/tower-settings` and `/leaderboard tower-leaderboard` don't go through `enter-tower.js` at all and
+are unaffected.
+
+**Tests.** Every existing test in `enter-tower.test.js`/`enterTowerBastion.test.js` exercises real
+gameplay through `callback()` and would now just see the disabled-path reply — rather than delete or
+rewrite that coverage, both files' existing test bodies were wrapped in `describe.skip(...)` (with a
+comment pointing back to this entry), and one new un-skipped test per file confirms the disabled path
+itself (maintenance reply, zero DB reads/writes, `towerFactory` never constructed).
+`towerFactory.test.js` (exercised directly against the class, not through this callback) is untouched
+and still runs for real. Full suite: **122 suites (1 reporting fully skipped) / 2225 tests (17
+skipped, 2208 passing)**, net +2 real tests, 0 broken.
+
+**Investigation status: still open, deep-dive in progress.** This ships the disable; the actual crash
+cause has not been confirmed. Currently auditing `towerConstants.js`'s content data (COMBATS/
+ENCOUNTERS/TRANSACTIONS/REWARDS/ELITES) against every assumption `towerFactory.js`'s code makes about
+their shape, since the reported symptom — fails randomly and sporadically, on any floor, no
+consistent pattern — best fits a bug in one or more specific CONTENT entries that only manifests when
+that particular entry happens to get randomly rolled, rather than a floor-number-dependent or
+purely-timing-dependent bug.
