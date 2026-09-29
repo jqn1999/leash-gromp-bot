@@ -156,11 +156,29 @@ async function processRewardPayouts(interaction, userId, rewards, username, user
     return processTowerCompanionRewards(userId, userDetails, floor, elitesSurvivedCount, towerCompanionHits, wardUsed);
 }
 
+// Full command kill switch (2026-09-29, direct instruction — live player crash reports tied
+// to this command, root cause not yet pinned down with a real stack trace; see tower.md's
+// own dated section for the investigation). Checked first, before any DB read or state
+// change, so a disabled run has zero chance of hitting whatever is actually crashing —
+// unlike marking this command `deleted: true` (which would deregister it from Discord
+// entirely and re-registering later risks the same command-count-cap fragility
+// 01registerCommands.js's own comments already document), this keeps the command visibly
+// registered and just declines every invocation with an honest, temporary-sounding message.
+// One-line revert: flip this back to `false` once the crash is actually root-caused and
+// fixed. `/leaderboard tower-leaderboard` and `/tower-settings` are both untouched — neither
+// goes through this file at all.
+const TOWER_DISABLED = true;
+
 module.exports = {
     name: "enter-tower",
     description: "Enter the tater tower once a day",
     callback: async (client, interaction) => {
         await interaction.deferReply();
+
+        if (TOWER_DISABLED) {
+            await interaction.editReply("🚧 The Tater Tower is temporarily disabled while we investigate a stability issue — sorry for the interruption! Check back soon.");
+            return;
+        }
 
         const [userId, username, userDisplayName] = getUserInteractionDetails(interaction);
         const userDetails = await requireUserDetails(interaction, userId, username, userDisplayName);

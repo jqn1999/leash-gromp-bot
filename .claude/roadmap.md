@@ -19066,3 +19066,38 @@ fix — none has been changed in this pass (only the payout/announcement caller 
 another crash report comes in before this is revisited, capturing a real stack trace from
 `enter-tower.js`'s post-`startRun()` section (candidate #1) is the fastest way to actually confirm
 which of the three it is, rather than fixing all three speculatively.
+
+## `/enter-tower` fully disabled (kill switch), pending deeper crash investigation
+
+**Asked.** "Disable tower first and push that to main then investigate" / "real quick, also disable
+tower entry and push to main as well." The leaderboard-payout disable above only stopped the daily
+reset's stat grant/announcement — it did nothing about players crashing DURING a run, which is the
+actual reported problem. Direct instruction to take the whole command offline immediately, ahead of
+finishing the investigation.
+
+**Changed.** `enter-tower.js` gained a module-level `TOWER_DISABLED = true` flag, checked in the
+callback immediately after `deferReply()` — before any DB read, `towerFactory` construction, or state
+change. Replies with a plain "temporarily disabled" message and returns. A runtime flag was used
+instead of marking the command `deleted: true` (which would fully deregister it from Discord) to
+avoid the command-registration-cap fragility `01registerCommands.js`'s own comments already document
+— re-enabling is a one-line flip back to `false`, no re-registration involved.
+
+`/tower-settings` and `/leaderboard tower-leaderboard` don't go through `enter-tower.js` at all and
+are unaffected.
+
+**Tests.** Every existing test in `enter-tower.test.js`/`enterTowerBastion.test.js` exercises real
+gameplay through `callback()` and would now just see the disabled-path reply — rather than delete or
+rewrite that coverage, both files' existing test bodies were wrapped in `describe.skip(...)` (with a
+comment pointing back to this entry), and one new un-skipped test per file confirms the disabled path
+itself (maintenance reply, zero DB reads/writes, `towerFactory` never constructed).
+`towerFactory.test.js` (exercised directly against the class, not through this callback) is untouched
+and still runs for real. Full suite: **122 suites (1 reporting fully skipped) / 2225 tests (17
+skipped, 2208 passing)**, net +2 real tests, 0 broken.
+
+**Investigation status: still open, deep-dive in progress.** This ships the disable; the actual crash
+cause has not been confirmed. Currently auditing `towerConstants.js`'s content data (COMBATS/
+ENCOUNTERS/TRANSACTIONS/REWARDS/ELITES) against every assumption `towerFactory.js`'s code makes about
+their shape, since the reported symptom — fails randomly and sporadically, on any floor, no
+consistent pattern — best fits a bug in one or more specific CONTENT entries that only manifests when
+that particular entry happens to get randomly rolled, rather than a floor-number-dependent or
+purely-timing-dependent bug.
