@@ -18936,5 +18936,78 @@ matching its existing footnote convention. Also fixed an unrelated pre-existing 
 same bullet — "Corner Store" corrected to "Market Stall" (the tier's real `label`), since it was
 directly adjacent to the values already being touched.
 
-**Cross-repo note.** Needs porting to `financial-project`'s `gromp-mercenary/handler.ts` (its own
-duplicated `RobNpc.TIERS`) — tracked for this same session.
+**Cross-repo note.** Ported to `financial-project`'s `gromp-mercenary/handler.ts` (its own
+duplicated `RobNpc.TIERS`) the same session — see that repo's own `NOTES_GROMP_WEB_INTEGRATION.md`
+entry #107.
+
+## Elite raid difficulty re-raised to flatten its ratio-vs-merc spike; Legendary bumped alongside it
+
+**Asked:** Follow-up to the 2026-09-29 cap-removal/difficulty-cut above. After that cut, a
+Monte-Carlo re-simulation of the guild-vs-solo-merc EV ratio (maxed level-8 guild with Cinderroot,
+regular/elite/legendary, vs a maxed Solo Merc — Rank 6, Yukon maxed, Bounty + Heist combined,
+starch-currency wins valued at `Bounty.STARCH_REFERENCE_PRICE`, 13k/unit) surfaced a shape problem:
+"Is there anyway to get the 150+ power band to not swing so strongly from 150 4.1x and the
+5.2-5.6x advantage over merc and move those to later in the band? It feels weird that guild spikes
+so hard there early then tapers out." Root cause traced to the difficulty cut itself: Elite's new
+(low) difficulty let a level-8 roster hit the shared 95% success cap around power 338, after which
+the ratio could only fall (reward stayed flat while merc's own income kept climbing with no nearby
+ceiling of its own) — a saturation artifact of the cut, not a reward-side problem. Simulated a
+candidate fix (raise Elite's difficulty so the same cap-saturation point lands later, roughly
+1.618x) and confirmed it flattened and delayed the peak (5.61x → 3.35x, peak moved from P≈338 to
+P≈600) at the cost of a new low-power dip below merc around P=80-150 — flagged that tradeoff to the
+user before implementing, along with the fact that raising Elite's T4 that far would put it above
+Legendary's then-current T1 and break the cliff-guard invariant `raidFactory.test.js` already
+enforces (each mode's easiest tier must stay harder than the previous mode's hardest). Asked
+directly: "Does legendary need to change too as part of this candidate elite difficulty moving" —
+confirmed via direct computation (1340 > 1243) that yes, structurally, not optionally. Simulated a
+full proportional 1.618x rescale of Legendary first and rejected it — it dragged Legendary's own
+already-reasonable peak (≈9.3x around P=700-800) out past P=1200 and drove its EV negative at
+P=150, since Legendary's curve was never the thing that needed fixing. Simulated a smaller,
+minimal bump instead (raise only enough to clear Elite's new T4 with reasonable headroom, keeping
+Legendary's own existing T4/T1 growth ratio rather than re-deriving from scratch) and presented
+both candidates for confirmation. Direct instruction: "Let's go with B and bump the elite
+difficulty like you suggested."
+
+**Changed.** `constants.js`, DIFFICULTY only on both modes — REWARD/PENALTY untouched throughout:
+- `Raid.ELITE_T1_DIFFICULTY` 518 → 828, `T2` 606 → 972, `T3` 708 → 1141, `T4` 828 → 1340. Re-solved
+  via the same `difficulty = P * 2.18 * 0.95` formula the prior cut used (4-person equal-power
+  roster, rank-weighted team-power decay + headcount bonus, 95% cap), just against later target
+  powers (T1's cap-reaching power ≈250/player → ≈400/player, T4's ≈400/player → ≈650/player), with
+  T2/T3 filled geometrically between T1 and T4 as always.
+- `Raid.LEGENDARY_T1_DIFFICULTY` 1243 → 1450, `T2` 1368 → 1596, `T3` 1506 → 1756, `T4` 1657 → 1933
+  (candidate "B" from the two presented). Solved differently from Elite: T1 raised only enough to
+  clear Elite's new T4 (1340) with an ≈8% margin (down from the pre-bump ≈50% margin — Legendary
+  never needed that much headroom since it wasn't over-saturating the way Elite was), keeping
+  Legendary's own existing T4/T1 ratio (1657/1243 ≈ 1.333) fixed rather than reapplying Elite's
+  1.618x scale factor.
+
+**Effect (per the Monte-Carlo re-simulation, maxed merc baseline as described above).** Elite: peak
+ratio 5.61x → 3.35x, peak moves P≈338 → P≈600; new dip below merc across roughly P=80-150 (accepted
+tradeoff). Legendary: peak ratio ≈9.3x → ≈7.9x (still comfortably ahead of merc through the 700-900
+band); P=150 drops from an already-thin 1.07x to negative EV (accepted — Legendary T4 already gates
+on guild level 8, and P=150 was razor-thin even before this change).
+
+**Tests.** Three pre-existing regression assertions needed updating to match the new constants,
+same pattern as every prior difficulty retune:
+- The Elite tier-weight blend test (`getDynamicTierWeights` evaluated at Elite's own T1) —
+  recomputed exact weights via `node -e` against the new ladder: T1≈0.4472, T2≈0.2764, T3≈0.1709,
+  T4≈0.1055 (was 0.4423/0.2762/0.1732/0.1083).
+- The "Elite/Legendary T4 difficulty" regression anchor — renamed from "...2026-09-29 difficulty
+  cut" to "...2026-09-29 shape re-raise," asserts `ELITE_T4_DIFFICULTY===1340`,
+  `LEGENDARY_T4_DIFFICULTY===1933`.
+- The reward/difficulty efficiency-band test — bands lowered to match the higher difficulty at
+  unchanged reward: elite `[35000, 55000]` (was `[56000, 89000]`), legendary `[70000, 148000]` (was
+  `[81000, 173000]`).
+
+The cliff-guard invariant test itself (`LEGENDARY_T1_DIFFICULTY > ELITE_T4_DIFFICULTY`) needed no
+change — it asserts against the live constants directly, so it passes automatically once Legendary
+was raised enough to satisfy it. Full suite: **122 suites / 2224 tests, all passing**.
+
+**Docs.** `systems/raids-and-world-events.md`: new dated `**Update (2026-09-29, later same
+day)**` section appended after the difficulty-cut section it follows on from (matching this doc's
+own append-don't-rewrite-history convention), covering both the Elite re-raise and the Legendary
+bump, the rejected full-rescale alternative, and the accepted low-power tradeoffs on both modes.
+
+**Cross-repo note.** This changes numbers `financial-project`'s `/gromp` page also implements
+(`gromp-guilds/handler.ts`'s own duplicated `Raid.ELITE_T*_DIFFICULTY`/`LEGENDARY_T*_DIFFICULTY`)
+— ported the same session, see that repo's own `NOTES_GROMP_WEB_INTEGRATION.md` for the entry.

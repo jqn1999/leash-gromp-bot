@@ -2468,19 +2468,32 @@ const Raid = {
     // actually specified; T2/T3 fill the ramp geometrically between them (same "smooth
     // ramp, no cliff" shape every T1-T4 ladder in this file already follows) rather than
     // being independently chosen.
-    ELITE_T1_DIFFICULTY: 518,
+    // Update (2026-09-29, later same day) — the 250/400-per-player cut above solved
+    // accessibility but created a new shape problem: re-simulating the ratio-vs-merc curve
+    // (maxed Solo Merc, Bounty+Heist combined, starch valued at Bounty.STARCH_REFERENCE_PRICE)
+    // showed Elite spiking to ~5.6x around power 338 then fading, because the roster hit the
+    // 95% cap that early and rode a long flat tail while merc's own curve kept climbing
+    // smoothly with no comparable nearby ceiling — direct instruction to move that spike
+    // later in the band. Raised difficulty by ~1.618x (the ratio the direct instruction's
+    // target implied), moving T1's cap-reaching power from ~250/player to ~400/player and
+    // T4's from ~400/player to ~650/player — same P*2.18*0.95 formula and geometric T2/T3
+    // fill as above, just re-solved against the later target powers. This flattens and
+    // delays the peak (5.61x -> 3.35x, peak moves from P~338 to P~600). Accepted tradeoff,
+    // confirmed with the user: Elite now dips below merc in a new low-power band (roughly
+    // P=80-150) it didn't before, since the whole curve shifted right.
+    ELITE_T1_DIFFICULTY: 828,
     ELITE_T1_REWARD: 29127291,
     ELITE_T1_PENALTY: -43690937,
 
-    ELITE_T2_DIFFICULTY: 606,
+    ELITE_T2_DIFFICULTY: 972,
     ELITE_T2_REWARD: 40411972,
     ELITE_T2_PENALTY: -60617958,
 
-    ELITE_T3_DIFFICULTY: 708,
+    ELITE_T3_DIFFICULTY: 1141,
     ELITE_T3_REWARD: 54938872,
     ELITE_T3_PENALTY: -82408308,
 
-    ELITE_T4_DIFFICULTY: 828,
+    ELITE_T4_DIFFICULTY: 1340,
     ELITE_T4_REWARD: 73491902,
     ELITE_T4_PENALTY: -110237853,
 
@@ -2498,19 +2511,36 @@ const Raid = {
     // ELITE_T1_DIFFICULTY's own 2026-09-29 comment for the full derivation (same session,
     // same "600/player T1, 800/player T4 to cap" instruction, same P*2.18*0.95 formula and
     // geometric T2/T3 fill). REWARD/PENALTY unchanged.
-    LEGENDARY_T1_DIFFICULTY: 1243,
+    // Update (2026-09-29, later same day) — bumped again alongside Elite's own re-raise
+    // above, but NOT by the same ~1.618x factor. Legendary's ratio-vs-merc curve was never
+    // the early-spike-then-fade shape Elite had (it already peaked reasonably, ~9.3x around
+    // P=700-800), so re-deriving it from scratch against a later target power wasn't the
+    // problem to solve — the only real requirement was clearing the cliff-guard invariant
+    // this codebase tests for (raidFactory.test.js: each mode's easiest tier must stay
+    // harder than the previous mode's hardest), since Elite's new T4 (1340) would otherwise
+    // sit above Legendary's old T1 (1243) and invert the ordering. A full 1.618x rescale was
+    // tried first and rejected by simulation — it dragged Legendary's own peak out past
+    // P=1200 and drove its EV negative at P=150. Instead T1 was raised just enough to clear
+    // 1340 with a ~8% margin (was ~50% pre-Elite-bump — Legendary never needed that much
+    // headroom since it wasn't over-saturating), keeping Legendary's own existing T4/T1
+    // growth ratio (1657/1243~=1.333) rather than re-solving via P*2.18*0.95. REWARD/PENALTY
+    // unchanged. Effect: peak ratio compresses from ~9.3x to ~7.9x (still comfortably ahead
+    // of merc through the 700-900 band); P=150 drops from an already-thin 1.07x to negative
+    // EV — accepted, since T4 already gates on guild level 8 and P=150 was razor-thin even
+    // under the old values.
+    LEGENDARY_T1_DIFFICULTY: 1450,
     LEGENDARY_T1_REWARD: 101698148,
     LEGENDARY_T1_PENALTY: -203396296,
 
-    LEGENDARY_T2_DIFFICULTY: 1368,
+    LEGENDARY_T2_DIFFICULTY: 1596,
     LEGENDARY_T2_REWARD: 147818701,
     LEGENDARY_T2_PENALTY: -295637402,
 
-    LEGENDARY_T3_DIFFICULTY: 1506,
+    LEGENDARY_T3_DIFFICULTY: 1756,
     LEGENDARY_T3_REWARD: 207805497,
     LEGENDARY_T3_PENALTY: -415610994,
 
-    LEGENDARY_T4_DIFFICULTY: 1657,
+    LEGENDARY_T4_DIFFICULTY: 1933,
     LEGENDARY_T4_REWARD: 285108348,
     LEGENDARY_T4_PENALTY: -570216696,
 
