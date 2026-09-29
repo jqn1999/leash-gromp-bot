@@ -295,14 +295,14 @@ describe('getDynamicTierWeights', () => {
         const weighted = getDynamicTierWeights(eliteTiers, 100, Raid.ELITE_T1_DIFFICULTY);
         const byName = Object.fromEntries(weighted.map(t => [t.name, t.weight]));
 
-        // Freshly recomputed via node -e (SHARPNESS=3) against Elite's post-2026-09-12
-        // accessibility-retune difficulty ladder (885/1053/1252/1489, was
-        // 1189/1414/1682/2000): T1 dominant but every tier keeps real, non-trivial
-        // (>5%) presence — not a near-monopoly.
-        expect(byName.T1).toBeCloseTo(0.46364324655947065, 6);
-        expect(byName.T2).toBeCloseTo(0.2752508296992583, 6);
-        expect(byName.T3).toBeCloseTo(0.16375733564891506, 6);
-        expect(byName.T4).toBeCloseTo(0.09734858809235586, 6);
+        // Freshly recomputed via node -e (SHARPNESS=3) against Elite's post-2026-09-29
+        // difficulty cut (518/606/708/828, was 885/1053/1252/1489 post-2026-09-12
+        // accessibility retune, was 1189/1414/1682/2000 before that): T1 dominant but
+        // every tier keeps real, non-trivial (>5%) presence — not a near-monopoly.
+        expect(byName.T1).toBeCloseTo(0.44227294002094397, 6);
+        expect(byName.T2).toBeCloseTo(0.27622423221348225, 6);
+        expect(byName.T3).toBeCloseTo(0.1732127570697241, 6);
+        expect(byName.T4).toBeCloseTo(0.10829007069584964, 6);
         Object.values(byName).forEach(w => {
             expect(w).toBeGreaterThan(0.05);
             expect(w).toBeLessThan(0.95);
@@ -1035,9 +1035,9 @@ describe('static Elite/Legendary difficulty ladder (2026-08-26 redesign)', () =>
         expect(Raid.LEGENDARY_METAL_KING_CAPACITY_REWARD).toBe(60000000);
     });
 
-    test('Elite/Legendary T4 difficulty after the 2026-09-12 accessibility retune', () => {
-        expect(Raid.ELITE_T4_DIFFICULTY).toBe(1489);
-        expect(Raid.LEGENDARY_T4_DIFFICULTY).toBe(5047);
+    test('Elite/Legendary T4 difficulty after the 2026-09-29 difficulty cut', () => {
+        expect(Raid.ELITE_T4_DIFFICULTY).toBe(828);
+        expect(Raid.LEGENDARY_T4_DIFFICULTY).toBe(1657);
     });
 
     // 2026-09-12 accessibility retune (see Raid.ELITE_T1_DIFFICULTY's own comment)
@@ -1087,9 +1087,13 @@ describe('static Elite/Legendary difficulty ladder (2026-08-26 redesign)', () =>
         // Regular's own band widened on its low end to fit T4's now-lower efficiency.
         // Elite/Legendary bands both shifted up x2.1833 on 2026-09-12 (fifth retune pass,
         // paired with the Solo Merc nerf below) — difficulty untouched, reward scaled.
+        // Bands raised again 2026-09-29 — Elite/Legendary's own DIFFICULTY was cut (reward
+        // untouched, see Raid.ELITE_T1_DIFFICULTY's own 2026-09-29 comment), so per-point
+        // efficiency rose correspondingly (live range: elite ~56,230-88,758, legendary
+        // ~81,817-172,063).
         regular.forEach(e => { expect(e).toBeGreaterThanOrEqual(7000); expect(e).toBeLessThanOrEqual(20100); });
-        elite.forEach(e => { expect(e).toBeGreaterThanOrEqual(32000); expect(e).toBeLessThanOrEqual(50000); });
-        legendary.forEach(e => { expect(e).toBeGreaterThanOrEqual(33000); expect(e).toBeLessThanOrEqual(57000); });
+        elite.forEach(e => { expect(e).toBeGreaterThanOrEqual(56000); expect(e).toBeLessThanOrEqual(89000); });
+        legendary.forEach(e => { expect(e).toBeGreaterThanOrEqual(81000); expect(e).toBeLessThanOrEqual(173000); });
 
         // What still differentiates the modes: absolute difficulty and reward keep
         // climbing across the full 12-tier ladder (each mode's T1 harder AND

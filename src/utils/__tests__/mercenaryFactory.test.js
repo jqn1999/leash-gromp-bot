@@ -701,10 +701,20 @@ describe('Bounty.TIERS ladder shape', () => {
         // regression. Widened again rather than narrowed, same "catch a collapse or
         // runaway, don't calibrate a shape" philosophy this band has followed since the
         // very first widening.
+        //
+        // Lower bound widened again 2026-09-29 — Elite/Legendary's own DIFFICULTY was cut
+        // (reward untouched, direct instruction, see Raid.ELITE_T1_DIFFICULTY's own
+        // 2026-09-29 comment), which raises guildEfficiencyAt everywhere it interpolates
+        // across an Elite/Legendary breakpoint — a Bounty tier landing near one of those
+        // now compares against a bigger realistic-guild denominator, pushing its own ratio
+        // down. Live range is now ~0.055-0.557 (computed directly against live constants)
+        // — well inside "genuine collapse" territory would be near 0, so 0.055 is still a
+        // real signal, not a vacuous floor; same "catch a collapse or runaway" philosophy,
+        // not a re-calibration.
         Bounty.TIERS.forEach(tier => {
             const guildRealisticTotal = guildEfficiencyAt(tier.difficulty) * tier.difficulty * GUILD_LEVEL_2_MULTIPLIER;
             const ratio = tier.reward / guildRealisticTotal;
-            expect(ratio).toBeGreaterThan(0.10);
+            expect(ratio).toBeGreaterThan(0.05);
             expect(ratio).toBeLessThan(1.30);
         });
     });

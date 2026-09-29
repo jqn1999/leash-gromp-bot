@@ -122,8 +122,11 @@ async function resolveBountyCooldownSkip(userDetails, won, rankInfo) {
 // achievement/quest follow-ups. Recurses when a cooldown skip was rolled AND the attempt was
 // a WIN (2026-09-05 cooldown-skip overhaul, direct instruction: "on a loss there is no
 // cooldown skip and no auto trigger") — mirrors work.js's performWork exactly, right down to
-// the isChainedReply/chainDepth/MAX_COOLDOWN_SKIP_CHAIN_LENGTH shape (see cooldownFactory.js
-// and .claude/systems/mercenary-bounties.md for the full writeup).
+// the isChainedReply/chainDepth/MAX_BOUNTY_RAID_COOLDOWN_SKIP_CHAIN_LENGTH shape (see
+// cooldownFactory.js and .claude/systems/mercenary-bounties.md for the full writeup). Chain
+// cap lowered from the shared Work.MAX_COOLDOWN_SKIP_CHAIN_LENGTH (10, still /work's own) to
+// its own separate Work.MAX_BOUNTY_RAID_COOLDOWN_SKIP_CHAIN_LENGTH (5) 2026-09-29, direct
+// instruction — see that constant's own comment in constants.js.
 //
 // Branches EARLY on mode === 'stat' (2026-09-10, direct instruction: "Add a stat bounty for
 // mercs... very similar to guild stat raids with 50% chance for .2 multi and costing 300k")
@@ -368,7 +371,7 @@ async function runBountyAttempt(client, interaction, userId, username, userDispl
         }
     }
 
-    if (shouldChain && chainDepth < Work.MAX_COOLDOWN_SKIP_CHAIN_LENGTH) {
+    if (shouldChain && chainDepth < Work.MAX_BOUNTY_RAID_COOLDOWN_SKIP_CHAIN_LENGTH) {
         await runBountyAttempt(client, interaction, userId, username, userDisplayName, mode, true, chainDepth + 1);
     }
 }
@@ -486,7 +489,7 @@ async function runStatBountyAttempt(client, interaction, userId, username, userD
         }
     }
 
-    if (shouldChain && chainDepth < Work.MAX_COOLDOWN_SKIP_CHAIN_LENGTH) {
+    if (shouldChain && chainDepth < Work.MAX_BOUNTY_RAID_COOLDOWN_SKIP_CHAIN_LENGTH) {
         await runBountyAttempt(client, interaction, userId, username, userDisplayName, 'stat', true, chainDepth + 1);
     }
 }

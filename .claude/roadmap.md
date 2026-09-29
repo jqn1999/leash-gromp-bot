@@ -18761,3 +18761,95 @@ starch section") and found the identical bug, plus a related one: see that repo'
 sync back the other direction — the website's fix mirrors an existing `bankCapacityEffective`
 pattern the bot itself doesn't have, since the bot computes its own live bonus inline per-embed
 rather than via a precomputed profile field).
+
+## Elite/Legendary raid caps removed (95%), difficulty cut across the board
+
+**Asked:** Player observation, worked through with the live Raid EV Curves artifact (2026-09-19
+build) as evidence: "it seems like my starch capacity didn't increase" aside — the real thread was
+"legendaries don't make sense to do until like 750+ power compared to just farming elite... is
+there a way to lower difficulties or reward/penalty ratios to get legendary raids closer to
+breaking even with elite near 450." Presented the EV analysis (Elite plateaus around power
+630-750 once its own 0.75 cap + difficulty ladder saturate; Legendary's 0.60-cap saturation point
+sits at ~1,389 power/player, far beyond any realistic roster — the two modes barely overlap in
+their useful ranges) and recommended a difficulty cut over a reward-based fix, since it's the
+success-chance *ramp* that's actually the bottleneck, not the payout economics. User came back with
+concrete numbers rather than picking between the presented options.
+
+**Changed** (`constants.js`), two parts, both direct instruction:
+
+1. *"remove the caps for elite and legendary and let it also be 95% like everything else"* —
+   `ELITE_MAXIMUM_RAID_SUCCESS_RATE`/`LEGENDARY_MAXIMUM_RAID_SUCCESS_RATE`: `.75`/`.6` → `.95`,
+   matching `REGULAR_MAXIMUM_RAID_SUCCESS_RATE` exactly. `MAXIMUM_STAT_RAID_SUCCESS_RATE` (.5) left
+   untouched — not named in the instruction, different reward shape (permanent stats, not
+   potatoes).
+2. *"pull down difficulty across the board a bit so that max elite t1 difficulty is around
+   250/player to cap. T4 elite around 400. Legendary t1 600. Legendary t4 800"* — REWARD/PENALTY
+   untouched on every bracket, only DIFFICULTY moved. Solved using the same "power/player"
+   convention the EV artifact and this session's own analysis already established: a 4-person
+   equal-power roster run through the live team-power formula (rank-decay 0.5/0.25-floor + 9%
+   headcount bonus at 4 members) converts raw per-player power `P` into `totalMultiplier = P *
+   2.18`; difficulty solved so `totalMultiplier` hits the new 95% cap exactly at the target power
+   (`difficulty = P * 2.18 * 0.95`). T1/T4 were the two values given per mode — T2/T3 fill the ramp
+   geometrically between the new T1/T4 (same "smooth ramp, no cliff" shape every T1-T4 ladder in
+   this file already follows), a judgment call since only the endpoints were specified, flagged
+   back to the user rather than silently invented. New difficulty: Elite 518/606/708/828 (was
+   885/1053/1252/1489), Legendary 1243/1368/1506/1657 (was 3000/3568/4244/5047). Metal King (both
+   modes) and Stat Raid untouched — not named in either instruction.
+
+Also added a new, separate constant this same session (unrelated mechanic, same conversation):
+`Work.MAX_BOUNTY_RAID_COOLDOWN_SKIP_CHAIN_LENGTH: 5` — see the entry below.
+
+**Tests.** Fixed 4 failures the difficulty cut caused: `raidFactory.test.js`'s Elite tier-weight
+blend regression (recomputed via `node -e` against the new difficulty ratios), its Elite/Legendary
+T4 difficulty regression anchor (828/1657), its reward/difficulty efficiency band (raised to match
+the new, higher per-point efficiency now that difficulty dropped and reward didn't — elite
+~56,230-88,758/pt, legendary ~81,817-172,063/pt), and `mercenaryFactory.test.js`'s Bounty-vs-guild
+loose-band test (lower bound relaxed 0.10 → 0.05, live range now ~0.055-0.557). All four are the
+same "recompute and widen, document the live range, don't just loosen blindly" pattern this file's
+own long retune history already established. Full suite: **122 suites / 2224 tests, all passing**
+(net 0 new tests — four existing assertions recomputed/widened in place).
+
+**Docs.** `systems/raids-and-world-events.md`: success-cap section rewritten (95%/95%/95%/.5), a
+new dated "Update (2026-09-29)" section appended after the existing retune-history sequence (not
+rewriting the old dated paragraphs — matching this doc's own established "append, don't rewrite
+history" convention), and the raid cooldown-skip section's chain-cap reference corrected (see the
+next entry for the constant itself).
+
+**Cross-repo note.** Ported to `financial-project`'s `gromp-guilds/handler.ts` (its own duplicated
+`Raid` caps/difficulty ladder) the same session — see that repo's own
+`NOTES_GROMP_WEB_INTEGRATION.md` for the matching entry.
+
+## Bounty/Heist/Guild Raid cooldown-skip chain cap lowered from 10 to 5, split from /work's own
+
+**Asked:** Same conversation, direct instruction: "make the maximum amount of times bounty/rob-npc/
+guild raids can skip 5 times instead of 10." `/work` was not named.
+
+**Found.** The existing `Work.MAX_COOLDOWN_SKIP_CHAIN_LENGTH` (10) is a single constant shared by
+FOUR call sites — `/work` (work.js), `/take-bounty` (takeBounty.js, two branches), `/rob-npc`
+(robNpc.js), and Guild Raid (startRaid.js) — all four auto-chain another attempt when a companion's
+cooldown-skip roll hits. Lowering it directly would have silently changed `/work`'s own cap too,
+which the instruction didn't ask for.
+
+**Changed.** Added a new, separate constant, `Work.MAX_BOUNTY_RAID_COOLDOWN_SKIP_CHAIN_LENGTH: 5`,
+and rewired the three non-`/work` call sites (`takeBounty.js`'s two branches, `robNpc.js`,
+`startRaid.js`) to read it instead — `work.js` itself untouched, still reading the original
+constant at its original value (10). Both constants keep the same "purely a safety valve, not a
+balance lever" framing the original comment already established — a run of N skips in a row has
+probability chance^N, so neither value is ever a realistic outcome, only a pathological-streak
+bound.
+
+**Tests.** No test asserted a specific chain-length value for any of the three affected commands
+(confirmed via full suite run before AND after this change, both green), so none needed updating.
+Full suite: **122 suites / 2224 tests, all passing**.
+
+**Docs.** `systems/raids-and-world-events.md`'s raid cooldown-skip section and
+`systems/mercenary-bounties.md`'s own Bounty/Heist cooldown-skip section both updated to name the
+new constant and value.
+
+**Cross-repo note.** Ported to `financial-project`'s frontend (`gromp.component.ts`) the same
+session — split its own shared `COOLDOWN_SKIP_CHAIN_LIMIT` (10) into a `/work`-only constant
+(unchanged) and a new `RAID_COOLDOWN_SKIP_CHAIN_LIMIT` (5) for `onStartRaid` specifically. Found
+along the way: this port has no client-side auto-chain loop for Bounty/Heist at all
+(`runMercenaryAction` doesn't loop) — a pre-existing parity gap, not something this change
+introduced or was asked to fix, left alone. See that repo's own `NOTES_GROMP_WEB_INTEGRATION.md`
+for the matching entry.

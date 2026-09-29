@@ -222,8 +222,12 @@ by the team-combination weighting). Only the bank-overflow branch of `startRaid.
 
 `successChance = min(effectiveRaidPower / difficulty, maximumSuccessRate)`. Max rates:
 `REGULAR_MAXIMUM_RAID_SUCCESS_RATE=.95` (raised from `.9`, 2026-09-11, direct instruction, same bump
-Mercenary Bounty's own cap shares — see mercenary-bounties.md), `ELITE_MAXIMUM_RAID_SUCCESS_RATE=.75`,
-`LEGENDARY_MAXIMUM_RAID_SUCCESS_RATE=.6`, `MAXIMUM_STAT_RAID_SUCCESS_RATE=.5`.
+Mercenary Bounty's own cap shares — see mercenary-bounties.md), `ELITE_MAXIMUM_RAID_SUCCESS_RATE=.95`,
+`LEGENDARY_MAXIMUM_RAID_SUCCESS_RATE=.95` (both raised from their own deliberately-lower `.75`/`.6`
+ceilings 2026-09-29, direct instruction — "remove the caps for elite and legendary and let it also be
+95% like everything else" — see the "2026-09-29 difficulty cut + cap removal" update below),
+`MAXIMUM_STAT_RAID_SUCCESS_RATE=.5` (untouched — a different reward shape, not part of that
+instruction).
 
 Each tier rolls one `Math.random()` against a cumulative weighted table. The **roll odds** below
 (which bracket you land in, given a mode) were unchanged by the 2026-08-26 rework described next —
@@ -529,6 +533,39 @@ Regular only; `Raid.RAID_T4_MIN_LEVEL_TARGET_WINS` (750, still level 8) is now E
 `startRaid.js`'s single `T4_MIN_LEVEL` const split into `REGULAR_T4_MIN_LEVEL` and
 `ELITE_LEGENDARY_T4_MIN_LEVEL` accordingly, each wired to its own mode's scenario array. Regular
 T4's own difficulty/reward are unaffected — only when it becomes available moved.
+
+**Update (2026-09-29) — Elite/Legendary caps removed (both now 95%, same as Regular), difficulty
+cut across every bracket.** Prompted by a player observation, backed by the live Raid EV Curves
+artifact (see `roadmap.md`, 2026-09-19 build): Legendary (level 10, Cinderroot maxed) didn't
+overtake Elite (same setup) until power ≈772/player — Elite's own EV plateaus around power 630-750
+(its 0.75 cap plus difficulty ladder both saturate there), while Legendary's own 0.60-cap
+saturation point sat far beyond any realistic roster power (~1,389/player), so the two modes barely
+overlapped in their useful ranges at all. Direct instruction, two parts:
+
+1. *"remove the caps for elite and legendary and let it also be 95% like everything else"* —
+   `ELITE_MAXIMUM_RAID_SUCCESS_RATE`/`LEGENDARY_MAXIMUM_RAID_SUCCESS_RATE` both `.75`/`.6` → `.95`,
+   matching `REGULAR_MAXIMUM_RAID_SUCCESS_RATE` exactly. `MAXIMUM_STAT_RAID_SUCCESS_RATE` (.5)
+   untouched — different reward shape, not named in the instruction.
+2. *"pull down difficulty across the board a bit so that max elite t1 difficulty is around
+   250/player to cap. T4 elite around 400. Legendary t1 600. Legendary t4 800"* — REWARD/PENALTY
+   left untouched on every bracket, only DIFFICULTY moved. Solved the same way the artifact's own
+   "power/player" convention already established: a 4-person equal-power roster run through the
+   live team-power formula (rank-decay 0.5/0.25-floor + a 9% headcount bonus at 4 members) converts
+   raw per-player power `P` into `totalMultiplier = P * 2.18`; difficulty was set so that
+   `totalMultiplier` hits the new 95% cap exactly at the target power (`difficulty = P * 2.18 *
+   0.95`). T1/T4 were the two values given per mode; T2/T3 fill the ramp geometrically between them
+   (same "smooth ramp, no cliff" shape the whole T1-T4 ladder already follows), not independently
+   chosen. New difficulty: Elite 518/606/708/828 (was 885/1053/1252/1489), Legendary
+   1243/1368/1506/1657 (was 3000/3568/4244/5047). Per-point efficiency rose correspondingly since
+   reward didn't move (Elite ~56,230-88,758/pt, Legendary ~81,817-172,063/pt) —
+   `raidFactory.test.js`'s own efficiency-band assertions were widened to match, same as every prior
+   retune's own precedent.
+
+Net effect: both Elite's own plateau point and Legendary's own 95%-cap saturation point move
+substantially closer to realistic roster power, closing most of the gap the artifact's ≈772
+crossover exposed — see `roadmap.md` for the exact before/after EV numbers once the chart is
+rebuilt against these values. Metal King (both modes) and Stat Raid were not part of either
+instruction and stay untouched.
 
 ### Dynamic tier weighting
 
@@ -891,8 +928,11 @@ WIN** — per explicit follow-up instruction ("on a loss there is no cooldown sk
 trigger"), a loss never even attempts the roll, always resetting the full
 `Raid.RAID_TIMER_SECONDS` with no exceptions. A hit backdates `raidTimer` to `Date.now()` (ready
 immediately, not a partial discount) and auto-chains one more raid attempt at the same
-`raid-select` mode, capped at `Work.MAX_COOLDOWN_SKIP_CHAIN_LENGTH` (10, lowered from 15 the same
-day) — a miss (or any loss) gets the full, un-skipped cooldown and no chain.
+`raid-select` mode, capped at `Work.MAX_BOUNTY_RAID_COOLDOWN_SKIP_CHAIN_LENGTH` (5, lowered from
+the shared `Work.MAX_COOLDOWN_SKIP_CHAIN_LENGTH` — still 10, still `/work`'s own — on 2026-09-29,
+direct instruction: "make the maximum amount of times bounty/rob-npc/guild raids can skip 5 times
+instead of 10"; Bounty/Heist share this same separate constant, see mercenary-bounties.md) — a
+miss (or any loss) gets the full, un-skipped cooldown and no chain.
 
 **Why this one was the hardest of the four conversions**: unlike `/work`/`/take-bounty`/`/rob-npc`
 (each a single resolution per call, easy to wrap in a recursive `performX` function),
