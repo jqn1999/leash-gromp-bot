@@ -4037,12 +4037,19 @@ const RivalMercenaries = {
 // stable at any power level" design goal). getRaidLevelInfo's guild LEVEL (not raw power)
 // does feed in as of 2026-09-11 — see LEVEL_SUCCESS_BONUS below for why.
 const GuildRival = {
-    // Baby/Regular win: +1 (Baby reuses Regular's own T1 closure object literally, so no
-    // special-casing is needed — see startRaid.js's babyRaidScenarios). Elite: +2,
-    // Legendary: +3 — same 1/2/3 escalation NOTORIETY_PER_BOUNTY_TIER already uses for
-    // Bounty's I/II/III bands. Stat Raid is excluded entirely (not present as a key here) —
-    // a flat-cost gamble for a permanent multiplier, not a combat-flavored win/loss.
-    INFAMY_PER_RAID_MODE: { baby: 1, regular: 1, elite: 2, legendary: 3 },
+    // Baby/Regular win: +2 (Baby reuses Regular's own T1 closure object literally, so no
+    // special-casing is needed — see startRaid.js's babyRaidScenarios). Elite: +4,
+    // Legendary: +6. Stat Raid is excluded entirely (not present as a key here) — a
+    // flat-cost gamble for a permanent multiplier, not a combat-flavored win/loss.
+    //
+    // Doubled 2026-09-29, direct instruction ("Is it 1/2/3 for regular elite legendary
+    // right now? If so double it") — was baby:1/regular:1/elite:2/legendary:3, the same
+    // 1/2/3 escalation NOTORIETY_PER_BOUNTY_TIER uses for Bounty's I/II/III bands. `baby`
+    // doubled too even though only regular/elite/legendary were named — it's designed to
+    // always mirror regular's own value exactly (see this comment's own first sentence),
+    // so leaving it at 1 while regular moved to 2 would have broken that invariant rather
+    // than just not touching an unrelated value.
+    INFAMY_PER_RAID_MODE: { baby: 2, regular: 2, elite: 4, legendary: 6 },
     // 10, not Rival's 20 — a guild has exactly ONE accrual stream (raid wins, on
     // Raid.RAID_TIMER_SECONDS, identical to Bounty's own cooldown) versus a mercenary's TWO
     // independent streams (Bounty + the twice-as-fast Heist), so real-time pacing to unlock

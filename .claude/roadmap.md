@@ -18881,5 +18881,34 @@ clamp (and to include `mercenaryBuffRobChanceBonus`, which the pseudocode had om
 this change — a pre-existing doc gap fixed alongside it since it's the exact same formula being
 touched).
 
-**Cross-repo note.** Needs porting to `financial-project`'s `gromp-mercenary/handler.ts`
-(`resolveNpcRob`'s own duplicated formula) — tracked for this same session.
+**Cross-repo note.** Ported to `financial-project`'s `gromp-mercenary/handler.ts`
+(`resolveNpcRob`'s own duplicated formula, byte-identical to the bot's) the same session — see
+that repo's own `NOTES_GROMP_WEB_INTEGRATION.md` entry #105.
+
+## Guild Raid Infamy gain doubled
+
+**Asked:** "Increase guild infamy gain from raids? Is it 1/2/3 for regular elite legendary right
+now? If so double it." Confirmed the read was correct (`GuildRival.INFAMY_PER_RAID_MODE = { baby:
+1, regular: 1, elite: 2, legendary: 3 }`) before changing anything.
+
+**Changed.** `constants.js`: `INFAMY_PER_RAID_MODE` → `{ baby: 2, regular: 2, elite: 4, legendary:
+6 }`. `baby` doubled too even though only regular/elite/legendary were named in the ask — it's
+designed to always mirror `regular`'s own value exactly (the comment directly above it already
+said so: "Baby reuses Regular's own T1 closure object literally"), so leaving it at 1 while
+`regular` moved to 2 would have silently broken that "baby always equals regular" invariant rather
+than simply not touching something unrelated. Flagging the judgment call here since it wasn't
+explicitly asked for. `INFAMY_GAIN_HALVING_THRESHOLD` (25, the point past which
+`raidFactory.getInfamyGain` starts halving the gain) and `INFAMY_THRESHOLD` (10, the
+`/repel-warband` trigger point) are both untouched — not part of this instruction, and doubling
+the per-raid gain alone already means a guild reaches either threshold roughly twice as fast, which
+is the intended effect of "increase infamy gain," not a side effect needing separate correction.
+
+**Tests.** No test asserted a specific `INFAMY_PER_RAID_MODE` value (confirmed via full suite run
+before AND after, both green), so none needed updating. Full suite: **122 suites / 2224 tests, all
+passing**.
+
+**Docs.** `systems/guilds.md`'s own inline `GuildRival.INFAMY_PER_RAID_MODE = {...}` code-comment
+reference updated to the new values, with a note on the change and date.
+
+**Cross-repo note.** Needs porting to `financial-project`'s `gromp-guilds/handler.ts` (its own
+duplicated `GuildRival.INFAMY_PER_RAID_MODE`, if present) — tracked for this same session.

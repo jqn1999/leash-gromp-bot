@@ -1410,8 +1410,10 @@ if (wonThisRaid) {
 }
 ```
 
-`GuildRival.INFAMY_PER_RAID_MODE = { baby: 1, regular: 1, elite: 2, legendary: 3 }` — Baby and Regular
-both map to the same `+1` for free, since Baby reuses Regular's own T1 closure object literally (see
+`GuildRival.INFAMY_PER_RAID_MODE = { baby: 2, regular: 2, elite: 4, legendary: 6 }` (doubled from
+`{ baby: 1, regular: 1, elite: 2, legendary: 3 }` 2026-09-29, direct instruction — "Is it 1/2/3 for
+regular elite legendary right now? If so double it") — Baby and Regular both map to the same `+2`
+for free, since Baby reuses Regular's own T1 closure object literally (see
 `raids-and-world-events.md`'s "because Baby reuses the exact same closure object as Regular's own T1
 entry"). Stat Raid has no key in the lookup at all, so `infamyGain` is `undefined` and the write is
 skipped — the same "keyed by a band this tier-less mode doesn't have" exclusion Stat Bounty already
