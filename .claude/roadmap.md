@@ -18853,3 +18853,33 @@ along the way: this port has no client-side auto-chain loop for Bounty/Heist at 
 (`runMercenaryAction` doesn't loop) — a pre-existing parity gap, not something this change
 introduced or was asked to fix, left alone. See that repo's own `NOTES_GROMP_WEB_INTEGRATION.md`
 for the matching entry.
+
+## /rob-npc (Heist) given an overall 95% success-chance cap
+
+**Asked:** Same conversation, immediate follow-up: "Also make rob-npc have a cap of 95% success."
+
+**Found.** `resolveNpcRob`'s `successChance` had no ceiling at the point it's actually rolled
+against. Each tier's own `maxChance` (0.50-0.80) only bounds the flat rank-scaled base
+(`tierChance`), and the reward-roll risk adjustment is separately clamped to `[0,1]` — but the
+companion `robChanceFlat` bonus (Barn Owl/Yukon) and the Mercenary Buff `robChance` category are
+both added AFTER that, with nothing capping the total. A stacked combination could in theory push
+`successChance` past 100% — confirmed live by a pre-existing test that stacked Rank 6's own max
+Mercenary Buff robChance value against Market Stall's own `maxChance` and landed on exactly 1.00.
+
+**Changed.** New `RobNpc.MAXIMUM_SUCCESS_RATE: 0.95` in `constants.js`, matching
+`Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE`'s own value. `mercenaryFactory.js`'s `resolveNpcRob` now
+wraps the final `successChance` (base + reward-roll adjustment + companion bonus + buff bonus) in
+`Math.min(RobNpc.MAXIMUM_SUCCESS_RATE, ...)` rather than leaving it uncapped.
+
+**Tests.** Fixed the one test this surfaced — the Mercenary-Buff-`robChance`-stacking test that
+used to assert exactly `CORNER_STORE.maxChance + expectedBuff` (0.80 + 0.20 = 1.00 uncapped) now
+asserts the capped `RobNpc.MAXIMUM_SUCCESS_RATE` (0.95) instead. Full suite: **122 suites / 2224
+tests, all passing** (net 0 new tests — one existing assertion updated in place).
+
+**Docs.** `systems/mercenary-bounties.md`'s Heist odds formula block updated to show the new final
+clamp (and to include `mercenaryBuffRobChanceBonus`, which the pseudocode had omitted even before
+this change — a pre-existing doc gap fixed alongside it since it's the exact same formula being
+touched).
+
+**Cross-repo note.** Needs porting to `financial-project`'s `gromp-mercenary/handler.ts`
+(`resolveNpcRob`'s own duplicated formula) — tracked for this same session.

@@ -921,9 +921,18 @@ Elite/Legendary gate already uses) rather than an auto-escalating rare roll, gat
   ```
   tierChance = min(tier.baseChance + tier.chancePerRank * (rank - 1), tier.maxChance)
   riskAdjustedChance = tierChance - RobNpc.REWARD_ROLL_SUCCESS_SPREAD * (rewardRollT - 0.5)
-  successChance = clamp(riskAdjustedChance, 0, 1)
-                  + companionFactory.getActivePerkValue(userDetails, "robChanceFlat")   // Barn Owl/Yukon — shared with real /rob
+  successChance = min(
+      RobNpc.MAXIMUM_SUCCESS_RATE,   // 0.95, added 2026-09-29 — the final clamp
+      clamp(riskAdjustedChance, 0, 1)
+          + companionFactory.getActivePerkValue(userDetails, "robChanceFlat")   // Barn Owl/Yukon — shared with real /rob
+          + mercenaryBuffRobChanceBonus                                        // Mercenary Buff's own robChance category
+  )
   ```
+  `RobNpc.MAXIMUM_SUCCESS_RATE` (2026-09-29, direct instruction: "make rob-npc have a cap of
+  95% success", matching `Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE`'s own 0.95) is applied AFTER
+  every bonus — before this, a stacked companion `robChanceFlat` plus a maxed Mercenary Buff
+  `robChance` could in theory push the total past 100% (each individual tier's own `maxChance`,
+  0.50-0.80, only ever bounded the flat rank-scaled base, never the bonuses layered on top).
   Simplified 2026-08-23, direct instruction: Yukon's own bonus used to be a separate
   `/rob-npc`-only `npcRobChanceFlat` perk; it now shares the same `robChanceFlat` perk Barn
   Owl (and, until Elder Rootbeard's own copy was swapped for `starchCapacityPercent`

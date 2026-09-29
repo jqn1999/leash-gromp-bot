@@ -827,7 +827,10 @@ describe('resolveNpcRob', () => {
             });
             const result = await mercenaryFactory.resolveNpcRob(buffedUser, 1000, 0, 'market_stall');
             const expectedBuff = MercenaryBuffScaling.robChance[MercenaryBuffScaling.robChance.length - 1]; // Rank 6 max
-            expect(result.successChance).toBeCloseTo(CORNER_STORE.maxChance + expectedBuff);
+            // CORNER_STORE.maxChance (0.80) + expectedBuff (0.20) = 1.00 uncapped — but
+            // RobNpc.MAXIMUM_SUCCESS_RATE (0.95, added 2026-09-29) clamps the final stacked
+            // total, same as it would clamp any Yukon/Barn Owl robChanceFlat stack too.
+            expect(result.successChance).toBeCloseTo(RobNpc.MAXIMUM_SUCCESS_RATE);
         } finally {
             randomSpy.mockRestore();
         }

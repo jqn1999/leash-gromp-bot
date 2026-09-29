@@ -3707,6 +3707,18 @@ const RobNpc = {
     // matching penalty off of.
     REWARD_ROLL_SUCCESS_SPREAD: 0.12,
 
+    // Overall success-chance ceiling, added 2026-09-29, direct instruction ("make rob-npc
+    // have a cap of 95% success") — matches Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE's own
+    // 0.95. Before this, each tier's own maxChance (0.50-0.80) bounded the flat rank-based
+    // formula, but the companion (`robChanceFlat`) and Mercenary Buff (`robChance`) bonuses
+    // were added AFTER that clamp with no ceiling of their own — a stacked Yukon (+12%) plus
+    // a maxed robChance Mercenary Buff could in theory push successChance past 100%.
+    // mercenaryFactory.resolveNpcRob applies this as the final clamp, after every bonus is
+    // added — the one place in the whole successChance formula that needed it, since every
+    // earlier term (tierChance, the reward-roll risk adjustment) was already internally
+    // bounded to [0,1] on its own.
+    MAXIMUM_SUCCESS_RATE: 0.95,
+
     TIERS: [
         {
             key: 'market_stall',
