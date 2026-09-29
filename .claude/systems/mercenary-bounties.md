@@ -976,13 +976,17 @@ roll to size a matching penalty off of.
 | Tier | Rank | Power gate | Base / +per-rank / cap | Payout cap | `penaltyPercentOfCap` | On a whiff (at 1x multiplier) | Notoriety/win | Extra |
 |---|---|---|---|---|---|---|---|---|
 | Market Stall | 1+ | — (none) | 30% / +10% / 80% | 2,500 | — (whiff-only) | Nothing lost (whiff-only, unchanged from pre-ladder `/rob-npc`) | +1 | — |
-| Merchant's Wagon | 2+ | 3x | 36% / +8% / 76% | 4,500 | 0.5 (x1.0) | `round(payoutCap * 0.5 * [.8-1.2] * lossScale)` = 1,800-2,700 baseline | +2 | — |
-| Noble's Vault | 4+ | 15x | 32% / +6% / 62% | 9,000 | 0.75 (x1.5) | 5,400-8,100 baseline | +3 | — |
-| The Royal Treasury | 6 only | 25x | 10% / +8% / 50% | 20,500 | 1.0 (x2.0) | 16,400-24,600 baseline | +4 | 5% roll on a win: `mercenaryFactory.pickStatGrant('I', userDetails)` |
+| Merchant's Wagon | 2+ | 3x | 36% / +8% / 76% | 4,500 | 0.5 (x1.0) | `round(payoutCap * 0.5 * [.8-1.2] * lossScale)` = 1,800-2,700 baseline | +1 | — |
+| Noble's Vault | 4+ | 15x | 32% / +6% / 62% | 9,000 | 0.75 (x1.5) | 5,400-8,100 baseline | +2 | — |
+| The Royal Treasury | 6 only | 25x | 10% / +8% / 50% | 20,500 | 1.0 (x2.0) | 16,400-24,600 baseline | +2 | 5% roll on a win: `mercenaryFactory.pickStatGrant('I', userDetails)` |
 
 **Payout caps above reflect the 2026-09-12 fifth-retune cut (×0.4580 across all 4 tiers — see the
 "Fifth pass" section below) — the fourth-pass values (Market Stall 5,000 → Royal Treasury 45,000)
 are superseded.**
+
+**Notoriety/win above reflects a 2026-09-29 direct-instruction cut ("Lower merchant wagon to 1,
+power noble vault and royal treasury to 2") — was a clean 1/2/3/4 ascent per tier, now 1/1/2/2**
+(Noble's Vault and The Royal Treasury deliberately tie, per the same instruction).
 
 Power gates land on real shop checkpoints from `SCALING_ANCHOR_TABLE` (3x/15x/25x). "On a
 whiff" figures above are the pre-`lossScale` baseline at exactly 1x developed multiplier —
@@ -1481,11 +1485,13 @@ carry straight into the next cycle's progress instead of being discarded.
 taper (see below) so both call sites can't drift on the threshold/rounding rule:
 
 - `/take-bounty` win: `+Rival.NOTORIETY_PER_BOUNTY_TIER[tier]` (1/2/3 for Tier I/II/III).
-- `/rob-npc` win: `+` the picked heist tier's own `notorietyPerWin` (1/2/3/4 for Corner
-  Store/Merchant's Wagon/Noble's Vault/The Royal Treasury — see `/rob-npc (RobNpc)` below). Used to
-  be a single flat `Rival.NOTORIETY_PER_NPC_ROB_WIN` (1) before the Heist Ladder rework
-  (roadmap #50) gave `/rob-npc` multiple tiers — removed in favor of each `RobNpc.TIERS`
-  entry carrying its own value, mirroring `NOTORIETY_PER_BOUNTY_TIER`'s own per-tier shape.
+- `/rob-npc` win: `+` the picked heist tier's own `notorietyPerWin` (1/1/2/2 for Market
+  Stall/Merchant's Wagon/Noble's Vault/The Royal Treasury, since 2026-09-29, direct instruction:
+  "Lower merchant wagon to 1, power noble vault and royal treasury to 2" — was 1/2/3/4 — see
+  `/rob-npc (RobNpc)` below). Used to be a single flat `Rival.NOTORIETY_PER_NPC_ROB_WIN` (1)
+  before the Heist Ladder rework (roadmap #50) gave `/rob-npc` multiple tiers — removed in favor
+  of each `RobNpc.TIERS` entry carrying its own value, mirroring `NOTORIETY_PER_BOUNTY_TIER`'s
+  own per-tier shape (no longer a clean per-tier ascent the way that one still is).
 
 **Gain taper above a halving threshold (2026-09-12, direct instruction, threshold raised
 2026-09-13)**: "if a merc is above 20 notoriety, their notoriety gain from bounties and rob-npc

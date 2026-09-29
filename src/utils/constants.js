@@ -3765,7 +3765,10 @@ const RobNpc = {
             payoutCap: 4500,          // was 10,000 (matched Work.MAX_LARGE_POTATO) — cut x0.4580, see royal_treasury's own "Fourth pass" comment
             hasPenalty: true,         // real stakes start here — a whiff costs potatoes, not just the timer
             penaltyPercentOfCap: 0.5, // x1.0 — unchanged base rate
-            notorietyPerWin: 2,
+            // Lowered 2 -> 1, 2026-09-29, direct instruction ("Lower merchant wagon to 1,
+            // power noble vault and royal treasury to 2") — no longer a clean 1/2/3/4
+            // per-tier ascent; see noble_vault/royal_treasury's own comments below.
+            notorietyPerWin: 1,
             statGrantChanceOnWin: 0
         },
         {
@@ -3793,7 +3796,10 @@ const RobNpc = {
             payoutCap: 9000,           // was 20,000 — cut x0.4580, see royal_treasury's own "Fourth pass" comment
             hasPenalty: true,
             penaltyPercentOfCap: 0.75, // x1.5, same factor Guild Raid's own Elite penalty uses
-            notorietyPerWin: 3,
+            // Lowered 3 -> 2, 2026-09-29, direct instruction ("Lower merchant wagon to 1,
+            // power noble vault and royal treasury to 2") — now ties with royal_treasury's
+            // own notorietyPerWin below, deliberately (same instruction covers both).
+            notorietyPerWin: 2,
             statGrantChanceOnWin: 0
         },
         {
@@ -3868,7 +3874,12 @@ const RobNpc = {
             payoutCap: 20500,          // was 45,000 — cut x0.4580
             hasPenalty: true,
             penaltyPercentOfCap: 1.0, // x2.0, same factor Guild Raid's own Legendary penalty uses — unchanged
-            notorietyPerWin: 4,
+            // Lowered 4 -> 2, 2026-09-29, direct instruction ("Lower merchant wagon to 1,
+            // power noble vault and royal treasury to 2") — ties with noble_vault's own
+            // notorietyPerWin above, deliberately (same instruction covers both). The
+            // per-tier ladder is no longer a clean 1/2/3/4 ascent: market_stall 1,
+            // merchant_wagon 1, noble_vault 2, royal_treasury 2.
+            notorietyPerWin: 2,
             // The one thing Tiers I-III never offer — a 5% roll on a WIN into
             // mercenaryFactory.pickStatGrant('I', userDetails), reusing BountyStatReward's
             // existing TIER_I_GRANT pool rather than a new grant table — gives Rank 6 a
@@ -3918,9 +3929,11 @@ const Rival = {
     // than a tier letter the resolver itself no longer produces.
     NOTORIETY_PER_BOUNTY_TIER: { I: 1, II: 2, III: 3 },
     // Per-tier notoriety on a /rob-npc win now lives on each RobNpc.TIERS entry's own
-    // notorietyPerWin (1/2/3/4 for Market Stall/Merchant's Wagon/Noble's Vault/The Royal Treasury)
-    // instead of a single flat constant here — removed alongside roadmap #50's Heist
-    // Ladder rework, mirroring NOTORIETY_PER_BOUNTY_TIER's own per-tier shape just above.
+    // notorietyPerWin (1/1/2/2 for Market Stall/Merchant's Wagon/Noble's Vault/The Royal
+    // Treasury — was 1/2/3/4 until 2026-09-29, direct instruction: "Lower merchant wagon to
+    // 1, power noble vault and royal treasury to 2") instead of a single flat constant here
+    // — originally removed alongside roadmap #50's Heist Ladder rework, mirroring
+    // NOTORIETY_PER_BOUNTY_TIER's own per-tier shape just above.
     CONFRONTATION_THRESHOLD: 20,
     // Gain-taper threshold for mercenaryFactory.getNotorietyGain (2026-09-12, direct
     // instruction, raised 20 -> 50 on 2026-09-13: "make the notoriety halving start at 50

@@ -18910,5 +18910,31 @@ passing**.
 **Docs.** `systems/guilds.md`'s own inline `GuildRival.INFAMY_PER_RAID_MODE = {...}` code-comment
 reference updated to the new values, with a note on the change and date.
 
-**Cross-repo note.** Needs porting to `financial-project`'s `gromp-guilds/handler.ts` (its own
-duplicated `GuildRival.INFAMY_PER_RAID_MODE`, if present) — tracked for this same session.
+**Cross-repo note.** Ported to `financial-project`'s `gromp-guilds/handler.ts` (its own duplicated
+`GuildRival.INFAMY_PER_RAID_MODE`) the same session — see that repo's own
+`NOTES_GROMP_WEB_INTEGRATION.md` entry #106.
+
+## /rob-npc (Heist) Notoriety-per-win rebalanced: Merchant's Wagon down, Noble's Vault/Royal Treasury tied
+
+**Asked:** Follow-up to an informational question ("how much notoriety is merc rob-npc giving and
+bounty tiers") — "Lower merchant wagon to 1, power noble vault and royal treasury to 2" (read as
+"lower," matching the direction of every other value named).
+
+**Changed.** `constants.js`'s `RobNpc.TIERS`, each tier's own `notorietyPerWin`: Merchant's Wagon
+2 → 1; Noble's Vault 3 → 2; Royal Treasury 4 → 2 (Market Stall's own 1 untouched — not named). The
+ladder is no longer a clean 1/2/3/4 per-tier ascent — Merchant's Wagon now ties Market Stall at 1,
+and Noble's Vault ties Royal Treasury at 2, both deliberately per the instruction rather than an
+oversight.
+
+**Tests.** No test asserted a specific `notorietyPerWin` value (confirmed via full suite run before
+AND after, both green), so none needed updating. Full suite: **122 suites / 2224 tests, all
+passing**.
+
+**Docs.** `systems/mercenary-bounties.md`: the inline `/rob-npc` win bullet and the 4-tier summary
+table's own "Notoriety/win" column both updated to 1/1/2/2, with a dated footnote under the table
+matching its existing footnote convention. Also fixed an unrelated pre-existing naming slip in the
+same bullet — "Corner Store" corrected to "Market Stall" (the tier's real `label`), since it was
+directly adjacent to the values already being touched.
+
+**Cross-repo note.** Needs porting to `financial-project`'s `gromp-mercenary/handler.ts` (its own
+duplicated `RobNpc.TIERS`) — tracked for this same session.
