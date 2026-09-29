@@ -567,6 +567,44 @@ crossover exposed — see `roadmap.md` for the exact before/after EV numbers onc
 rebuilt against these values. Metal King (both modes) and Stat Raid were not part of either
 instruction and stay untouched.
 
+**Update (2026-09-29, later same day) — Elite re-raised to flatten its ratio-vs-merc spike;
+Legendary bumped alongside it to preserve the cliff-guard ordering.** The difficulty cut above
+solved accessibility but re-simulating the guild-vs-solo-merc EV ratio (maxed Solo Merc, Bounty +
+Heist combined, starch valued at `Bounty.STARCH_REFERENCE_PRICE`) surfaced a shape problem it
+introduced: Elite spiked to ≈5.6x merc around power 338 then faded, because a level-8 roster hit
+the new 95% cap that early and rode a long flat tail while merc's own income kept climbing with no
+comparable nearby ceiling. Direct instruction: move that spike later in the band without
+re-introducing the pre-cut inaccessibility.
+
+Elite's difficulty raised ≈1.618x (828/606/708/828... i.e. the old T1-T4 values effectively became
+new T2/mid-ladder anchors): `ELITE_T1_DIFFICULTY` 518→828, `T2` 606→972, `T3` 708→1141, `T4`
+828→1340 — same `difficulty = P * 2.18 * 0.95` formula and geometric T2/T3 fill as the cut above,
+just re-solved against later target powers (T1's cap-reaching power moves from ≈250/player to
+≈400/player, T4's from ≈400/player to ≈650/player). Result: peak ratio drops from 5.61x to 3.35x
+and the peak itself moves from P≈338 to P≈600 — flatter, later, as intended. Accepted tradeoff:
+Elite now dips below merc in a new low-power band (roughly P=80-150) that didn't exist before,
+since the whole curve shifted right along the power axis.
+
+Raising Elite's T4 to 1340 put it above Legendary's then-current T1 (1243), which would have broken
+the cliff-guard invariant `raidFactory.test.js` asserts (`LEGENDARY_T1_DIFFICULTY >
+ELITE_T4_DIFFICULTY` — each mode's easiest tier must stay harder than the previous mode's hardest).
+Legendary's own ratio-vs-merc curve was never the early-spike-then-fade shape Elite had (it already
+peaked reasonably, ≈9.3x around P=700-800), so re-deriving it from the `P * 2.18 * 0.95` formula
+against a later target wasn't the right fix — a full 1.618x rescale was tried first and rejected by
+simulation (it dragged Legendary's own peak out past P=1200 and drove its EV negative at P=150).
+Instead Legendary's `T1` was raised just enough to clear Elite's new `T4` with an ≈8% margin (down
+from the pre-bump ≈50% margin — Legendary never needed that much headroom since it wasn't
+over-saturating), keeping Legendary's own existing T4/T1 growth ratio (1657/1243 ≈ 1.333) rather
+than re-solving from scratch: `LEGENDARY_T1_DIFFICULTY` 1243→1450, `T2` 1368→1596, `T3` 1506→1756,
+`T4` 1657→1933. REWARD/PENALTY unchanged on both modes throughout this update. Effect: Legendary's
+own peak ratio compresses from ≈9.3x to ≈7.9x (still comfortably ahead of merc through the 700-900
+band); P=150 drops from an already-thin 1.07x to negative EV — accepted, since Legendary T4 already
+gates on guild level 8 and P=150 was razor-thin even under the pre-bump values.
+`raidFactory.test.js`'s tier-weight blend regression, T4 difficulty regression anchor, and
+efficiency-band assertions were all recomputed and updated to match (efficiency bands: elite
+≈35,178-54,845/pt, legendary ≈70,137-147,495/pt, both lower than the pre-bump range since
+difficulty rose with reward untouched).
+
 ### Dynamic tier weighting
 
 **Which of a mode's own T1-T4 gets rolled (2026-08-27 rework) is no longer independent of the
