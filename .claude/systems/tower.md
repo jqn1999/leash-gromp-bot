@@ -2817,3 +2817,77 @@ noise, exposing a userId publicly) worth a separate decision if wanted.
 embed with the actual floor/potatoes/work-multiplier values present in its fields, alongside (not
 instead of) the pre-existing JSON-block assertion. Full suite: **113 suites / 2112 tests, all
 passing** (net +1 new test, 0 broken).
+
+## Tower leaderboard payout/announcement temporarily disabled — crash investigation open (2026-09-29, direct instruction + live player reports)
+
+**Reported.** Players hitting crashes tied to the Tower's leaderboard logic, described as recurring
+and disruptive enough to warrant disabling that machinery immediately rather than waiting on a full
+root-cause fix. Direct instruction: "For now disable tower leaderboard granting stats but leave the
+leaderboard. Just for the daily reset don't have that logic grant stats or do an announcement
+anymore daily."
+
+**Investigated, not yet pinned down with a real stack trace** — same honest "root cause still open"
+posture the 2026-09-11 Tower crash entry above took before a real trace was in hand. Three concrete
+gaps found in this area, any of which could produce the reported symptom, none confirmed yet as
+THE cause:
+
+1. **`enter-tower.js`'s try/catch around `tF.startRun()` doesn't cover what runs after it.** The
+   2026-09-11 auto-recovery fix (see above) wraps only `startRun()` — restoring `canEnterTower` and
+   showing a friendly recovery message on any exception during the climb itself. Everything after a
+   successful `startRun()` (the results embed, `processRewardPayouts`, `updateIfNewRecord`, and
+   critically `dynamoHandler.recordTowerLeaderboardEntry` — the exact "leaderboard logic" named in
+   the report) runs completely unguarded. An exception anywhere in that tail throws uncaught: the
+   player already saw their "you won" results embed, but the interaction then dies with Discord's
+   generic failure and no recovery message, and (unlike the covered `startRun()` path)
+   `canEnterTower` is never restored even though it was already flipped `false` before the run
+   started. This is the same bug CLASS the 2026-09-11 fix addressed, just never extended past
+   `startRun()`'s own boundary.
+2. **`createTowerLeaderboardEmbed`/`createTowerLeaderboardResultsEmbed` (`embedFactory.js`) read
+   `entry.floor`/`winner.floor` with no defensive fallback**, unlike `elitesKilled`/`potatoes` right
+   next to them in the same template literals (both guarded with `|| 0`). `entry.floor.toLocaleString()`
+   throws outright if `floor` is ever missing or non-numeric on a stored entry — an inconsistency
+   worth closing even though normal play always populates `floor` as a real number.
+3. **`recordTowerLeaderboardEntry` (`dynamoHandler.js`) is an unlocked read-modify-write** — reads
+   the whole `tower_leaderboard` doc, pushes one entry into a local copy, writes the whole array
+   back. Two Tower runs finishing close together can race and silently lose one write (no
+   `updateStatFieldsWithLock`-style optimistic-concurrency guard the way some other "read array from
+   a stats doc, mutate, write back" call sites in this same file already use). Separately,
+   `updateStatFields` swallows any DynamoDB error internally (a bare `.catch` that only
+   `console.debug`s it, per this file's own long-standing anti-pattern flagged elsewhere in this
+   codebase's history) — so if the `entries` array's growing JSON ever approached DynamoDB's 400KB
+   item cap on a busy day, that failure would be silently dropped rather than surfaced, which is a
+   data-loss mode, not a crash, but lives in the exact same code path.
+
+None of these three has a confirmed stack trace behind it yet — flagged honestly as open, matching
+this doc's own precedent for not claiming a fix until a real trace confirms it. The next actual Tower
+crash report should include (or trigger someone to go pull) real logs around `enter-tower.js`'s
+post-`startRun()` section so whichever of these it actually is can be confirmed rather than guessed.
+
+**Shipped now, independent of root-causing the above.** `backgroundEvents.js`'s 8pm ET daily cron no
+longer calls `towerLeaderboardFactory.payoutWinners()` — that single function is what both grants the
+stat/potato bonus to today's top finishers AND builds the results-announcement embed, so removing
+that one call site removes both at once. In its place, the cron now calls
+`dynamoHandler.clearTowerLeaderboard()` directly, so the leaderboard still resets to empty every
+night (same as `payoutWinners()` always did at the end of its own run — it just no longer pays
+anyone or marks a champion on the way there). `resetAllTowerEntries()`/`resetTowerWard()` are
+untouched — players can still enter the Tower once a day and Bastion's Ward still resets, only the
+END-of-day payout/announcement step is disabled.
+
+`towerLeaderboardFactory.payoutWinners()` itself, and its own dedicated test file
+(`towerLeaderboardFactory.test.js`), are completely untouched — this is a caller-side disable, not a
+removal, specifically so re-enabling later (once the crash is actually root-caused and fixed) is a
+one-line revert: swap the `clearTowerLeaderboard()` call back for `payoutWinners()` plus the
+announcement block it used to feed (see backgroundEvents.js's own comment at that call site for the
+exact shape to restore).
+
+**What still works.** `/leaderboard tower-leaderboard` (the in-progress standings view) is completely
+unaffected — it reads today's entries directly via `getTowerLeaderboard`/`sortTowerLeaderboardEntries`,
+never through `payoutWinners`, so players can still see and race for today's rank even though nobody
+is actually being paid for it right now. `recordTowerLeaderboardEntry` (survived runs still get
+logged to the leaderboard from `enter-tower.js`) is also unaffected.
+
+**Tests.** No test asserted `backgroundEvents.js`'s own cron wiring (not unit-tested directly — it
+needs a live Discord client, same as this file's other cron jobs). Full suite run before and after:
+**122 suites / 2224 tests, all passing**, unaffected either way. The now-unused
+`TowerLeaderboardFactory` import/instantiation in `backgroundEvents.js` were removed rather than left
+as dead code — re-adding both plus the call site is the entire revert when this is re-enabled.
