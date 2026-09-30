@@ -163,9 +163,19 @@ async function runResetTower(client, interaction) {
     const alreadyCouldEnter = targetUserDetails.canEnterTower === true;
     await dynamoHandler.updateUserDatabase(targetUserId, "canEnterTower", true);
 
+    // True-resume checkpointing (2026-09-30) — a crash on its own now leaves canEnterTower
+    // true AND the run resumable via its checkpoint (see enter-tower.js's own resumeFrom
+    // comment), so this admin command is no longer needed for that specific case. It stays
+    // useful as an explicit "discard whatever's pending and start clean" override — clearing
+    // the checkpoint here too so the player's NEXT /enter-tower is a genuinely fresh run, not
+    // an accidental resume of whatever this command was meant to reset them away from.
+    const hadPendingCheckpoint = !!targetUserDetails.towerRunCheckpoint;
+    await dynamoHandler.updateUserDatabase(targetUserId, "towerRunCheckpoint", null);
+
     interaction.editReply((alreadyCouldEnter
         ? `${targetUserDisplayName} could already run /enter-tower — nothing was stuck, but their entry is confirmed available.`
         : `${targetUserDisplayName}'s Tower entry has been reset — they can run /enter-tower again right away.`)
+        + (hadPendingCheckpoint ? ` They had an in-progress, resumable run through floor ${targetUserDetails.towerRunCheckpoint.floor} — this discards it, they'll start a brand new run from floor 1.` : '')
         + wipeMessage);
 }
 

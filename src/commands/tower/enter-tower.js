@@ -241,21 +241,31 @@ module.exports = {
         const rewardBonus = companionFactory.getActivePerkValue(userDetails, 'towerRewardBonus');
         const hasWard = companionFactory.hasTowerDeathWard(userDetails) && !userDetails.towerWardUsedToday;
 
-        // Per-floor checkpointing (2026-09-30, direct instruction: "implement #1" — save
-        // progress on each floor so a crashed run can be credited for what it already banked,
-        // instead of an admin having to reset the entry and the player losing everything).
-        // Cleared FIRST, before this run's own towerFactory is even constructed — a stale
-        // checkpoint left over from a previous crash (e.g. the whole process dying before its
-        // own catch block below ever ran) must never be mistaken for THIS run's progress if
-        // this run itself crashes before its own first floor's checkpoint write lands.
-        await dynamoHandler.updateUserDatabase(userId, "towerRunCheckpoint", null);
-        let latestCheckpoint = null;
+        // True resume (2026-09-30, direct instruction: "I want a crashed run to do exactly
+        // that. Crash, and the user can continue after a crashed run from their existing DB
+        // record for the day if it hasnt resulted in a leave from tower, death from elite, or
+        // death by elite but save by bastion") — supersedes the SAME-DAY earlier "implement #1"
+        // pass, which credited whatever was banked and made the player start a brand new floor-1
+        // run. `towerRunCheckpoint` (a field on the user's own record) is the resume point: if
+        // one exists, THIS invocation continues that exact run (see towerFactory's own
+        // resumeFrom constructor param) instead of starting fresh. It's null/absent for a
+        // genuinely new day's first attempt, or after any run that actually concluded (cleared
+        // below on a normal finish; also bulk-cleared server-wide by the same 8pm ET cron that
+        // resets canEnterTower — see dynamoHandler.resetAllTowerEntries's own comment — so a
+        // never-resumed crash from a PRIOR day can never be mistaken for today's progress).
+        const resumeFrom = userDetails.towerRunCheckpoint || null;
+
+        // Seeded with resumeFrom (not null) — if THIS attempt crashes again before completing
+        // even one more floor, latestCheckpoint must still reflect the run's true last-known
+        // state (from before this attempt), not "nothing exists," so the recovery message and
+        // the next resume both still work correctly off the right floor.
+        let latestCheckpoint = resumeFrom;
         const checkpointTowerRun = async (snapshot) => {
             latestCheckpoint = snapshot;
             await dynamoHandler.updateUserDatabase(userId, "towerRunCheckpoint", snapshot);
         };
 
-        let tF = new towerFactory(interaction, username, userMultiplier, userDetails.autoTowerContinue, rewardBonus, hasWard, checkpointTowerRun)
+        let tF = new towerFactory(interaction, username, userMultiplier, userDetails.autoTowerContinue, rewardBonus, hasWard, checkpointTowerRun, resumeFrom)
         let tower_out;
         try {
             tower_out = await tF.startRun()
@@ -271,25 +281,18 @@ module.exports = {
             console.error(`Tower run crashed for ${username} (${userId}) at floor ${tF.floor}:`, e);
             await dynamoHandler.updateUserDatabase(userId, "canEnterTower", true);
 
-            // Checkpoint-based partial credit (2026-09-30) — `latestCheckpoint` is the last
-            // floor's own snapshot that successfully finished BEFORE the crash (read from the
-            // in-memory closure, not re-fetched from the DB — both are equally correct here
-            // since a caught JS exception never corrupts outer-scope state, and the in-memory
-            // copy avoids an extra read/eventual-consistency concern for no benefit). `null`
-            // means the crash happened before even floor 1 finished, in which case there's
-            // nothing to credit — identical to the pre-checkpoint behavior. Deliberately
-            // credits ONLY the accrued PAYOUT rewards (+ the companion leveling/drop rolls
-            // processRewardPayouts already folds in) — NOT highestTowerFloor or the daily
-            // leaderboard, since the run didn't actually finish (no voluntary retreat, no
-            // Elite loss) and doesn't fit either of those "a run really concluded" rules.
-            let recoveryMessage;
-            if (latestCheckpoint) {
-                await processRewardPayouts(interaction, userId, latestCheckpoint.run, username, userDisplayName, latestCheckpoint.floor, false, latestCheckpoint.elitesSurvivedCount, latestCheckpoint.towerCompanionHits, latestCheckpoint.wardUsed);
-                recoveryMessage = `${userDisplayName}, your tower run hit an unexpected error around floor ${tF.floor} and had to stop — sorry about that! Good news: your progress through floor ${latestCheckpoint.floor} was already banked and has been credited (${latestCheckpoint.run[tC.PAYOUT.POTATOES].toLocaleString()} potatoes, ${latestCheckpoint.run[tC.PAYOUT.WORK_MULTIPLIER].toFixed(2)} work multiplier, ${latestCheckpoint.run[tC.PAYOUT.PASSIVE_INCOME].toLocaleString()} passive income, ${latestCheckpoint.run[tC.PAYOUT.BANK_CAPACITY].toLocaleString()} bank capacity) — only progress past that floor was lost. Your entry has been restored, so you can run /enter-tower again right away.`;
-            } else {
-                recoveryMessage = `${userDisplayName}, your tower run hit an unexpected error around floor ${tF.floor} and had to stop — sorry about that! Nothing from that attempt was banked, but your entry has been restored, so you can run /enter-tower again right away.`;
-            }
-            await dynamoHandler.updateUserDatabase(userId, "towerRunCheckpoint", null);
+            // Deliberately NOT crediting anything and NOT clearing towerRunCheckpoint here
+            // (both were this same day's earlier "implement #1" behavior) — the run hasn't
+            // CONCLUDED (no voluntary leave, no Elite death, no Elite death saved by Bastion's
+            // ward), so nothing should be credited toward potatoes/stats/highestTowerFloor/the
+            // daily leaderboard yet. `latestCheckpoint` (kept up to date through this attempt's
+            // own checkpoint calls, same as before) stays in the DB exactly as-is, ready for the
+            // next `/enter-tower` call to resume from — that's the entire recovery path now,
+            // nothing else needs to happen in this catch block beyond restoring canEnterTower so
+            // the player is actually allowed to call it again.
+            const recoveryMessage = latestCheckpoint
+                ? `${userDisplayName}, your tower run hit an unexpected error around floor ${tF.floor} and had to stop — sorry about that! Good news: your progress through floor ${latestCheckpoint.floor} is safely saved, nothing was lost. Run /enter-tower again to pick up right where you left off.`
+                : `${userDisplayName}, your tower run hit an unexpected error around floor ${tF.floor} and had to stop — sorry about that! Nothing from that attempt was saved yet, but your entry has been restored, so you can run /enter-tower again right away.`;
             try {
                 if (interaction.deferred || interaction.replied) {
                     await interaction.editReply({ content: recoveryMessage, embeds: [], components: [] });
@@ -306,10 +309,12 @@ module.exports = {
             }
             return;
         }
-        // The run finished for real (survived or died to an Elite) — whatever the checkpoint
-        // held is now superseded by tower_out's own complete, final state, so clear it rather
-        // than let it linger until the NEXT run's own start-of-run clear (harmless either way,
-        // just tidier and avoids a misleading stale doc if anyone inspects it manually).
+        // The run finished for real (survived, died to an Elite, or died but saved by Bastion's
+        // ward — died stays false in that last case, see towerFactory.js's own comment) — this
+        // is the ONE place a run's progress is actually credited now, whether it took one
+        // attempt or several resumes to get here. Whatever the checkpoint held is fully
+        // superseded by tower_out's own complete, cumulative final state, so clear it now
+        // rather than let a concluded run's stale checkpoint sit around.
         await dynamoHandler.updateUserDatabase(userId, "towerRunCheckpoint", null);
         let rewards = tower_out[0];
         let floor = tower_out[1];

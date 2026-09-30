@@ -41,10 +41,22 @@ class towerFactory{
     // run so far. Kept as an injected callback rather than a direct DB write here so this class
     // stays the pure run simulator its own existing comments describe ("enter-tower.js persists,
     // towerFactory computes") — enter-tower.js supplies the actual persistence.
-    constructor(_interaction, _username, multi, autoContinue = false, rewardBonus = 0, hasWard = false, onFloorComplete = null) {
-        this.floor = 0
-        this.run = Object.assign({}, tC.RUN)
-        this.run[tC.PAYOUT.ELITE_KILL] = new Array()
+    //
+    // resumeFrom (2026-09-30, same-day follow-up, direct instruction: "I want a crashed run to
+    // do exactly that. Crash, and the user can continue after a crashed run from their existing
+    // DB record for the day if it hasnt resulted in a leave from tower, death from elite, or
+    // death by elite but save by bastion") — an optional checkpoint snapshot (the exact shape
+    // `checkpoint()` below produces) to resume a previously-crashed, still-unconcluded run from,
+    // instead of starting fresh at floor 0. Every field it restores is exactly what a fresh run
+    // would otherwise default — see each field's own line below for the resumeFrom branch.
+    constructor(_interaction, _username, multi, autoContinue = false, rewardBonus = 0, hasWard = false, onFloorComplete = null, resumeFrom = null) {
+        this.floor = resumeFrom ? resumeFrom.floor : 0
+        this.run = resumeFrom
+            ? { ...resumeFrom.run, [tC.PAYOUT.ELITE_KILL]: [...resumeFrom.run[tC.PAYOUT.ELITE_KILL]] }
+            : Object.assign({}, tC.RUN)
+        if (!resumeFrom) {
+            this.run[tC.PAYOUT.ELITE_KILL] = new Array()
+        }
         this.username = _username
         this.interaction = _interaction
         this.multi = multi
@@ -52,8 +64,12 @@ class towerFactory{
         // Reward VALUE scaling (2026-08-31) — computed once, here, from the same one-time
         // this.multi snapshot execElite's success-chance formula already relies on never
         // changing mid-run. See tower.md's "Tower Revamp: Reward Value Scaling" section.
+        // Recomputed fresh from `multi` on a resume too (rather than also checkpointing this) —
+        // `multi` itself is always freshly read live by enter-tower.js on every single
+        // invocation, resume or not, matching this game's general "read live state" precedent
+        // (Spud Keep membership, guild rosters, etc.) rather than snapshotting it mid-run.
         this.scalingFactor = Math.pow(scalingFactor(this.multi), tC.SCALING_EXPONENT)
-        this.difficulty = tC.TOWER_ELITE_DIFFICULTY_INITIAL
+        this.difficulty = resumeFrom ? resumeFrom.difficulty : tC.TOWER_ELITE_DIFFICULTY_INITIAL
         this.died = false
         // Bastion, the Tower Warden (2026-09-13) — both pre-resolved by enter-tower.js from
         // the player's own equipped companion BEFORE the run starts (companionFactory.
@@ -67,23 +83,36 @@ class towerFactory{
         this.hasWard = hasWard
         // Consumed at most once per run (enter-tower.js persists userDetails.towerWardUsedToday
         // afterward iff this ends up true) — a single run could otherwise die to multiple
-        // Elites in sequence, and the ward should only ever save the FIRST one.
-        this.wardUsed = false
+        // Elites in sequence, and the ward should only ever save the FIRST one. Restored from
+        // resumeFrom so a ward already spent before a crash can't be spent again after resuming
+        // — this alone is what prevents a double-save, regardless of what hasWard recomputes to
+        // on the resumed attempt (towerWardUsedToday in the DB is still false until the run
+        // actually concludes, so hasWard alone can't be trusted to reflect an in-progress spend).
+        this.wardUsed = resumeFrom ? resumeFrom.wardUsed : false
         // Tower Pet leveling/drop bookkeeping (2026-09-13) — populated live as forced Elites
         // are survived, read by enter-tower.js after startRun() returns to compute the Tower
         // leveling grant (companionFactory.getTowerWorkCountGrant) and award any Bastion drops
         // (companionFactory.resolveTowerCompanionAward). Kept as plain instance state rather
         // than threaded through return values at every call site, same as this.died/this.floor.
-        this.elitesSurvivedCount = 0
-        this.towerCompanionHits = 0
+        this.elitesSurvivedCount = resumeFrom ? resumeFrom.elitesSurvivedCount : 0
+        this.towerCompanionHits = resumeFrom ? resumeFrom.towerCompanionHits : 0
         // Persistent account-level toggle (see /tower-settings) — skips the dedicated
         // Continue/Leave screen after a non-Elite floor, see createFloorEmbed/resolveNext.
         this.autoContinue = autoContinue
-        // Set once, up front, by chooseRiskPolicy() before the floor loop begins.
-        this.policy = null
+        // Set once, up front, by chooseRiskPolicy() before the floor loop begins — restored on
+        // resume instead, so a resumed run doesn't re-prompt for a choice already made before
+        // the crash (see startRun()'s own resumeFrom check).
+        this.policy = resumeFrom ? resumeFrom.policy : null
         // The previous floor's result text, prefaced onto the next floor's own embed when
-        // autoContinue is on and its dedicated result screen was skipped. See resolveNext.
-        this.lastResultText = null
+        // autoContinue is on and its dedicated result screen was skipped. See resolveNext. Also
+        // reused here on a resume, to preface a short "your climb continues" note onto the very
+        // next floor's own embed — the floor NUMBER alone (N+1, not 1) already signals this is a
+        // continuation, but this makes it explicit. Only fires if that next floor turns out to
+        // be a normal floor, not a forced Elite (createEliteEmbed doesn't consume this field) —
+        // an acceptable, narrow gap rather than plumbing it into the Elite embed too.
+        this.lastResultText = resumeFrom
+            ? `▶️ **Your tower run continues!** An earlier attempt hit an unexpected error and had to stop — nothing was lost, you're picking back up right where you left off.`
+            : null
         // Per-run REWARD variety cap (2026-09-04, direct instruction) — without this, a single
         // deep run can roll the same REWARDS entry (e.g. Golden Ginger) over and over, each hit
         // stacking another PERMANENT passive income/bank capacity grant with no bound. Tracks
@@ -91,13 +120,23 @@ class towerFactory{
         // branch excludes them from the pool until every entry has come up once, then resets so
         // a very long run doesn't run out of REWARD content. Shared by both the interactive and
         // fastForwardToNextElite's silent path, since both funnel through execNormalFloor on the
-        // same instance.
-        this.usedRewards = new Set()
+        // same instance. Restored from resumeFrom (as a plain array — Set isn't JSON-safe, see
+        // checkpoint()'s own comment) so a resumed run doesn't re-offer a REWARD already rolled
+        // before the crash.
+        this.usedRewards = new Set(resumeFrom ? resumeFrom.usedRewards : [])
     }
 
     async startRun(){
-        await this.chooseRiskPolicy()
-        let floor_type = "COMBAT"
+        // A resumed run already chose its risk policy before the crash (restored above) — only
+        // prompt for a fresh one when starting genuinely at floor 0.
+        if (!this.policy) {
+            await this.chooseRiskPolicy()
+        }
+        // Floor 1 is always COMBAT by design (see the existing test coverage's own comment on
+        // this) — that guarantee only holds for an actual floor 1. A resumed run's very next
+        // floor is anything BUT guaranteed COMBAT, so it needs a real getFloor() roll instead of
+        // reusing floor 1's hardcoded default.
+        let floor_type = this.floor > 0 ? getFloor() : "COMBAT"
         var cont = true
         while(cont){
             this.floor++
@@ -124,12 +163,13 @@ class towerFactory{
         return [this.run, this.floor, this.died, this.elitesSurvivedCount, this.towerCompanionHits, this.wardUsed]
     }
 
-    // Per-floor checkpoint (2026-09-30) — a plain, JSON-safe snapshot of exactly what
-    // startRun()'s own final return tuple would contain if the run ended right now. A failed
-    // checkpoint write must never abort the run itself — worst case it just widens the
-    // recovery gap back to "nothing credited on a later crash," the exact pre-existing
-    // behavior, never a NEW failure mode on top of it. No-ops silently if the caller (a test,
-    // or any future caller) didn't supply onFloorComplete.
+    // Per-floor checkpoint (2026-09-30, extended same-day to a full resume snapshot — see the
+    // constructor's own resumeFrom comment) — a plain, JSON-safe snapshot carrying everything a
+    // NEW towerFactory instance needs to resume this exact run later, not just what startRun()'s
+    // own return tuple would contain. A failed checkpoint write must never abort the run itself —
+    // worst case it just widens the recovery gap back to "nothing to resume from on a later
+    // crash," the pre-checkpoint behavior, never a NEW failure mode on top of it. No-ops silently
+    // if the caller (a test, or any future caller) didn't supply onFloorComplete.
     async checkpoint(){
         if (!this.onFloorComplete) return;
         try {
@@ -139,6 +179,12 @@ class towerFactory{
                 elitesSurvivedCount: this.elitesSurvivedCount,
                 towerCompanionHits: this.towerCompanionHits,
                 wardUsed: this.wardUsed,
+                policy: this.policy,
+                difficulty: this.difficulty,
+                // Set isn't JSON-safe (DynamoDB's own document client would choke on it the same
+                // way `JSON.stringify` silently drops it) — persisted as a plain array, rebuilt
+                // back into a Set by the constructor's own resumeFrom branch.
+                usedRewards: [...this.usedRewards],
             });
         } catch (err) {
             console.error(`Tower checkpoint failed for ${this.username} at floor ${this.floor}:`, err);

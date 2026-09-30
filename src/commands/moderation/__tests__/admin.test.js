@@ -106,6 +106,36 @@ describe('/admin reset-tower', () => {
         expect(interaction.editReply).toHaveBeenCalledWith(expect.stringMatching(/nothing was stuck/i));
     });
 
+    // True-resume checkpointing (2026-09-30) — a crash alone no longer needs this command (it
+    // leaves canEnterTower true and the run resumable via towerRunCheckpoint on its own now),
+    // so this became an explicit "discard whatever's pending" override — must also clear the
+    // checkpoint itself, or the player's next /enter-tower would resume the very run this
+    // command was meant to reset them away from.
+    test('discards a pending resumable checkpoint and says so', async () => {
+        const interaction = fakeInteraction('target-1');
+        interaction.guild.members.fetch.mockResolvedValue(memberFixture());
+        dynamoHandler.findUser.mockResolvedValue({
+            userId: 'target-1', username: 'targetplayer', canEnterTower: true,
+            towerRunCheckpoint: { floor: 23, run: {} },
+        });
+
+        await resetTowerCallback({}, interaction);
+
+        expect(dynamoHandler.updateUserDatabase).toHaveBeenCalledWith('target-1', 'towerRunCheckpoint', null);
+        expect(interaction.editReply).toHaveBeenCalledWith(expect.stringMatching(/in-progress, resumable run through floor 23.*discards it/i));
+    });
+
+    test('says nothing extra about a checkpoint when there is none to discard', async () => {
+        const interaction = fakeInteraction('target-1');
+        interaction.guild.members.fetch.mockResolvedValue(memberFixture());
+        dynamoHandler.findUser.mockResolvedValue({ userId: 'target-1', username: 'targetplayer', canEnterTower: false });
+
+        await resetTowerCallback({}, interaction);
+
+        expect(dynamoHandler.updateUserDatabase).toHaveBeenCalledWith('target-1', 'towerRunCheckpoint', null);
+        expect(interaction.editReply).toHaveBeenCalledWith(expect.not.stringMatching(/resumable run/i));
+    });
+
     // full-wipe (2026-09-24, direct instruction) — beyond just unlocking re-entry, also
     // reverts the potatoes/stats a survived Tower run credited today, sourced from that
     // player's own entry in today's tower_leaderboard batch.

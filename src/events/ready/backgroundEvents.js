@@ -99,6 +99,11 @@ module.exports = async (client) => {
             // canEnterTower above, so a used ward is available again the next time a player
             // can enter the tower at all.
             await dynamoHandler.resetTowerWard()
+            // True-resume checkpointing (2026-09-30) — same daily cadence again: a crashed,
+            // never-resumed run's checkpoint must not survive into the fresh entry this same
+            // reset just granted, or a player's next /enter-tower would incorrectly resume a
+            // run from a day that's already over instead of starting today's fresh climb.
+            await dynamoHandler.resetTowerRunCheckpoints()
         } catch (err) {
             console.log('daily cron: Tower reset step failed:', err)
         }
