@@ -545,6 +545,66 @@ describe('admin bypass while tower_access is disabled/unset', () => {
         expect(content).toContain('Nothing from that attempt was saved yet');
     });
 
+    // A deliberate timeout (2026-09-30, direct instruction: "for timeout, update it so that it
+    // is just a non-complete and user has to enter tower again resuming...") gets the SAME
+    // non-crediting/checkpoint-preserving mechanics as any other crash, but its own honest
+    // message ("you didn't respond in time") instead of "hit an unexpected error", and logs via
+    // console.log (an expected, everyday occurrence) rather than console.error (a real bug).
+    // towerFactory itself is mocked out in this file, so the timeout is simulated the same way
+    // the real TowerTimeoutError would arrive: a rejected startRun() whose error has
+    // `name: 'TowerTimeoutError'` (enter-tower.js checks the name, not `instanceof`, precisely
+    // so this file's own automocked towerFactory module never needs the real class imported).
+    test('a timeout after a floor checkpointed tells the player to resume, without crash-style wording, and logs via console.log not console.error', async () => {
+        dynamoHandler.findUser.mockResolvedValue(baseUser({ userId: awsConfigurations.devs[0], workMultiplierAmount: tC.ENTRY_GATE_MULTI, rebirthCount: 0 }));
+        const timeoutError = Object.assign(new Error('No response on the Continue/Leave screen at floor 10'), { name: 'TowerTimeoutError' });
+        towerFactory.mockImplementation((interaction, username, multi, autoContinue, rewardBonus, hasWard, onFloorComplete) => ({
+            floor: 11,
+            startRun: jest.fn(async () => {
+                await onFloorComplete({
+                    floor: 10,
+                    run: { [tC.PAYOUT.POTATOES]: 5000, [tC.PAYOUT.WORK_MULTIPLIER]: 0, [tC.PAYOUT.PASSIVE_INCOME]: 0, [tC.PAYOUT.BANK_CAPACITY]: 0, [tC.PAYOUT.ELITE_KILL]: [] },
+                    elitesSurvivedCount: 1, towerCompanionHits: 0, wardUsed: false, policy: 'safe', difficulty: 4, usedRewards: [],
+                });
+                throw timeoutError;
+            }),
+        }));
+        const consoleLogSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
+        const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+        const interaction = adminInteraction();
+
+        await expect(callback({}, interaction)).resolves.not.toThrow();
+
+        expect(dynamoHandler.updateUserFields).not.toHaveBeenCalled();
+        expect(dynamoHandler.updateUserDatabase).toHaveBeenCalledWith(awsConfigurations.devs[0], 'canEnterTower', true);
+        expect(dynamoHandler.updateUserDatabase).not.toHaveBeenCalledWith(awsConfigurations.devs[0], 'towerRunCheckpoint', null);
+        const [{ content }] = interaction.editReply.mock.calls[interaction.editReply.mock.calls.length - 1];
+        expect(content).toContain("didn't respond in time");
+        expect(content).toContain('floor 10');
+        expect(content).not.toMatch(/unexpected error/i);
+        expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining('no response in time'), timeoutError.message);
+        expect(consoleErrorSpy).not.toHaveBeenCalledWith(expect.stringContaining('crashed'), expect.anything());
+        consoleLogSpy.mockRestore();
+        consoleErrorSpy.mockRestore();
+    });
+
+    test('a timeout before any floor checkpoints still says nothing was saved yet, without crash-style wording', async () => {
+        dynamoHandler.findUser.mockResolvedValue(baseUser({ userId: awsConfigurations.devs[0], workMultiplierAmount: tC.ENTRY_GATE_MULTI, rebirthCount: 0 }));
+        const timeoutError = Object.assign(new Error('No response on the Continue/Leave screen at floor 1'), { name: 'TowerTimeoutError' });
+        towerFactory.mockImplementation(() => ({
+            floor: 1,
+            startRun: jest.fn().mockRejectedValue(timeoutError),
+        }));
+        const interaction = adminInteraction();
+
+        await expect(callback({}, interaction)).resolves.not.toThrow();
+
+        expect(dynamoHandler.updateUserFields).not.toHaveBeenCalled();
+        const [{ content }] = interaction.editReply.mock.calls[interaction.editReply.mock.calls.length - 1];
+        expect(content).toContain("didn't respond in time");
+        expect(content).toContain('nothing from that attempt was saved yet');
+        expect(content).not.toMatch(/unexpected error/i);
+    });
+
     test('a pending checkpoint from a previous crash is passed to towerFactory as resumeFrom, and cleared only once the resumed run actually concludes', async () => {
         const pendingCheckpoint = {
             floor: 10,

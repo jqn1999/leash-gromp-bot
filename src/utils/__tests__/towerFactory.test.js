@@ -1,4 +1,4 @@
-const { getFloor, towerFactory, getEliteTier, pickElite, pickChoiceIndex, investment, scalingFactor, safeEditReply } = require('../towerFactory');
+const { getFloor, towerFactory, getEliteTier, pickElite, pickChoiceIndex, investment, scalingFactor, safeEditReply, TowerTimeoutError } = require('../towerFactory');
 const tC = require('../towerConstants');
 
 // Off-by-one fix (2026-08-31) — getFloor()'s cumulative-weight comparison used to be `<=`
@@ -1596,6 +1596,71 @@ describe('a stale click whose customId matches nothing on the CURRENT screen def
         const cont = await tF.createEliteEncounter(fl, 'desc');
 
         expect(cont).toBe(true);
+    });
+});
+
+// A GENUINE timeout (awaitMessageComponent itself resolving null — the player never clicked
+// anything at all) is a different case from the stale-click fallback above (a real click whose
+// customId matches nothing current). Direct instruction (2026-09-30): "for timeout, update it
+// so that it is just a non-complete and user has to enter tower again resuming and either leave
+// or die for it to give them their potatoes/stats" — a timeout on either of the two screens that
+// used to conclude the run (Continue/Leave, Elite Fight/Leave) now throws TowerTimeoutError
+// instead, so it flows through enter-tower.js's own crash/resume machinery rather than silently
+// banking a graceful leave/decline. chooseRiskPolicy/createFloorEmbed/createEliteEncounter's own
+// timeouts are untouched — none of them ever concluded the run to begin with (see
+// TowerTimeoutError's own comment in towerFactory.js).
+describe('a genuine timeout (no click at all) on a screen that used to conclude the run', () => {
+    test('createNextEmbed throws TowerTimeoutError instead of silently leaving', async () => {
+        const editReply = jest.fn(async () => ({
+            awaitMessageComponent: jest.fn().mockResolvedValue(null),
+        }));
+        const tF = new towerFactory({ editReply, user: { id: 'u1' } }, 'tester', tC.ENTRY_GATE_MULTI);
+
+        await expect(tF.createNextEmbed({ name: 'Test Floor' }, 'desc')).rejects.toThrow(TowerTimeoutError);
+    });
+
+    test('createEliteEmbed throws TowerTimeoutError instead of silently declining', async () => {
+        const editReply = jest.fn(async () => ({
+            awaitMessageComponent: jest.fn().mockResolvedValue(null),
+        }));
+        const tF = new towerFactory({ editReply, user: { id: 'u1' } }, 'tester', tC.ENTRY_GATE_MULTI);
+        const fl = { name: 'Test Elite', thumbnailUrl: 'https://example.com/x.png', description: 'desc' };
+
+        await expect(tF.createEliteEmbed(fl, 0.5)).rejects.toThrow(TowerTimeoutError);
+    });
+
+    test('a full run propagates the timeout all the way up through startRun(), uncaught by towerFactory itself', async () => {
+        const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0);
+        let i = 0;
+        const responses = [
+            { customId: 'policy_safe', update: jest.fn().mockResolvedValue() },
+            { customId: 'Fight', update: jest.fn().mockResolvedValue() }, // floor 1's own choice
+            null, // floor 1's Continue/Leave screen times out
+        ];
+        const interaction = {
+            editReply: jest.fn(async () => ({
+                awaitMessageComponent: jest.fn(async () => responses[i++]),
+            })),
+            user: { id: 'u1' },
+        };
+        const tF = new towerFactory(interaction, 'tester', tC.ENTRY_GATE_MULTI);
+
+        await expect(tF.startRun()).rejects.toThrow(TowerTimeoutError);
+        // The floor's own reward was already credited to this.run in memory before the
+        // Continue/Leave screen ever showed — it's the CHECKPOINT (not this in-memory state)
+        // that decides what a resume actually recovers, and no checkpoint call ever fires for
+        // this floor since startRun()'s own outer loop never got back around to it.
+        expect(tF.floor).toBe(1);
+        randomSpy.mockRestore();
+    });
+
+    test('a stale click with an unrelated customId is NOT affected — still falls back safely, does not throw', async () => {
+        const editReply = jest.fn(async () => ({
+            awaitMessageComponent: jest.fn().mockResolvedValue({ customId: 'stale_choice_name', update: jest.fn().mockResolvedValue() }),
+        }));
+        const tF = new towerFactory({ editReply, user: { id: 'u1' } }, 'tester', tC.ENTRY_GATE_MULTI);
+
+        await expect(tF.createNextEmbed({ name: 'Test Floor' }, 'desc')).resolves.toBe(false);
     });
 });
 
