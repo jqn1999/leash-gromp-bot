@@ -19735,3 +19735,69 @@ new tests, 0 broken.
 
 **Cross-repo note.** Not ported to `financial-project` — an admin-only Discord moderation command
 with no web equivalent, touching no game logic, balance, or data shape `/gromp` implements.
+
+## Guild's and mercenary's `workMulti` buff now also boost Guild Raid and Bounty success chance
+
+**Asked**: a prior question this same day established that neither the guild's `workMulti` buff
+nor the mercenary's own `workMulti` Mercenary Buff affected Guild Raid or Bounty at all — both only
+ever fed `/work`'s own reward formula. Direct follow-up instruction: "have both buffs affect things
+like raids/bounties but NOT spud keep or tower."
+
+**Root cause / why this was even possible cleanly**: World Boss's own `workMulti` buff had already
+established the exact pattern needed — `getWorldBuffWorkMultiPercent()` fetched once and multiplied
+into `totalMultiplier`/`effectiveBountyPower` at each of Guild Raid's and Bounty's own call sites,
+deliberately never baked into the shared `raidFactory.getMemberRaidPower`/
+`getEffectiveRaidPowerBreakdown` functions those call sites both build on. That separation exists
+specifically because Tower's entry gate (`enter-tower.js`, calls `getMemberRaidPower` directly) and
+Spud Keep (`spudKeepFactory.js`, calls `getEffectiveRaidPowerBreakdown` with its own
+`getSpudKeepMemberPower` override) both reuse those same shared functions and must stay unaffected
+by any buff that's Raid/Bounty-specific. The new guild/mercenary `workMulti` effect mirrors that
+exact shape rather than touching the shared functions at all, so Tower/Spud Keep's exclusion falls
+out structurally — neither function was modified, so there's nothing new for either of them to read.
+
+**Changed**:
+- `src/utils/mercenaryFactory.js` (`resolveBountyAttempt`) — `getMercenaryRankInfo` moved earlier in
+  the function (was only computed later, for the reward-multiplier read) so the mercenary's own rank
+  is available for the buff lookup too. `mercWorkMultiPercent` reads
+  `userDetails.mercenaryBuff === "workMulti" ? mercenaryBuffFactory.getMercenaryBuffValue("workMulti", rank) : 0`
+  — the raw percent (NOT `workFactory.getMercenaryWorkMulti`'s absolute add-on shape, the wrong
+  shape here) — and multiplies into `effectiveBountyPower` alongside the pre-existing World Boss
+  term.
+- `src/commands/guilds/startRaid.js` — both `totalMultiplier`-building call sites (the initial
+  preview and `resolveRaid`'s own re-roll) gained the identical guild-side block: `guildWorkMultiPercent`
+  read from `guild.guildBuff === "workMulti" ? guildBuffFactory.getGuildBuffValue("workMulti", guildLevel) : 0`,
+  multiplied in when positive, same shape as the existing World Boss block just above it.
+- `src/commands/guilds/raidOdds.js` and `src/commands/guilds/currentRaid.js` — both preview/display
+  commands duplicate their own power math and each carries its own explicit "must never drift from
+  the real roll" comment, so both needed the identical guild-buff block to keep that promise.
+  `currentRaid.js` already declared a later `guildLevel` (re-fetched after the Start Raid button
+  click, deliberately fresh) in the same function scope — the new preview-time lookup was named
+  `previewGuildLevel` to avoid a redeclaration collision, caught by reading the file before running it.
+- Deliberately NOT touched: `bountyBoard.js` (`/bounty-board`'s own separate preview calc, which
+  doesn't even include the pre-existing World Boss buff today — a real gap, but a pre-existing one
+  this change didn't introduce and no "never drift" comment obligates fixing here) and
+  `robNpc.js`/Heist (out of the literal "raids/bounties" scope given).
+
+**Reward is architecturally untouched, not a design choice**: Guild Raid's reward is
+`Math.round(Raid.T#_RAID_REWARD * randomMultiplier(.8-1.2) * raidRewardMultiplier)` (guild-level
+table × Cinderroot) and Bounty's is `Math.round(base * rangeRoll * rankInfo.rewardMultiplier * (1+yukonRewardBonus))`
+(tier's fixed base × rank table) — neither ever reads `totalMultiplier`/`effectiveBountyPower` at
+all. So this buff, like World Boss's, can only ever move success chance, never reward size.
+
+**Tests.** Three new describe blocks: `mercenaryFactory.test.js`'s `'Mercenary workMulti buff'`
+(mirrors the existing `'World Boss workMulti buff'` block exactly — a weak-user success-chance
+boost test, plus a starch-reward-unaffected test proving the reward independence above);
+`raidOdds.test.js`'s `'guild workMulti buff'` (same before/after success-chance shape, reading the
+rendered embed's Tier 2 line rather than Metal King's flat 1% line, which doesn't scale with power);
+and a new `raidFactory.test.js` regression describe block,
+`'guild/mercenary workMulti buff stays out of the shared raid-power functions'`, asserting
+`getMemberRaidPower` and `getEffectiveRaidPowerBreakdown`-with-`getSpudKeepMemberPower` both return
+byte-identical output whether or not `guildBuff`/`mercenaryBuff` are set to `"workMulti"` — added so
+a future change that DOES bake either buff into those shared functions gets caught here, not
+discovered as a live Spud Keep/Tower balance surprise. Full suite: **122 suites (1 fully skipped) /
+2278 tests (17 skipped, 2261 passing)** — net +5 new tests, 0 broken.
+
+**Cross-repo note.** This IS a game-logic/balance change `financial-project`'s `/gromp` page also
+implements (guild/mercenary `workMulti` buffs and Guild Raid/Bounty success-chance math both exist
+there) — flagged to the user per this repo's standing sibling-repo rule; porting not yet done as of
+this entry.

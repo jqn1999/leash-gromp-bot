@@ -137,7 +137,18 @@ async function resolveBountyAttempt(userDetails, mode) {
     // getEffectiveRaidPower, never inside raidFactory.js itself (that function is reused
     // as-is by Tower's entry gate, which deliberately excludes guild/world buffs).
     const worldBuffPercent = await getWorldBuffWorkMultiPercent();
-    const effectiveBountyPower = getEffectiveRaidPower([userDetails]) * (1 + worldBuffPercent);
+    // Moved up from further below (was computed only for the reward-multiplier read at the
+    // bottom of this function) — needed here now too, for the mercenary's own workMulti buff.
+    const rankInfo = getMercenaryRankInfo(userDetails.mercenaryBountyWinCount);
+    // The mercenary's own workMulti buff (2026-09-30, direct instruction: "have both buffs
+    // affect things like raids/bounties but NOT spud keep or tower") — same "fetched once,
+    // multiplied in separately" shape as the World Boss buff just above, for the identical
+    // reason: getEffectiveRaidPower is reused as-is by Tower's entry gate and Spud Keep's own
+    // power calc, both of which must stay unaffected. Unlike the guild's own buff (guild-wide,
+    // read off the guild's own document), this is a per-mercenary selection read straight off
+    // userDetails.
+    const mercWorkMultiPercent = userDetails.mercenaryBuff === "workMulti" ? mercenaryBuffFactory.getMercenaryBuffValue("workMulti", rankInfo.rank) : 0;
+    const effectiveBountyPower = getEffectiveRaidPower([userDetails]) * (1 + worldBuffPercent) * (1 + mercWorkMultiPercent);
     const tierEntry = mode === 'baby'
         ? Bounty.TIERS[0]
         : rollWeightedTier(Bounty.TIERS, 1, effectiveBountyPower); // guildLevel arg unused — no tier here carries minGuildLevel
@@ -149,7 +160,6 @@ async function resolveBountyAttempt(userDetails, mode) {
 
     const scenarioPool = BountyScenarios[bandLetter];
     const scenario = scenarioPool[Math.floor(Math.random() * scenarioPool.length)];
-    const rankInfo = getMercenaryRankInfo(userDetails.mercenaryBountyWinCount);
 
     const result = {
         tier: tierNum,

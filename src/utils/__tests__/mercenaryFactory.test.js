@@ -1704,6 +1704,46 @@ describe('World Boss workMulti buff', () => {
     });
 });
 
+// The mercenary's own workMulti buff (2026-09-30, direct instruction: "have both buffs
+// affect things like raids/bounties but NOT spud keep or tower") — previously workMulti
+// only fed /work's own reward formula (workFactory.getGuildWorkMulti/getMercenaryWorkMulti);
+// this is the first place it touches Bounty power. Read straight off userDetails.mercenaryBuff
+// (a per-mercenary selection, not a DB-backed live buff), so unlike World Boss's block above
+// there's no dynamoHandler mock to reset — only resolveBountyAttempt is covered, since
+// resolveNpcRob/Heist and resolveRivalConfrontation weren't touched by this change.
+describe('Mercenary workMulti buff', () => {
+    test('resolveBountyAttempt: raises effectiveBountyPower, and therefore successChance, for a mercenary not already at the success cap', async () => {
+        const weakUser = baseUser({ workMultiplierAmount: 5 }); // 5 / Tier 1 difficulty 10 = .5, well under the .9 cap
+
+        const withoutBuff = await mercenaryFactory.resolveBountyAttempt(weakUser, 'baby');
+        const withBuff = await mercenaryFactory.resolveBountyAttempt({ ...weakUser, mercenaryBuff: 'workMulti' }, 'baby');
+
+        expect(withBuff.successChance).toBeGreaterThan(withoutBuff.successChance);
+    });
+
+    // Same reasoning as World Boss's own sibling test — Bounty reward is the tier's fixed
+    // starchReward, architecturally independent of effectiveBountyPower, so this buff can
+    // only ever move successChance, never reward size.
+    test('resolveBountyAttempt: does not change a starch-flavored win reward', async () => {
+        const user = baseUser({ workMultiplierAmount: 90 });
+        const randomSequence = () => [0, 0.15, 0.5, 0.99, 0.99]; // win check, scenario -> starch, range roll, stat-reward miss, yukon miss
+
+        let randomSpy = jest.spyOn(Math, 'random');
+        randomSequence().forEach(v => randomSpy.mockImplementationOnce(() => v));
+        const withoutBuff = await mercenaryFactory.resolveBountyAttempt(user, 'baby');
+        randomSpy.mockRestore();
+
+        randomSpy = jest.spyOn(Math, 'random');
+        randomSequence().forEach(v => randomSpy.mockImplementationOnce(() => v));
+        const withBuff = await mercenaryFactory.resolveBountyAttempt({ ...user, mercenaryBuff: 'workMulti' }, 'baby');
+        randomSpy.mockRestore();
+
+        expect(withoutBuff.currency).toBe('starch');
+        expect(withBuff.currency).toBe('starch');
+        expect(withBuff.rewardAmount).toBe(withoutBuff.rewardAmount);
+    });
+});
+
 // Trading Post's Steadfast Draught (systems/trading-post.md) — same bucket as World Boss's
 // workMulti buff above, read straight off userDetails.activePotion (no DB fetch).
 describe('Trading Post workMulti potion', () => {

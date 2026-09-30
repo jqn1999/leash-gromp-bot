@@ -1108,3 +1108,34 @@ describe('static Elite/Legendary difficulty ladder (2026-08-26 redesign)', () =>
         expect(Raid.LEGENDARY_T1_REWARD).toBeGreaterThan(Raid.ELITE_T4_REWARD);
     });
 });
+
+// Regression coverage for the guild/mercenary workMulti buff's scope (2026-09-30, direct
+// instruction: "have both buffs affect things like raids/bounties but NOT spud keep or
+// tower"). Both buffs were deliberately wired in at startRaid.js's/mercenaryFactory.js's
+// own call sites, exactly like the pre-existing World Boss workMulti buff, rather than
+// baked into getMemberRaidPower/getEffectiveRaidPowerBreakdown themselves — Tower's entry
+// gate (enter-tower.js) calls getMemberRaidPower directly, and Spud Keep
+// (spudKeepFactory.js) calls getEffectiveRaidPowerBreakdown with its own
+// getSpudKeepMemberPower override, so anything baked into these shared functions would
+// have leaked into both. These tests exist so a future change that DOES bake either buff
+// into the shared functions gets caught here, not discovered as a live Spud
+// Keep/Tower balance surprise.
+describe('guild/mercenary workMulti buff stays out of the shared raid-power functions', () => {
+    test('getMemberRaidPower (Tower\'s own entry-gate power calc) ignores guildBuff/mercenaryBuff', () => {
+        const base = { workMultiplierAmount: 100, rebirthCount: 0 };
+        const withoutBuffs = getMemberRaidPower(base);
+        const withBuffs = getMemberRaidPower({ ...base, guildBuff: 'workMulti', mercenaryBuff: 'workMulti' });
+
+        expect(withBuffs).toBe(withoutBuffs);
+    });
+
+    test('getEffectiveRaidPowerBreakdown with getSpudKeepMemberPower (Spud Keep\'s own power basis) ignores guildBuff/mercenaryBuff', () => {
+        const roster = [{ workMultiplierAmount: 100, rebirthCount: 0 }, { workMultiplierAmount: 50, rebirthCount: 0 }];
+        const buffedRoster = roster.map(m => ({ ...m, guildBuff: 'workMulti', mercenaryBuff: 'workMulti' }));
+
+        const withoutBuffs = getEffectiveRaidPowerBreakdown(roster, getSpudKeepMemberPower);
+        const withBuffs = getEffectiveRaidPowerBreakdown(buffedRoster, getSpudKeepMemberPower);
+
+        expect(withBuffs.effectivePower).toBe(withoutBuffs.effectivePower);
+    });
+});
