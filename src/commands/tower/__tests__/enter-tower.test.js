@@ -25,6 +25,11 @@ function fakeInteraction() {
         reply: jest.fn().mockResolvedValue(),
         deferred: true,
         user: { id: 'user-1', username: 'User', displayName: 'User' },
+        // Last-resort fallback channel (2026-09-30) — see enter-tower.js's own
+        // sendFallbackChannelMessage comment. Present on every fake interaction so tests that
+        // don't care about it don't need their own stub; tests that DO care override
+        // channel.send to reject/resolve as needed.
+        channel: { send: jest.fn().mockResolvedValue() },
     };
 }
 
@@ -367,5 +372,72 @@ describe('admin bypass while TOWER_DISABLED is true', () => {
         expect(dynamoHandler.updateUserDatabase).not.toHaveBeenCalledWith(awsConfigurations.devs[0], 'canEnterTower', true);
         const failureCall = interaction.followUp.mock.calls.find(([opts]) => opts.content?.includes('something went wrong'));
         expect(failureCall).toBeTruthy();
+    });
+
+    // Last-resort channel fallback (2026-09-30, live report: "still getting random sporadic
+    // drops from tower with no messaging" even after the 2026-09-29 hardening pass above —
+    // because that pass's own recovery/notification attempts were themselves interaction-based
+    // and had no further fallback once the interaction's webhook token was dead, e.g. after a
+    // long, slow multi-floor climb exceeds Discord's ~15 minute token lifetime). These three
+    // tests force BOTH the primary interaction-based attempt AND the retry/normal path to fail,
+    // confirming interaction.channel.send is the one remaining way the player is told anything.
+    test('a startRun crash where editReply/reply also fail still reaches the player via channel.send', async () => {
+        dynamoHandler.findUser.mockResolvedValue(baseUser({ userId: awsConfigurations.devs[0], workMultiplierAmount: tC.ENTRY_GATE_MULTI, rebirthCount: 0 }));
+        towerFactory.mockImplementation(() => ({
+            floor: 7,
+            startRun: jest.fn().mockRejectedValue(new Error('boom')),
+        }));
+        const interaction = adminInteraction();
+        interaction.editReply = jest.fn().mockRejectedValue(new Error('dead token'));
+        interaction.reply = jest.fn().mockRejectedValue(new Error('dead token'));
+
+        await expect(callback({}, interaction)).resolves.not.toThrow();
+
+        expect(interaction.channel.send).toHaveBeenCalledWith(expect.objectContaining({
+            content: expect.stringContaining(`<@${awsConfigurations.devs[0]}>`),
+        }));
+        const [{ content }] = interaction.channel.send.mock.calls[0];
+        expect(content).toMatch(/unexpected error.*floor 7.*enter-tower again/is);
+        // Entry restoration itself doesn't depend on notification succeeding.
+        expect(dynamoHandler.updateUserDatabase).toHaveBeenCalledWith(awsConfigurations.devs[0], 'canEnterTower', true);
+    });
+
+    test('a failed results-embed followUp falls back to a plain-text reward summary via channel.send', async () => {
+        dynamoHandler.findUser.mockResolvedValue(baseUser({ userId: awsConfigurations.devs[0], workMultiplierAmount: tC.ENTRY_GATE_MULTI, rebirthCount: 0 }));
+        towerFactory.mockImplementation(() => ({
+            startRun: jest.fn().mockResolvedValue([[5000, 0.2, 300000, 2000000], 10, false, 0, 0, false]),
+        }));
+        const interaction = adminInteraction();
+        interaction.followUp = jest.fn().mockRejectedValue(new Error('dead token'));
+
+        await expect(callback({}, interaction)).resolves.not.toThrow();
+
+        const summaryCall = interaction.channel.send.mock.calls.find(([opts]) => opts.content?.includes('Rewards:'));
+        expect(summaryCall).toBeTruthy();
+        const [{ content }] = summaryCall;
+        expect(content).toContain(`<@${awsConfigurations.devs[0]}>`);
+        expect(content).toContain('floor 10');
+        expect(content).toContain('5,000 potatoes');
+        expect(content).toContain('plain text');
+    });
+
+    test('a tail-bookkeeping throw where the followUp notice also fails falls back to channel.send, without ephemeral', async () => {
+        dynamoHandler.findUser.mockResolvedValue(baseUser({ userId: awsConfigurations.devs[0], workMultiplierAmount: tC.ENTRY_GATE_MULTI, rebirthCount: 0 }));
+        towerFactory.mockImplementation(() => ({
+            startRun: jest.fn().mockResolvedValue([[5000, 0, 0, 0], 10, false, 0, 0, false]),
+        }));
+        dynamoHandler.recordTowerLeaderboardEntry.mockImplementation(() => {
+            throw new Error('boom');
+        });
+        const interaction = adminInteraction();
+        interaction.followUp = jest.fn().mockRejectedValue(new Error('dead token'));
+
+        await expect(callback({}, interaction)).resolves.not.toThrow();
+
+        const bookkeepingCall = interaction.channel.send.mock.calls.find(([opts]) => opts.content?.includes('something went wrong'));
+        expect(bookkeepingCall).toBeTruthy();
+        const [opts] = bookkeepingCall;
+        expect(opts.content).toContain(`<@${awsConfigurations.devs[0]}>`);
+        expect(opts).not.toHaveProperty('ephemeral');
     });
 });

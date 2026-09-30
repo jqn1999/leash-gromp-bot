@@ -19264,3 +19264,64 @@ this instruction.
 
 **Cross-repo note.** All three constants are game-logic/balance numbers `financial-project`'s
 `/gromp` page also implements — checking that repo now for the matching port.
+
+## Tower crash investigation, continued: last-resort channel fallback when notification itself fails
+
+**Asked**: "continue fixing tater tower, still getting random sporadic drops from tower with no
+messaging" — a live report from the admin (the only one who can currently run `/enter-tower`
+while `TOWER_DISABLED` is true) that runs are still dropping sporadically with zero messaging
+reaching them, even after the 2026-09-29 crash-hardening pass (see the section above) added
+recovery/notification messages at every failure point found in that investigation.
+
+**Root cause, one layer further than the prior fix.** Every one of the 2026-09-29 pass's own
+notification paths was itself an `interaction.editReply`/`interaction.reply`/`interaction.
+followUp` call — all of which depend on the interaction's own webhook token. Discord invalidates
+that token roughly 15 minutes after the interaction was created, a hard platform limit unrelated
+to this bot's own code. Tower runs have no internal time budget: each floor's own
+`awaitMessageComponent` alone can wait up to 30s, and a long, slow climb through many floors can
+realistically add up past 15 minutes. Once the token is dead, *every* interaction-based call
+fails, including the attempted recovery message — so all three catch blocks previously just
+`console.error`'d and stopped, leaving the player with literally nothing. This explains "random"
+(depends on how long the run took) and "sporadic" (only long/slow climbs hit the 15-minute
+window) exactly.
+
+**Changed** (`src/commands/tower/enter-tower.js`): added a `sendFallbackChannelMessage(
+interaction, userId, content)` helper that sends a plain `interaction.channel.send({ content:
+"<@userId> ..." })` message — an ordinary bot message via the bot's standard REST permissions,
+not tied to the interaction's webhook token at all, so it survives even a fully dead token. Wired
+into all three existing catch blocks from the 2026-09-29 pass, called only after the
+interaction-based attempt has already failed (a healthy interaction never gets a redundant second
+message):
+1. `startRun()` crash recovery — if `editReply`/`reply` also reject, the same recovery message
+   goes to the channel instead, still `@`-mentioning the player.
+2. Results-embed followUp failure — falls back to a plain-text reward summary (floor, potatoes,
+   work multiplier, passive income, bank capacity) instead of the real embed.
+3. Tail-bookkeeping failure — the same "something went wrong saving part of your run" message
+   goes to the channel, necessarily without `ephemeral` (that property has no equivalent for a
+   plain channel send).
+
+**What this doesn't fix**: the token's ~15-minute expiry itself is a structural Discord limit,
+not something the application can prevent short of capping run length — which would be its own
+player-facing behavior change, not something to silently introduce. This only ensures the player
+is told *something* once the token dies, instead of the run vanishing with no messaging at all,
+which was the actual reported symptom. Not addressed: `interaction.channel` itself being unusable
+(deleted channel, bot kicked, missing permission) — not raised as a concern, so left alone rather
+than guarded against speculatively.
+
+**Tests.** `enter-tower.test.js`'s `fakeInteraction()` helper gained a `channel: { send: jest.fn()
+}` stub (inherited automatically by `adminInteraction()`, which wraps it). Three new tests added
+to the admin-bypass describe block, one per fallback site, each forcing the primary
+interaction-based attempt to also fail and asserting `interaction.channel.send` receives the
+right content (and, for the tail-bookkeeping case, that the options carry no `ephemeral` key).
+Full suite: **122 suites (1 fully skipped) / 2243 tests (17 skipped, 2226 passing)** — net +3 new
+tests, 0 broken.
+
+**Cross-repo note.** Not ported to `financial-project` — this is Discord-interaction-specific
+mechanics (webhook token lifetime, `interaction.channel.send`) with no web equivalent, and
+touches no game logic, balance, or data shape that repo's `/gromp` page implements.
+
+**Investigation status**: still open, same as the 2026-09-29 entry above — this closes a real gap
+(silent total notification failure) found by tracing the reported symptom, but doesn't itself
+confirm or rule out what's actually crashing `startRun()` mid-climb. If a real stack trace ever
+comes back from one of these newly-surfaced channel messages or from a future report, that's still
+the fastest path to root-causing the crash itself.
