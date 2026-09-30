@@ -13,6 +13,7 @@ const work = require("./../user/work");
 const { ensureGuildChatCategory, addChatChannelIndexEntry, removeChatChannelIndexEntry } = require("../guilds/guildChat");
 const festivalFactory = require("../../utils/festivalFactory");
 const bigEventsChannel = require("../../utils/bigEventsChannel.js");
+const tC = require("../../utils/towerConstants.js");
 
 const embedFactory = new EmbedFactory();
 const achievementFactory = new AchievementFactory();
@@ -119,11 +120,28 @@ async function runResetTower(client, interaction) {
     // (see enter-tower.js — only a survived run is recorded), so there's nothing here to find
     // or revert for that case; it still already banked whatever it earned along the way, same
     // as any survived run, but that's outside what a leaderboard-entry-based reversal can see.
+    //
+    // resume-from-leaderboard (2026-09-30, direct instruction: "update admin reset tower so
+    // that there is also the option of getting a user's run from leaderboard if they run into
+    // this stale click leave scenario so that I can reset them and have them continue from the
+    // floor that was recorded in the leaderboard. Stats and rewards should be removed like
+    // normal so that they get the right numbers at the end of the run") — targets exactly the
+    // stale-click/timeout auto-leave bug from BEFORE the two same-day fixes above shipped: a
+    // run that got prematurely concluded (credited AND leaderboarded) even though the player
+    // never actually chose to leave. Shares full-wipe's own reversal (`resume-from-leaderboard`
+    // triggers it too, without needing `full-wipe: true` passed separately) so the premature
+    // credit doesn't get double-counted once the resumed run actually concludes for real — the
+    // SAME numbers just move from "already on their account" to "carried inside the seeded
+    // checkpoint," to be re-credited in full when the continued run finally leaves or dies.
+    const fullWipe = interaction.options.getBoolean('full-wipe') === true;
+    const resumeFromLeaderboard = interaction.options.getBoolean('resume-from-leaderboard') === true;
+
     let wipeMessage = '';
-    if (interaction.options.getBoolean('full-wipe') === true) {
+    let resumeCheckpoint = null;
+    if (fullWipe || resumeFromLeaderboard) {
         const entry = await dynamoHandler.removeTowerLeaderboardEntry(targetUserId);
         if (!entry) {
-            wipeMessage = ` No Tower leaderboard entry found for them today — either they haven't survived a run today, or their run ended in death (deaths never get a leaderboard entry), so there was nothing to revert.`;
+            wipeMessage = ` No Tower leaderboard entry found for them today — either they haven't survived a run today, or their run ended in death (deaths never get a leaderboard entry), so there was nothing to revert${resumeFromLeaderboard ? ' or resume from' : ''}.`;
         } else {
             // Re-fetch immediately before writing — the targetUserDetails read above could
             // already be stale by the time this command actually commits, same "moved since
@@ -157,6 +175,10 @@ async function runResetTower(client, interaction) {
                 + `${(entry.workMultiplier || 0).toFixed(2)}x work multiplier, ${(entry.passiveIncome || 0).toLocaleString()} passive income, `
                 + `and ${(entry.bankCapacity || 0).toLocaleString()} bank capacity all rolled back, and their leaderboard entry removed. `
                 + `Companion leveling/Bastion drops and the highestTowerFloor record from that run are NOT reverted — those aren't potatoes/stat gains and need a separate manual correction if this run also needs undoing there.`;
+
+            if (resumeFromLeaderboard) {
+                resumeCheckpoint = buildResumeCheckpointFromLeaderboardEntry(entry);
+            }
         }
     }
 
@@ -166,17 +188,57 @@ async function runResetTower(client, interaction) {
     // True-resume checkpointing (2026-09-30) — a crash on its own now leaves canEnterTower
     // true AND the run resumable via its checkpoint (see enter-tower.js's own resumeFrom
     // comment), so this admin command is no longer needed for that specific case. It stays
-    // useful as an explicit "discard whatever's pending and start clean" override — clearing
-    // the checkpoint here too so the player's NEXT /enter-tower is a genuinely fresh run, not
-    // an accidental resume of whatever this command was meant to reset them away from.
+    // useful as an explicit "discard whatever's pending and start clean" override — writing
+    // `resumeCheckpoint` here too (null unless resume-from-leaderboard just built one) means
+    // the player's NEXT /enter-tower is either a genuinely fresh run, or resumes from the
+    // reconstructed checkpoint — never an accidental resume of some OTHER stale checkpoint this
+    // command wasn't told about.
     const hadPendingCheckpoint = !!targetUserDetails.towerRunCheckpoint;
-    await dynamoHandler.updateUserDatabase(targetUserId, "towerRunCheckpoint", null);
+    await dynamoHandler.updateUserDatabase(targetUserId, "towerRunCheckpoint", resumeCheckpoint);
+
+    let checkpointMessage = '';
+    if (resumeCheckpoint) {
+        checkpointMessage = ` Seeded a resumable checkpoint at floor ${resumeCheckpoint.floor} — their next /enter-tower will CONTINUE from floor ${resumeCheckpoint.floor + 1} instead of starting over, and the reverted reward above will be re-credited in full once they actually leave or die on the continued run. Could NOT be recovered from the leaderboard entry alone (defaulted conservatively): companion-hit count (0), Bastion ward usage (treated as already-used, so a genuinely unused ward is lost rather than risking a double-save), risk policy (SAFE), and REWARD-variety history (empty, so an already-seen REWARD type could repeat). Elite difficulty was reconstructed correctly from the floor number itself.`;
+    } else if (hadPendingCheckpoint) {
+        checkpointMessage = ` They had an in-progress, resumable run through floor ${targetUserDetails.towerRunCheckpoint.floor} — this discards it, they'll start a brand new run from floor 1.`;
+    }
 
     interaction.editReply((alreadyCouldEnter
         ? `${targetUserDisplayName} could already run /enter-tower — nothing was stuck, but their entry is confirmed available.`
         : `${targetUserDisplayName}'s Tower entry has been reset — they can run /enter-tower again right away.`)
-        + (hadPendingCheckpoint ? ` They had an in-progress, resumable run through floor ${targetUserDetails.towerRunCheckpoint.floor} — this discards it, they'll start a brand new run from floor 1.` : '')
+        + checkpointMessage
         + wipeMessage);
+}
+
+// Reconstructs a towerRunCheckpoint from a tower_leaderboard entry — the best-effort recovery
+// path for a run that was prematurely (and, for the stale-click/timeout bug specifically,
+// incorrectly) concluded before a player actually chose to leave. Only what the leaderboard
+// entry itself records survives: floor, elitesKilled, and the four PAYOUT reward figures.
+// Elite difficulty is the one field that CAN be derived exactly rather than defaulted — it
+// escalates by TOWER_ELITE_DIFFICULTY_RATIO once per forced Elite floor reached (every 10
+// floors, unconditionally, win/lose/decline all count — see towerFactory.js's own startRun()
+// loop), so Math.floor(floor / 10) forced Elites have necessarily already been fought by the
+// time this floor was recorded.
+function buildResumeCheckpointFromLeaderboardEntry(entry) {
+    return {
+        floor: entry.floor,
+        run: {
+            [tC.PAYOUT.POTATOES]: entry.potatoes || 0,
+            [tC.PAYOUT.WORK_MULTIPLIER]: entry.workMultiplier || 0,
+            [tC.PAYOUT.PASSIVE_INCOME]: entry.passiveIncome || 0,
+            [tC.PAYOUT.BANK_CAPACITY]: entry.bankCapacity || 0,
+            [tC.MODIFIER.WORK_MULTIPLIER]: 0,
+            [tC.PAYOUT.ELITE_KILL]: [],
+        },
+        elitesSurvivedCount: entry.elitesKilled || 0,
+        // Not recoverable from the leaderboard entry at all — conservative defaults, called out
+        // explicitly in the admin's own reply rather than silently guessed.
+        towerCompanionHits: 0,
+        wardUsed: true,
+        policy: tC.POLICY.SAFE,
+        usedRewards: [],
+        difficulty: tC.TOWER_ELITE_DIFFICULTY_INITIAL * Math.pow(tC.TOWER_ELITE_DIFFICULTY_RATIO, Math.floor((entry.floor || 0) / 10)),
+    };
 }
 
 async function runStats(client, interaction) {
@@ -841,6 +903,12 @@ module.exports = {
                 {
                     name: 'full-wipe',
                     description: "Also revert the potatoes/stats their Tower run earned today, not just unlock re-entry",
+                    required: false,
+                    type: ApplicationCommandOptionType.Boolean,
+                },
+                {
+                    name: 'resume-from-leaderboard',
+                    description: "Stale-click/timeout-leave bug: revert credit (like full-wipe), resume from their leaderboard floor",
                     required: false,
                     type: ApplicationCommandOptionType.Boolean,
                 }

@@ -38,21 +38,25 @@ async function safeEditReply(interaction, payload) {
 // exactly like an explicit Leave/decline — silently banking and crediting the whole run
 // (2026-09-30, direct instruction: "for timeout, update it so that it is just a non-complete
 // and user has to enter tower again resuming and either leave or die for it to give them
-// their potatoes/stats"). Thrown instead of returned now, from those two call sites only —
-// propagates all the way up through startRun()'s own try/catch in enter-tower.js, which
-// already does exactly what's wanted for an unconcluded run (restores canEnterTower, credits
-// nothing, leaves the checkpoint in place for `/enter-tower` to resume). A distinct error
-// type (rather than reusing a bare Error) lets that same catch block give the player an
-// accurate "you didn't respond in time" message instead of "hit an unexpected error" — same
-// non-crediting/resume-eligible mechanics either way, different, honest wording. Does NOT
-// apply to chooseRiskPolicy's timeout (defaults to SAFE and keeps climbing, never concludes
-// the run), createFloorEmbed's timeout (defaults to choice index 0, also keeps climbing), or
-// createEliteEncounter's timeout (only one real option, forced continuation either way) —
+// their potatoes/stats"). Thrown instead of returned now, from those two call sites' own
+// genuine-timeout branches AND their stale-click fallback branches — same-day follow-up,
+// direct instruction: "If nothing matches, also consider that just a scenario like timing out
+// and the user's state gets saved so they can continue it again next time." A delayed/retried
+// Discord interaction whose customId matches neither on-screen option (2026-09-18 root cause)
+// is, from the player's perspective, no more a real decision than silence is — neither one
+// means they actually chose Continue/Leave or Fight/Leave, so both get the same treatment now.
+// Propagates all the way up through startRun()'s own try/catch in enter-tower.js, which already
+// does exactly what's wanted for an unconcluded run (restores canEnterTower, credits nothing,
+// leaves the checkpoint in place for `/enter-tower` to resume). A distinct error type (rather
+// than reusing a bare Error) lets that same catch block give the player an accurate "you didn't
+// respond in time" message instead of "hit an unexpected error" — same non-crediting/resume-
+// eligible mechanics either way, different, honest wording (the message reads slightly loosely
+// for the stale-click case specifically, which isn't literally a non-response, but is accurate
+// enough for what the player experiences: nothing they did resolved this screen). Does NOT
+// apply to chooseRiskPolicy (defaults to SAFE and keeps climbing, never concludes the run),
+// createFloorEmbed (defaults to choice index 0, also keeps climbing), or createEliteEncounter
+// (only one real option, forced continuation either way, on both timeout and stale click) —
 // none of those three ever reach a conclusion on their own, so none of them needed to change.
-// Also does NOT apply to the STALE-CLICK fallback further down createNextEmbed/createEliteEmbed
-// (a real confirmation whose customId matches neither on-screen option) — a different failure
-// mode (a delayed/retried Discord interaction, not "the player didn't respond"), left with its
-// existing safe-default behavior.
 class TowerTimeoutError extends Error {
     constructor(message) {
         super(message);
@@ -809,11 +813,14 @@ class towerFactory{
         await confirmation.update({content: '', components: []}).catch(() => {})
             return false
         }
-        // Same stale-click fallback as createFloorEmbed's own fix (2026-09-18) — a delayed
-        // click whose customId is neither of this screen's two options otherwise fell through
-        // returning undefined. Defaults to the same LEAVE-equivalent the timeout branch above uses.
+        // A delayed/retried click whose customId is neither of this screen's two options (2026-
+        // 09-18 root cause) — no real decision was made here either, same as a genuine timeout,
+        // so it gets the same non-completion treatment (2026-09-30, direct instruction: "If
+        // nothing matches, also consider that just a scenario like timing out and the user's
+        // state gets saved so they can continue it again next time") rather than the LEAVE-
+        // equivalent default this used to fall back to.
         await confirmation.update({content: '', components: []}).catch(() => {})
-        return false
+        throw new TowerTimeoutError(`Unrecognized click ('${confirmation.customId}') on the Continue/Leave screen at floor ${this.floor}`);
     }
 
     async createEliteEmbed(fl, success){
@@ -848,10 +855,12 @@ class towerFactory{
         await confirmation.update({content: '', components: []}).catch(() => {})
             return false
         }
-        // Same stale-click fallback as createFloorEmbed's own fix (2026-09-18) — defaults to
-        // the same fight-decline the timeout branch above uses.
+        // Same reasoning as createNextEmbed's own stale-click fallback above (2026-09-18 root
+        // cause, 2026-09-30 non-completion treatment) — a delayed/retried click here is no real
+        // Fight/Leave decision either, so it stops the run WITHOUT concluding it instead of
+        // silently banking a graceful retreat.
         await confirmation.update({content: '', components: []}).catch(() => {})
-        return false
+        throw new TowerTimeoutError(`Unrecognized click ('${confirmation.customId}') on the Elite fight decision at floor ${this.floor}`);
     }
 
     async createEliteEncounter(fl, description){
