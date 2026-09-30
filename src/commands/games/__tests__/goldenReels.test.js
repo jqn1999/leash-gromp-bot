@@ -3,16 +3,38 @@
 // TOTAL return multiple (stake included) so net delta = (multiplier - 1) * bet, spins are
 // capped at GoldenReels.MAX_SPINS, and a mid-run bust (can't afford the next spin) stops
 // the loop early with a plain summary instead of throwing.
+//
+// 2026-09-30 rework, direct instruction — every spin used to write the player's ABSOLUTE
+// potatoes total as the animation advanced, racing any OTHER command (e.g. /work) the
+// player ran concurrently. The whole run's outcome is now resolved in one synchronous pass
+// BEFORE any animation starts, and applied in a single updateUserFields call — the
+// animation loop below is purely cosmetic and makes no DB calls of its own. A "Skip to End"
+// button lets a player cut the animation short; it never changes the resolved outcome,
+// only how much of the animation gets shown (see the dedicated describe block below).
 jest.mock('../../../utils/dynamoHandler');
 
 const dynamoHandler = require('../../../utils/dynamoHandler');
 const { callback } = require('../goldenReels');
 const { GoldenReels } = require('../../../utils/constants');
 
+// editReply resolves a fake Message exposing createMessageComponentCollector, matching
+// what interaction.editReply() really returns — goldenReels.js attaches its "Skip to End"
+// collector to that return value on the first animated spin whenever there's more than one
+// spin to animate. Tests that don't care about the button never trigger this at all
+// (canSkip is false for 0-1 total spins); this fixture just keeps the call from throwing
+// "createMessageComponentCollector is not a function" for every multi-spin test.
+function fakeCollector() {
+    return { on: jest.fn(), stop: jest.fn() };
+}
+
+function fakeMessage() {
+    return { createMessageComponentCollector: jest.fn(() => fakeCollector()) };
+}
+
 function fakeInteraction(betAmount, spins) {
     return {
         deferReply: jest.fn().mockResolvedValue(),
-        editReply: jest.fn().mockResolvedValue(),
+        editReply: jest.fn().mockResolvedValue(fakeMessage()),
         user: { id: 'user-1', username: 'User', displayName: 'User' },
         options: {
             get: (name) => {
@@ -135,7 +157,7 @@ describe('/golden-reels bet parsing', () => {
         await runCallback(interaction);
 
         // Only 1 spin requested; "all" bets the full 500 balance on it, a total loss.
-        expect(dynamoHandler.updateUserFields).toHaveBeenCalledWith('user-1', { potatoes: 0, totalLosses: -500 });
+        expect(dynamoHandler.updateUserFields).toHaveBeenCalledWith('user-1', { potatoes: 0, totalEarnings: 0, totalLosses: -500 });
     });
 
     test('a real but partial stats row (only some counters ever incremented) does not crash — regression for the "Cannot read properties of undefined" bug', async () => {
@@ -167,7 +189,7 @@ describe('/golden-reels win/loss math per symbol (payoutMultiplier is a TOTAL re
         await runCallback(interaction);
 
         const expectedDelta = Math.round(1000 * (multiplier - 1));
-        expect(dynamoHandler.updateUserFields).toHaveBeenCalledWith('user-1', { potatoes: 100000 + expectedDelta, totalEarnings: expectedDelta });
+        expect(dynamoHandler.updateUserFields).toHaveBeenCalledWith('user-1', { potatoes: 100000 + expectedDelta, totalEarnings: expectedDelta, totalLosses: 0 });
     });
 
     test('a loss (no match) costs the exact full bet', async () => {
@@ -178,7 +200,7 @@ describe('/golden-reels win/loss math per symbol (payoutMultiplier is a TOTAL re
 
         await runCallback(interaction);
 
-        expect(dynamoHandler.updateUserFields).toHaveBeenCalledWith('user-1', { potatoes: 99000, totalLosses: -1000 });
+        expect(dynamoHandler.updateUserFields).toHaveBeenCalledWith('user-1', { potatoes: 99000, totalEarnings: 0, totalLosses: -1000 });
     });
 });
 
@@ -194,8 +216,11 @@ describe('/golden-reels spin cap enforcement', () => {
 
         await runCallback(interaction);
 
-        expect(dynamoHandler.updateUserFields).toHaveBeenCalledTimes(GoldenReels.MAX_SPINS);
-        // spin embeds (one per spin) + one final summary embed
+        // The whole run's balance change is applied in ONE write, resolved before any
+        // animation starts — not one write per spin (see this file's own top comment).
+        expect(dynamoHandler.updateUserFields).toHaveBeenCalledTimes(1);
+        // The animation itself is unchanged: spin embeds (one per spin) + one final
+        // summary embed, since no "Skip to End" click happens in this test.
         expect(interaction.editReply).toHaveBeenCalledTimes(GoldenReels.MAX_SPINS + 1);
     });
 
@@ -207,7 +232,7 @@ describe('/golden-reels spin cap enforcement', () => {
 
         await runCallback(interaction);
 
-        expect(dynamoHandler.updateUserFields).toHaveBeenCalledTimes(4);
+        expect(dynamoHandler.updateUserFields).toHaveBeenCalledTimes(1);
         expect(interaction.editReply).toHaveBeenCalledTimes(5);
     });
 });
@@ -223,7 +248,7 @@ describe('/golden-reels mid-run bust handling (stops early, does not error)', ()
 
         await expect(runCallback(interaction)).resolves.not.toThrow();
 
-        expect(dynamoHandler.updateUserFields).toHaveBeenCalledTimes(2);
+        expect(dynamoHandler.updateUserFields).toHaveBeenCalledTimes(1);
         // 2 spin embeds + 1 summary embed, no error ever surfaced to editReply
         expect(interaction.editReply).toHaveBeenCalledTimes(3);
         const summaryCall = interaction.editReply.mock.calls[2][0];
@@ -251,5 +276,80 @@ describe('/golden-reels mid-run bust handling (stops early, does not error)', ()
         expect(dynamoHandler.updateUserFields).toHaveBeenCalledTimes(1);
         const summaryEmbed = interaction.editReply.mock.calls[1][0].embeds[0];
         expect(summaryEmbed.data.description).toContain('Ran all 1 requested spins');
+    });
+});
+
+// "Skip to End" button (2026-09-30, direct instruction) — only ever attached when there's
+// more than 1 spin to animate (canSkip is false for a 0-1 spin run), off the FIRST spin's
+// own reply message. Clicking it resolves a shared skipPromise that every remaining
+// per-spin delay is raced against, so the very next loop iteration's own
+// `if (skipRequested) break;` ends the animation immediately without needing any fake
+// timer to advance — the race resolves via plain microtasks, not GoldenReels.SPIN_DELAY_MS.
+describe('/golden-reels "Skip to End" button', () => {
+    test('a multi-spin run attaches the collector to the first spin\'s own reply message, filtered to the command caller and the skip customId', async () => {
+        randomSpy = jest.spyOn(Math, 'random').mockReturnValue(RANDOM_FOR.loss);
+        dynamoHandler.findUser.mockResolvedValue(userFixture({ potatoes: 1_000_000 }));
+        dynamoHandler.getStatDatabase.mockResolvedValue(statsFixture());
+        const collector = fakeCollector();
+        const interaction = fakeInteraction('100', 5);
+        interaction.editReply.mockResolvedValue({ createMessageComponentCollector: jest.fn(() => collector) });
+
+        await runCallback(interaction);
+
+        // First call's own components carry the button (there's more animation left);
+        // the final summary call clears components entirely.
+        const firstSpinCall = interaction.editReply.mock.calls[0][0];
+        expect(firstSpinCall.components[0].components[0].data.custom_id).toBe('golden_reels_skip');
+        const summaryCall = interaction.editReply.mock.calls[interaction.editReply.mock.calls.length - 1][0];
+        expect(summaryCall.components).toEqual([]);
+        expect(collector.on).toHaveBeenCalledWith('collect', expect.any(Function));
+        expect(collector.stop).toHaveBeenCalled();
+    });
+
+    test('a single-spin run never attaches a collector at all — nothing to skip', async () => {
+        randomSpy = jest.spyOn(Math, 'random').mockReturnValue(RANDOM_FOR.loss);
+        dynamoHandler.findUser.mockResolvedValue(userFixture({ potatoes: 1_000_000 }));
+        dynamoHandler.getStatDatabase.mockResolvedValue(statsFixture());
+        const createCollectorSpy = jest.fn(() => fakeCollector());
+        const interaction = fakeInteraction('100', 1);
+        interaction.editReply.mockResolvedValue({ createMessageComponentCollector: createCollectorSpy });
+
+        await runCallback(interaction);
+
+        expect(createCollectorSpy).not.toHaveBeenCalled();
+    });
+
+    test('clicking skip jumps straight to the summary without waiting out the remaining spins, and does not change the resolved balance outcome', async () => {
+        randomSpy = jest.spyOn(Math, 'random').mockReturnValue(RANDOM_FOR.loss); // guaranteed loss every spin
+        dynamoHandler.findUser.mockResolvedValue(userFixture({ potatoes: 1_000_000 }));
+        dynamoHandler.getStatDatabase.mockResolvedValue(statsFixture());
+
+        let capturedCollectHandler;
+        const collector = { on: jest.fn((event, handler) => { if (event === 'collect') capturedCollectHandler = handler; }), stop: jest.fn() };
+        const interaction = fakeInteraction('100', 5);
+        interaction.editReply.mockResolvedValue({ createMessageComponentCollector: jest.fn(() => collector) });
+
+        const promise = callback({}, interaction);
+        // Flush microtasks (0ms — no real spin delay elapses) until the first spin's own
+        // editReply has resolved and the collector is attached/captured.
+        await jest.advanceTimersByTimeAsync(0);
+        expect(capturedCollectHandler).toBeDefined();
+
+        // Simulate the click — resolves skipRequested/skipPromise via plain microtasks,
+        // no timer advancement needed for the race to settle.
+        await capturedCollectHandler({ deferUpdate: jest.fn().mockResolvedValue() });
+        await jest.runAllTimersAsync();
+        await promise;
+
+        // The balance change reflects all 5 requested spins' worth of losses (500 total),
+        // not however many were actually shown on screen — the whole run was resolved
+        // before any animation/skip logic ever ran.
+        expect(dynamoHandler.updateUserFields).toHaveBeenCalledTimes(1);
+        expect(dynamoHandler.updateUserFields).toHaveBeenCalledWith('user-1', { potatoes: 1_000_000 - 500, totalEarnings: 0, totalLosses: -500 });
+        // Far short of the full 5 spin embeds + 1 summary (6) — the animation was cut short.
+        expect(interaction.editReply.mock.calls.length).toBeLessThan(6);
+        const lastCall = interaction.editReply.mock.calls[interaction.editReply.mock.calls.length - 1][0];
+        expect(lastCall.embeds[0].data.title).toBe('Golden Reels — Summary');
+        expect(lastCall.components).toEqual([]);
     });
 });

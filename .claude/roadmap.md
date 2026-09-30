@@ -19962,3 +19962,65 @@ net +1 new test (one test rewritten, one added), 0 broken.
 **Cross-repo note.** No port — this sits entirely on top of the `/profile` page-3 display feature
 from the entry above, which was itself flagged as not-yet-built on `financial-project`'s own
 `/gromp` page. Nothing to layer an indicator onto there until that base page exists.
+
+## Golden Reels resolves its whole run up front instead of racing the player's own balance mid-animation
+
+**Asked**: "Since each embed change for long running reels constantly updates the user's potatoes,
+it's causing issues with players working or doing other things while reels is running in the
+background. Can you perform all the calculations for their bet and number of runs to get the total
+gain/loss applied to the users balance and then have the embed still move at the pace it is before
+but with a new skip to end button. The potatoes gained is resolved at command start rather than
+actually during embed execution."
+
+**Root cause**: every spin used to write the player's ABSOLUTE `potatoes` total to the DB as the
+animation advanced (`userPotatoes` kept only as this command's own local running variable, one
+`updateUserFields` call per spin). At up to `GoldenReels.MAX_SPINS * SPIN_DELAY_MS ≈ 3.3 minutes`
+per run, any OTHER command the player ran concurrently (`/work` being the reported case) would
+read/write the real balance mid-run and get silently overwritten by this command's next stale
+in-memory write on its next spin, or vice versa — a genuine lost-update race on real currency, not
+a display bug. The same race existed on the SHARED `goldenReels` stats-table row too (every
+player's own concurrent run touched the same document, one field-write per spin).
+
+**Changed** (`src/commands/games/goldenReels.js`):
+- The entire run is now resolved in one synchronous pass, before any embed is sent: every spin's
+  symbol/delta, the affordability check that decides `stoppedEarly`, and every `goldenReels`
+  stat-counter increment, all against local variables only (a `simulatedPotatoes` running total
+  seeded from the pre-loop snapshot) — zero DB access inside this pass.
+- The whole outcome is then applied in exactly ONE `updateUserFields` call
+  (`potatoes`/`totalEarnings`/`totalLosses` together, even when a run left one of the latter two
+  unchanged — simpler than conditionally omitting a no-op field) and one `updateStatDatabase` call
+  per `goldenReels` counter the run actually touched (still skips a counter untouched by this run
+  entirely, preserving the "absent means never written" contract the stats row's own top comment
+  describes).
+- The per-spin animation loop that follows is now purely cosmetic — same `interaction.editReply`
+  call and `SPIN_DELAY_MS` (~2s) pacing as before, just replaying already-resolved results instead
+  of computing them live. No DB calls happen inside it at all anymore.
+- New "Skip to End" button (`ButtonBuilder`/`ActionRowBuilder`, only shown once there's more than
+  one spin to animate) attached via `reply.createMessageComponentCollector` — this codebase's
+  first use of that API; every other button flow elsewhere uses the simpler one-shot
+  `awaitMessageComponent`, which blocks and can't run alongside an ongoing loop the way this needed
+  to. A single `skipPromise`, created once and resolved by the collector's own `collect` handler,
+  is raced (`Promise.race`) against every remaining per-spin delay — once resolved, every later
+  race settles instantly via plain microtasks (no timer wait needed), so the loop's own next
+  early-exit check ends the animation and jumps straight to the summary. Skipping never changes the
+  resolved outcome — that was already decided and written before the animation began — only how
+  much of it the player actually watches.
+
+**Tests.** `goldenReels.test.js`'s existing per-spin `updateUserFields` call-count/shape
+assertions were rewritten for the new one-write-per-run shape (e.g. `toHaveBeenCalledTimes(4)` for
+a 4-spin run → `toHaveBeenCalledTimes(1)`; single-spin win/loss assertions gained the
+previously-implicit unchanged `totalEarnings`/`totalLosses: 0` field, since the new write always
+includes all three fields together). `fakeInteraction`'s `editReply` mock now resolves a fake
+Message exposing `createMessageComponentCollector`, matching what a real `interaction.editReply()`
+actually returns. New `describe('"Skip to End" button')` block: the collector attaches only on a
+multi-spin run (never on a single-spin one — nothing to skip), and a dedicated test that captures
+the collector's `collect` handler, invokes it mid-run to simulate a real click, and confirms both
+that the animation visibly ends early (far fewer `editReply` calls than the full spin count) AND
+that the final `updateUserFields` call still reflects the FULL requested run's worth of
+gain/loss — proving skip only shortens the animation, never the resolved outcome. Full suite:
+**122 suites (1 fully skipped) / 2287 tests (17 skipped, 2270 passing)** — net +3 new tests, 0
+broken.
+
+**Cross-repo note.** No port — Golden Reels has no equivalent anywhere in `financial-project`
+(confirmed: no `goldenReels`/`GoldenReels` reference in any Lambda or the `/gromp` page), so this
+is a Discord-only reliability fix with nothing to port.

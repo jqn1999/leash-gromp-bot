@@ -104,16 +104,41 @@ touching jackpot rarity or the game's actual swinginess. `GoldenReels` constants
 `SYMBOLS` (the table above), `MAX_SPINS: 100` (raised from 10, 2026-09-11 direct instruction),
 `SPIN_DELAY_MS: 2000`.
 
-Spins run in a loop, `interaction.editReply`-ing a fresh embed after each spin with a ~2s delay in
-between (the first `setTimeout`-paced reveal loop in this codebase — Tower's fast-forward does the
-opposite, one aggregated end-of-run summary with zero round-trips). Before each spin, the loop
-checks `bet <= userPotatoes` against the live, just-updated balance (not a stale pre-loop
-snapshot); if the next spin isn't affordable, the loop stops immediately and the summary embed
-says so plainly ("Stopped after 4 of 10 spins — not enough potatoes left for another 500-potato
-spin") — never an error. No cancel/interrupt button (the 100-spin/2s cap bounds worst-case runtime
-to ~200s/~3.3min, still comfortably inside Discord's 15-minute follow-up token window). Stats doc
-`'goldenReels'`: `jackpotCount`, `metalCount`, `largeCount`, `regularCount`, `lossCount`,
-`totalPayout`, `totalReceived`. No new user-record fields.
+**Every spin is resolved up front, before any animation starts (2026-09-30 rework, direct
+instruction)** — originally each spin wrote the player's ABSOLUTE potatoes total to the DB as the
+animation advanced, computed off a running total kept only in the command's own local memory. At
+up to `MAX_SPINS * SPIN_DELAY_MS ≈ 3.3 minutes` per run, that left a wide window where any OTHER
+command the player ran concurrently (`/work`, etc.) could read/write the real balance and get
+silently clobbered by this command's next stale write, or vice versa — a lost-update race, not
+just a display bug. The whole run (every spin's symbol/delta, the affordability check that decides
+`stoppedEarly`, every `goldenReels` stat-counter increment) is now resolved in one synchronous pass
+against local variables only, using the pre-loop `userDetails.potatoes` snapshot as the running
+balance a spin checks affordability against — no DB access inside this pass at all. The ENTIRE
+outcome is then applied in exactly ONE `updateUserFields` call (`potatoes`/`totalEarnings`/
+`totalLosses` together, even if a given run left one of the latter two unchanged — simpler than
+conditionally omitting a no-op field) and one `updateStatDatabase` call per `goldenReels` counter
+the run actually touched (same "absent means never written, not 0" contract as before, just
+batched to the end of the run instead of mid-loop).
+
+The animation loop that follows is now purely cosmetic — same `interaction.editReply`-per-spin,
+~2s `SPIN_DELAY_MS` pacing as before (the first `setTimeout`-paced reveal loop in this codebase —
+Tower's fast-forward does the opposite, one aggregated end-of-run summary with zero round-trips),
+just replaying already-resolved results rather than computing them live. **"Skip to End" button**
+(same instruction) — shown only when there's more than one spin to animate, attached via
+`reply.createMessageComponentCollector` (this codebase's first use of that API; every other
+button/collector elsewhere uses the simpler one-shot `awaitMessageComponent`, which would block
+the animation loop instead of running alongside it) to the FIRST spin's own reply message. A
+single `skipPromise`, created once before the animation loop and resolved by the collector's
+`collect` handler, is raced (`Promise.race`) against every remaining per-spin delay — once
+resolved, every subsequent race settles instantly via plain microtasks (no timer wait needed), so
+the very next loop iteration's own early-exit check ends the animation and jumps straight to the
+summary. Skipping never changes the resolved outcome (that was already decided and written before
+the animation began) — only how much of the animation the player actually watches. If the next
+spin isn't affordable, the pre-loop resolution pass stops immediately and the summary embed says
+so plainly ("Stopped after 4 of 10 spins — not enough potatoes left for another 500-potato
+spin") — never an error, same behavior as before this rework. Stats doc `'goldenReels'`:
+`jackpotCount`, `metalCount`, `largeCount`, `regularCount`, `lossCount`, `totalPayout`,
+`totalReceived`. No new user-record fields.
 
 ### Shared bet-parsing helper
 
