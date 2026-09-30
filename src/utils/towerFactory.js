@@ -35,13 +35,20 @@ async function safeEditReply(interaction, payload) {
 
 class towerFactory{
 
-    constructor(_interaction, _username, multi, autoContinue = false, rewardBonus = 0, hasWard = false) {
+    // onFloorComplete (2026-09-30, direct instruction: "implement #1" — per-floor checkpointing
+    // so a crash mid-climb credits progress already banked instead of losing the whole run) is
+    // an optional async callback, invoked once per resolved floor with a plain snapshot of the
+    // run so far. Kept as an injected callback rather than a direct DB write here so this class
+    // stays the pure run simulator its own existing comments describe ("enter-tower.js persists,
+    // towerFactory computes") — enter-tower.js supplies the actual persistence.
+    constructor(_interaction, _username, multi, autoContinue = false, rewardBonus = 0, hasWard = false, onFloorComplete = null) {
         this.floor = 0
         this.run = Object.assign({}, tC.RUN)
         this.run[tC.PAYOUT.ELITE_KILL] = new Array()
         this.username = _username
         this.interaction = _interaction
         this.multi = multi
+        this.onFloorComplete = onFloorComplete
         // Reward VALUE scaling (2026-08-31) — computed once, here, from the same one-time
         // this.multi snapshot execElite's success-chance formula already relies on never
         // changing mid-run. See tower.md's "Tower Revamp: Reward Value Scaling" section.
@@ -100,16 +107,42 @@ class towerFactory{
                 cont = await this.execElite(this.difficulty)
                 this.difficulty *= tC.TOWER_ELITE_DIFFICULTY_RATIO
                 floor_type = getFloor()
-                continue;
+            } else {
+                cont = await this.execNormalFloor(floor_type)
+                floor_type = getFloor()
             }
-
-            cont = await this.execNormalFloor(floor_type)
-            floor_type = getFloor()
+            // Checkpoint AFTER this floor's own outcome is fully resolved and folded into
+            // this.run — see onFloorComplete's own constructor comment. If startRun() throws
+            // on some LATER floor, this is the last known-good state enter-tower.js can
+            // recover from, so it always reflects a floor that's genuinely finished, never a
+            // half-resolved one.
+            await this.checkpoint()
         }
         // Tower Pet fields appended at the end (2026-09-13) — every existing caller that
         // destructures only `[run, floor, died]` is unaffected (extra trailing elements are
         // simply never read); enter-tower.js is the only consumer that needs the rest.
         return [this.run, this.floor, this.died, this.elitesSurvivedCount, this.towerCompanionHits, this.wardUsed]
+    }
+
+    // Per-floor checkpoint (2026-09-30) — a plain, JSON-safe snapshot of exactly what
+    // startRun()'s own final return tuple would contain if the run ended right now. A failed
+    // checkpoint write must never abort the run itself — worst case it just widens the
+    // recovery gap back to "nothing credited on a later crash," the exact pre-existing
+    // behavior, never a NEW failure mode on top of it. No-ops silently if the caller (a test,
+    // or any future caller) didn't supply onFloorComplete.
+    async checkpoint(){
+        if (!this.onFloorComplete) return;
+        try {
+            await this.onFloorComplete({
+                floor: this.floor,
+                run: { ...this.run, [tC.PAYOUT.ELITE_KILL]: [...this.run[tC.PAYOUT.ELITE_KILL]] },
+                elitesSurvivedCount: this.elitesSurvivedCount,
+                towerCompanionHits: this.towerCompanionHits,
+                wardUsed: this.wardUsed,
+            });
+        } catch (err) {
+            console.error(`Tower checkpoint failed for ${this.username} at floor ${this.floor}:`, err);
+        }
     }
 
     // One extra click added to every run, up front, before any floor is ever generated — sets
@@ -287,6 +320,13 @@ class towerFactory{
             if (this.floor % 10 === 0) break   // reached the next forced Elite floor — stop, caller runs it for real
             const outcome = await this.execNormalFloor(floor_type, true, this.policy)
             applyOutcomeToSummary(summary, outcome)
+            // Checkpoint per floor here too (2026-09-30) — this inner loop resolves many
+            // floors without ever returning to startRun()'s own outer while loop (that's the
+            // whole point of Fast Forward: zero Discord round-trips along the way), so without
+            // this the outer loop's own checkpoint() call would only fire once for the WHOLE
+            // fast-forwarded batch, losing every floor inside it to a crash mid-batch instead
+            // of just the ones after the last one actually resolved.
+            await this.checkpoint()
             if (outcome && outcome.triggeredElite) {
                 // A mid-chain Elite already ran for real by the time control gets back
                 // here — stop the loop, don't roll another floor after it.

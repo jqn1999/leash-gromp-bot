@@ -440,4 +440,85 @@ describe('admin bypass while TOWER_DISABLED is true', () => {
         expect(opts.content).toContain(`<@${awsConfigurations.devs[0]}>`);
         expect(opts).not.toHaveProperty('ephemeral');
     });
+
+    // Per-floor checkpointing (2026-09-30, direct instruction: "implement #1" — credit
+    // whatever a run had already banked through its last completed floor if it crashes,
+    // instead of losing the whole climb to one exception). towerFactory itself is mocked out
+    // in this file, so these tests simulate a real climb's checkpoint calls by invoking the
+    // onFloorComplete callback enter-tower.js passes as the mocked constructor's 7th argument,
+    // exactly as the real towerFactory.checkpoint() would.
+    test('clears any stale checkpoint before starting a new run, and clears it again after a normal successful run', async () => {
+        dynamoHandler.findUser.mockResolvedValue(baseUser({ userId: awsConfigurations.devs[0], workMultiplierAmount: tC.ENTRY_GATE_MULTI, rebirthCount: 0 }));
+        towerFactory.mockImplementation(() => ({
+            startRun: jest.fn().mockResolvedValue([[5000, 0, 0, 0], 10, false, 0, 0, false]),
+        }));
+        const interaction = adminInteraction();
+
+        await callback({}, interaction);
+
+        const clearCalls = dynamoHandler.updateUserDatabase.mock.calls.filter(
+            ([userId, field, value]) => userId === awsConfigurations.devs[0] && field === 'towerRunCheckpoint' && value === null
+        );
+        // Once before the run starts (guards against a stale leftover from a prior crash),
+        // once after it finishes successfully (superseded by the run's own final reward).
+        expect(clearCalls.length).toBe(2);
+    });
+
+    test('a run that crashes AFTER at least one floor checkpointed credits the accrued reward through that floor, and tells the player what was saved', async () => {
+        dynamoHandler.findUser.mockResolvedValue(baseUser({ userId: awsConfigurations.devs[0], workMultiplierAmount: tC.ENTRY_GATE_MULTI, rebirthCount: 0 }));
+        towerFactory.mockImplementation((interaction, username, multi, autoContinue, rewardBonus, hasWard, onFloorComplete) => ({
+            floor: 12,
+            startRun: jest.fn(async () => {
+                await onFloorComplete({
+                    floor: 10,
+                    run: {
+                        [tC.PAYOUT.POTATOES]: 5000,
+                        [tC.PAYOUT.WORK_MULTIPLIER]: 0.2,
+                        [tC.PAYOUT.PASSIVE_INCOME]: 0,
+                        [tC.PAYOUT.BANK_CAPACITY]: 0,
+                        [tC.PAYOUT.ELITE_KILL]: [],
+                    },
+                    elitesSurvivedCount: 1,
+                    towerCompanionHits: 0,
+                    wardUsed: false,
+                });
+                throw new Error('boom');
+            }),
+        }));
+        const interaction = adminInteraction();
+
+        await expect(callback({}, interaction)).resolves.not.toThrow();
+
+        // Credited via the exact same processRewardPayouts path a normal completed run uses.
+        expect(dynamoHandler.updateUserFields).toHaveBeenCalledTimes(1);
+        const [calledUserId, setFields, addFields] = dynamoHandler.updateUserFields.mock.calls[0];
+        expect(calledUserId).toBe(awsConfigurations.devs[0]);
+        expect(addFields).toEqual({ potatoes: 5000, totalEarnings: 5000 });
+        expect(setFields.workMultiplierAmount).toBeCloseTo(tC.ENTRY_GATE_MULTI + 0.2);
+
+        // Entry restored (same as any crash), and the checkpoint cleared once credited.
+        expect(dynamoHandler.updateUserDatabase).toHaveBeenCalledWith(awsConfigurations.devs[0], 'canEnterTower', true);
+        expect(dynamoHandler.updateUserDatabase).toHaveBeenCalledWith(awsConfigurations.devs[0], 'towerRunCheckpoint', null);
+
+        const [{ content }] = interaction.editReply.mock.calls[interaction.editReply.mock.calls.length - 1];
+        expect(content).toContain('floor 10');
+        expect(content).toContain('already banked');
+        expect(content).toContain('5,000 potatoes');
+    });
+
+    test('a crash before any floor checkpoints credits nothing, matching the pre-checkpoint behavior', async () => {
+        dynamoHandler.findUser.mockResolvedValue(baseUser({ userId: awsConfigurations.devs[0], workMultiplierAmount: tC.ENTRY_GATE_MULTI, rebirthCount: 0 }));
+        towerFactory.mockImplementation(() => ({
+            floor: 1,
+            startRun: jest.fn().mockRejectedValue(new Error('boom')),
+        }));
+        const interaction = adminInteraction();
+
+        await expect(callback({}, interaction)).resolves.not.toThrow();
+
+        expect(dynamoHandler.updateUserFields).not.toHaveBeenCalled();
+        expect(dynamoHandler.updateUserDatabase).toHaveBeenCalledWith(awsConfigurations.devs[0], 'canEnterTower', true);
+        const [{ content }] = interaction.editReply.mock.calls[interaction.editReply.mock.calls.length - 1];
+        expect(content).toContain('Nothing from that attempt was banked');
+    });
 });

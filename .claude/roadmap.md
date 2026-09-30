@@ -19385,3 +19385,83 @@ cited a literal number.
 **Cross-repo note.** Not yet ported to `financial-project` — checking that repo next, since all
 three constants are the same game-logic/balance numbers `/gromp` also implements (the same ones
 the previous rebalance entry above was ported for).
+
+## Tower per-floor checkpointing: crashes now credit progress already banked
+
+**Asked**, after the last Tower entry's messaging fix: "Is this just fixing messaging? not the
+actual root cause of the issue right? Is there anyway to save on each floor of a user's run and
+if it was to fail they can start back their tower up with another enter tower or mabe a new
+resume tower rather than having to always have an admin reset their run and start over" — answered
+directly (no, not the root cause — still open) and recommended a scoped option (checkpoint
+rewards after each floor, credit on crash, still restart fresh — NOT full mid-climb resume, a much
+bigger lift with a real double-credit risk against the existing "don't restore `canEnterTower`
+after a legitimately-finished run" invariant). Confirmed with a follow-up instruction: "implement
+#1."
+
+**Root finding that shaped the design**: `towerFactory.js` had ZERO DB writes anywhere in the file
+before this change — the whole climb lived in one in-memory `while(cont)` loop, nothing persisted
+until `startRun()` returned. That's WHY a crash lost the entire run, not just the last floor —
+there was nothing to recover from.
+
+**Changed** (`src/utils/towerFactory.js`):
+- Constructor gained an optional 7th argument, `onFloorComplete` — an injected async callback,
+  keeping this class a pure run simulator with no DB knowledge of its own (its existing "enter-
+  tower.js persists, towerFactory computes" division of labor, unchanged as a principle).
+- New `checkpoint()` method snapshots `{ floor, run, elitesSurvivedCount, towerCompanionHits,
+  wardUsed }` (independent copies, including `ELITE_KILL`'s own array, so a later mutation can't
+  retroactively change an already-reported floor's snapshot) and awaits `onFloorComplete` with it.
+  A failed checkpoint write is logged and swallowed — never aborts the run, worst case just falls
+  back to the pre-checkpoint behavior.
+- `startRun()`'s outer floor loop calls `checkpoint()` once per resolved floor (the old `continue;`
+  after the Elite branch became an `else`, purely to share one trailing checkpoint call).
+- `fastForwardToNextElite()`'s OWN inner loop also got a `checkpoint()` call — without it, an
+  entire Fast-Forwarded batch (which makes zero Discord round-trips and never returns to the outer
+  loop mid-batch) would checkpoint only once at the very end, losing every floor inside a crashed
+  batch instead of just the floors after the last one that actually finished.
+
+**Changed** (`src/commands/tower/enter-tower.js`):
+- A new `towerRunCheckpoint` field on the user's own DynamoDB record (no new table) is cleared to
+  `null` BEFORE each run starts, so a stale leftover from a previous crash (e.g. the whole process
+  dying before its own catch block ever ran) can never be mistaken for the new run's progress.
+- A `checkpointTowerRun` callback both persists each snapshot to that field AND keeps the latest
+  one in an in-memory closure variable (`latestCheckpoint`) — used directly for in-process crash
+  recovery, since a caught JS exception never corrupts outer-scope state, making the in-memory copy
+  exactly as correct as a DB re-read without the extra round trip.
+- The `startRun()` crash catch block now checks `latestCheckpoint`: if set, it calls the SAME
+  `processRewardPayouts` a normal completed run uses (with the checkpoint's own `run`/`floor`,
+  `died: false`), crediting the potatoes/work-multiplier/passive-income/bank-capacity (plus
+  companion leveling/Bastion drops) already banked through the last floor that genuinely finished.
+  `canEnterTower` is still restored either way; `towerRunCheckpoint` clears once credited. `null`
+  (crash before floor 1 finished) is byte-for-byte the pre-checkpoint behavior. The recovery
+  message branches accordingly — names the credited floor and numbers, or the original "nothing
+  was banked" wording.
+- `towerRunCheckpoint` also clears right after a NORMAL successful `startRun()` return, since
+  `tower_out`'s own final state supersedes it.
+
+**Deliberately scoped out**: a checkpoint-credited crash run does NOT count toward
+`highestTowerFloor` or `/tower-leaderboard` eligibility — only the reward/companion crediting
+above. Neither of those systems' own "did this run actually conclude" rules cleanly cover a run
+that crashed (neither survived-and-left nor died-to-an-Elite), and extending personal-best/
+leaderboard credit to an aborted run felt like a separate call the instruction didn't ask for —
+flagged in `tower.md` rather than silently decided.
+
+**What this does and doesn't fix.** Still not the root cause — whatever throws inside `startRun()`
+remains unconfirmed. This only shrinks the blast radius of a crash from "the whole run's progress,
+every time" to "whatever happened after the last floor that actually finished." True mid-climb
+resume (the bigger design option not chosen) would close that remaining gap, at real added
+complexity — not built here, but not precluded either, since the checkpoint snapshot already
+carries most of what a future resume feature would need.
+
+**Tests.** `towerFactory.test.js` gained a new 3-test `describe('per-floor checkpointing
+(onFloorComplete)')` block: a real end-to-end 3-floor run confirming one checkpoint call per floor
+with an independent-copy snapshot, a rejecting-callback-doesn't-abort-the-run test, and a no-
+callback-supplied back-compat test. `enter-tower.test.js`'s admin-bypass block gained 3 more:
+stale-checkpoint-cleared-at-start-and-after-success, crash-with-a-checkpoint partial credit
+(asserting the exact `updateUserFields` numbers and that the recovery message names the credited
+floor), and crash-with-no-checkpoint (confirming unchanged pre-checkpoint behavior). Full suite:
+**122 suites (1 fully skipped) / 2249 tests (17 skipped, 2232 passing)** — net +6 new tests, 0
+broken.
+
+**Cross-repo note.** Not ported to `financial-project` — same reasoning as the messaging fix
+above: a Discord-interaction-specific recovery mechanism with no web equivalent, touching no game
+logic, balance, or data shape `/gromp` implements.

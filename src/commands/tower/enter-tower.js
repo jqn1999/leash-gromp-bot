@@ -240,7 +240,22 @@ module.exports = {
         // already sets).
         const rewardBonus = companionFactory.getActivePerkValue(userDetails, 'towerRewardBonus');
         const hasWard = companionFactory.hasTowerDeathWard(userDetails) && !userDetails.towerWardUsedToday;
-        let tF = new towerFactory(interaction, username, userMultiplier, userDetails.autoTowerContinue, rewardBonus, hasWard)
+
+        // Per-floor checkpointing (2026-09-30, direct instruction: "implement #1" — save
+        // progress on each floor so a crashed run can be credited for what it already banked,
+        // instead of an admin having to reset the entry and the player losing everything).
+        // Cleared FIRST, before this run's own towerFactory is even constructed — a stale
+        // checkpoint left over from a previous crash (e.g. the whole process dying before its
+        // own catch block below ever ran) must never be mistaken for THIS run's progress if
+        // this run itself crashes before its own first floor's checkpoint write lands.
+        await dynamoHandler.updateUserDatabase(userId, "towerRunCheckpoint", null);
+        let latestCheckpoint = null;
+        const checkpointTowerRun = async (snapshot) => {
+            latestCheckpoint = snapshot;
+            await dynamoHandler.updateUserDatabase(userId, "towerRunCheckpoint", snapshot);
+        };
+
+        let tF = new towerFactory(interaction, username, userMultiplier, userDetails.autoTowerContinue, rewardBonus, hasWard, checkpointTowerRun)
         let tower_out;
         try {
             tower_out = await tF.startRun()
@@ -255,7 +270,26 @@ module.exports = {
             // to root-cause the crash itself, which static reading alone couldn't pin down.
             console.error(`Tower run crashed for ${username} (${userId}) at floor ${tF.floor}:`, e);
             await dynamoHandler.updateUserDatabase(userId, "canEnterTower", true);
-            const recoveryMessage = `${userDisplayName}, your tower run hit an unexpected error around floor ${tF.floor} and had to stop — sorry about that! Nothing from that attempt was banked, but your entry has been restored, so you can run /enter-tower again right away.`;
+
+            // Checkpoint-based partial credit (2026-09-30) — `latestCheckpoint` is the last
+            // floor's own snapshot that successfully finished BEFORE the crash (read from the
+            // in-memory closure, not re-fetched from the DB — both are equally correct here
+            // since a caught JS exception never corrupts outer-scope state, and the in-memory
+            // copy avoids an extra read/eventual-consistency concern for no benefit). `null`
+            // means the crash happened before even floor 1 finished, in which case there's
+            // nothing to credit — identical to the pre-checkpoint behavior. Deliberately
+            // credits ONLY the accrued PAYOUT rewards (+ the companion leveling/drop rolls
+            // processRewardPayouts already folds in) — NOT highestTowerFloor or the daily
+            // leaderboard, since the run didn't actually finish (no voluntary retreat, no
+            // Elite loss) and doesn't fit either of those "a run really concluded" rules.
+            let recoveryMessage;
+            if (latestCheckpoint) {
+                await processRewardPayouts(interaction, userId, latestCheckpoint.run, username, userDisplayName, latestCheckpoint.floor, false, latestCheckpoint.elitesSurvivedCount, latestCheckpoint.towerCompanionHits, latestCheckpoint.wardUsed);
+                recoveryMessage = `${userDisplayName}, your tower run hit an unexpected error around floor ${tF.floor} and had to stop — sorry about that! Good news: your progress through floor ${latestCheckpoint.floor} was already banked and has been credited (${latestCheckpoint.run[tC.PAYOUT.POTATOES].toLocaleString()} potatoes, ${latestCheckpoint.run[tC.PAYOUT.WORK_MULTIPLIER].toFixed(2)} work multiplier, ${latestCheckpoint.run[tC.PAYOUT.PASSIVE_INCOME].toLocaleString()} passive income, ${latestCheckpoint.run[tC.PAYOUT.BANK_CAPACITY].toLocaleString()} bank capacity) — only progress past that floor was lost. Your entry has been restored, so you can run /enter-tower again right away.`;
+            } else {
+                recoveryMessage = `${userDisplayName}, your tower run hit an unexpected error around floor ${tF.floor} and had to stop — sorry about that! Nothing from that attempt was banked, but your entry has been restored, so you can run /enter-tower again right away.`;
+            }
+            await dynamoHandler.updateUserDatabase(userId, "towerRunCheckpoint", null);
             try {
                 if (interaction.deferred || interaction.replied) {
                     await interaction.editReply({ content: recoveryMessage, embeds: [], components: [] });
@@ -272,6 +306,11 @@ module.exports = {
             }
             return;
         }
+        // The run finished for real (survived or died to an Elite) — whatever the checkpoint
+        // held is now superseded by tower_out's own complete, final state, so clear it rather
+        // than let it linger until the NEXT run's own start-of-run clear (harmless either way,
+        // just tidier and avoids a misleading stale doc if anyone inspects it manually).
+        await dynamoHandler.updateUserDatabase(userId, "towerRunCheckpoint", null);
         let rewards = tower_out[0];
         let floor = tower_out[1];
         let died = tower_out[2];

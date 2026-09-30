@@ -1598,3 +1598,92 @@ describe('a stale click whose customId matches nothing on the CURRENT screen def
         expect(cont).toBe(true);
     });
 });
+
+// Per-floor checkpointing (2026-09-30, direct instruction: "implement #1" — save progress on
+// each floor so a crashed run can be credited for what it already banked, instead of losing
+// everything and needing an admin reset). onFloorComplete is the 7th constructor argument;
+// towerFactory itself stays DB-agnostic (see the constructor's own comment) and just invokes
+// whatever callback enter-tower.js supplies once per resolved floor.
+describe('per-floor checkpointing (onFloorComplete)', () => {
+    function choice(customId) {
+        return { customId, update: jest.fn().mockResolvedValue() };
+    }
+
+    function fakeInteraction(responses) {
+        let i = 0;
+        const editReply = jest.fn(async () => ({
+            awaitMessageComponent: jest.fn(async () => responses[i++]),
+        }));
+        return { editReply, user: { id: 'u1' } };
+    }
+
+    let randomSpy;
+    afterEach(() => {
+        if (randomSpy) randomSpy.mockRestore();
+    });
+
+    test('fires once per resolved floor, with a snapshot matching the run state at that point', async () => {
+        randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0);
+        // Without autoTowerContinue, each floor is TWO clicks: the floor's own COMBAT choice
+        // ('Fight' — Baby Broccoli's only choice), then the resulting Continue/Leave screen —
+        // both handled inside ONE execNormalFloor call, so still exactly one checkpoint per
+        // floor, not per click (see this describe block's own comment for why).
+        const interaction = fakeInteraction([
+            choice('policy_safe'),
+            choice('Fight'), choice('continue'),  // floor 1
+            choice('Fight'), choice('continue'),  // floor 2
+            choice('Fight'), choice('leave'),     // floor 3 — end the run here
+        ]);
+        const onFloorComplete = jest.fn().mockResolvedValue();
+        const tF = new towerFactory(interaction, 'tester', tC.ENTRY_GATE_MULTI, false, 0, false, onFloorComplete);
+
+        const [run, floor] = await tF.startRun();
+
+        // One checkpoint per floor actually resolved (3), not per editReply/button click.
+        expect(onFloorComplete).toHaveBeenCalledTimes(3);
+        const lastSnapshot = onFloorComplete.mock.calls[2][0];
+        expect(lastSnapshot.floor).toBe(3);
+        expect(lastSnapshot.floor).toBe(floor);
+        expect(lastSnapshot.run[tC.PAYOUT.POTATOES]).toBe(run[tC.PAYOUT.POTATOES]);
+        expect(lastSnapshot.elitesSurvivedCount).toBe(tF.elitesSurvivedCount);
+        expect(lastSnapshot.towerCompanionHits).toBe(tF.towerCompanionHits);
+        expect(lastSnapshot.wardUsed).toBe(tF.wardUsed);
+
+        // Snapshots are independent copies, not live references to this.run — mutating the
+        // run further after a floor's checkpoint fired must never retroactively change what
+        // was already reported as "banked" for that floor.
+        const firstSnapshot = onFloorComplete.mock.calls[0][0];
+        expect(firstSnapshot.run).not.toBe(tF.run);
+        expect(firstSnapshot.run[tC.PAYOUT.ELITE_KILL]).not.toBe(tF.run[tC.PAYOUT.ELITE_KILL]);
+    });
+
+    test('a checkpoint callback that rejects is logged and does not abort the run', async () => {
+        randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0);
+        const interaction = fakeInteraction([
+            choice('policy_safe'),
+            choice('leave'),
+        ]);
+        const onFloorComplete = jest.fn().mockRejectedValue(new Error('checkpoint write failed'));
+        const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+        const tF = new towerFactory(interaction, 'tester', tC.ENTRY_GATE_MULTI, false, 0, false, onFloorComplete);
+
+        const [, floor, died] = await tF.startRun();
+
+        expect(died).toBe(false);
+        expect(floor).toBe(1);
+        expect(onFloorComplete).toHaveBeenCalledTimes(1);
+        expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('Tower checkpoint failed'), expect.any(Error));
+        consoleErrorSpy.mockRestore();
+    });
+
+    test('no onFloorComplete supplied is a silent no-op, not a crash (back-compat for any other caller/test)', async () => {
+        randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0);
+        const interaction = fakeInteraction([
+            choice('policy_safe'),
+            choice('leave'),
+        ]);
+        const tF = new towerFactory(interaction, 'tester', tC.ENTRY_GATE_MULTI);
+
+        await expect(tF.startRun()).resolves.toBeTruthy();
+    });
+});

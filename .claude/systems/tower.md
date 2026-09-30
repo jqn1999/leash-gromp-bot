@@ -3052,3 +3052,110 @@ Full suite: **122 suites (1 reporting fully skipped) / 2243 tests (17 skipped, 2
 (webhook token lifetime, `interaction.channel.send` as a plain bot message) with no web equivalent;
 the web port has no notion of an "interaction token" at all. Nothing here touches game logic,
 balance, or data shapes, so `financial-project`'s own CLAUDE.md sync rule doesn't apply.
+
+## Per-floor checkpointing: a crash now credits whatever was already banked (2026-09-30, direct instruction: "implement #1")
+
+Follow-up to the messaging fix above, after being asked directly whether that fix addressed the
+crash's root cause (no — still open) and whether progress could be saved per floor so a crash
+doesn't cost the whole run. The answer was yes, with a real architecture tradeoff: `towerFactory.js`
+had **zero DB writes anywhere in the file** before this change — the entire climb lived in one
+in-memory `while(cont)` loop (`this.run`, `this.floor`, elite/ward counters all as plain instance
+state), nothing persisted until `startRun()` returned and `enter-tower.js` credited the final
+result. That's why a crash used to lose the ENTIRE run's progress, not just the last floor — there
+was nothing to recover from, only `canEnterTower` to reset. Two designs were weighed: (1) checkpoint
+the accrued REWARDS after each floor so a crash credits what was already earned, or (2) full mid-climb
+resume (persist enough state to reconstruct the exact climb and continue it from a fresh
+interaction). (2) is a much bigger lift — it would need to serialize the whole interactive
+button-driven flow, not just numbers, and introduces a real double-credit risk against the existing
+"don't restore `canEnterTower` after a run that legitimately finished" invariant. (1) was recommended
+and is what got built.
+
+**Changed** (`src/utils/towerFactory.js`):
+- Constructor gained a 7th, optional `onFloorComplete` callback argument. `towerFactory` stays a pure
+  run simulator with no DB knowledge of its own (matching its existing "enter-tower.js persists,
+  towerFactory computes" division of labor, stated in the constructor's own comment since the Bastion
+  work) — it just invokes whatever callback the caller supplies, once per resolved floor.
+- New `checkpoint()` method builds a plain, JSON-safe snapshot (`{ floor, run, elitesSurvivedCount,
+  towerCompanionHits, wardUsed }` — a shallow copy of `this.run`, including its own copy of the
+  `ELITE_KILL` array, so a later mutation of the live run can never retroactively change what was
+  already reported as "banked" for an earlier floor) and awaits `onFloorComplete` with it. A failed
+  checkpoint write is logged and swallowed, never propagated — the worst case is just falling back to
+  the pre-checkpoint behavior (nothing credited on a later crash), never a NEW failure mode stacked on
+  top of the climb itself.
+- `startRun()`'s own outer floor loop calls `await this.checkpoint()` once per iteration, after
+  whichever of `execElite`/`execNormalFloor` resolves that floor (the pre-existing `continue;` after
+  the Elite branch was replaced with an `else`, functionally identical, so both branches share one
+  trailing checkpoint call).
+- `fastForwardToNextElite()` ALSO gained its own `await this.checkpoint()` call, inside its own inner
+  loop — this batch loop deliberately makes zero Discord round-trips per floor and never returns to
+  `startRun()`'s outer loop until it either exhausts the batch or hits a mid-chain Elite, so without
+  this a whole Fast-Forwarded batch would checkpoint only once at the end, losing every floor inside
+  it to a crash mid-batch instead of just the floors after the last one that actually finished.
+
+**Changed** (`src/commands/tower/enter-tower.js`):
+- Before constructing `towerFactory`, `towerRunCheckpoint` (a new field on the user's own DynamoDB
+  record — no new table) is explicitly cleared to `null`. This runs BEFORE this run even starts, so a
+  stale checkpoint from a previous crash (e.g. the whole process dying before its own catch block
+  ever got to run) can never be mistaken for THIS run's progress if this run itself crashes before
+  its own first floor's checkpoint lands.
+- A `checkpointTowerRun` callback is defined per-invocation, passed as `towerFactory`'s 7th
+  constructor argument. It both writes the snapshot to `towerRunCheckpoint` (the persistence half of
+  the story — survives even if this whole request later dies uncaught in a way no catch here could
+  ever run) AND keeps the latest snapshot in an in-memory `latestCheckpoint` closure variable (used
+  for the actual in-process crash recovery below — a caught JS exception never corrupts outer-scope
+  state, so the in-memory copy is exactly as correct as a fresh DB read would be, without the extra
+  round trip or any eventual-consistency concern).
+- The `startRun()` crash catch block now checks `latestCheckpoint`. If set, it calls the SAME
+  `processRewardPayouts` function a normal completed run uses — with `latestCheckpoint.run` as the
+  reward payload, `latestCheckpoint.floor` as the floor, `died: false` — crediting exactly the
+  potatoes/work-multiplier/passive-income/bank-capacity (and companion leveling/Bastion drop rolls,
+  since `processRewardPayouts` folds those in too) already banked through the last floor that
+  genuinely finished before the crash. `canEnterTower` is still restored either way (unchanged from
+  before), and `towerRunCheckpoint` is cleared back to `null` once credited. If `latestCheckpoint` is
+  `null` (the crash happened before even floor 1 finished), behavior is byte-for-byte the same as
+  before this change — nothing to credit, same recovery message as always.
+- The recovery message itself now branches: with a checkpoint, it tells the player exactly what
+  floor and what numbers were already saved, distinct from "everything past that floor was lost";
+  without one, it's the original "nothing from that attempt was banked" wording.
+- `towerRunCheckpoint` is also cleared to `null` right after a NORMAL successful `startRun()` return
+  (survived or died to an Elite) — by that point `tower_out`'s own complete final state supersedes
+  whatever the checkpoint held, so there's no reason to let it linger until the next run's own
+  start-of-run clear.
+
+**Deliberately NOT extended to `highestTowerFloor` or the daily leaderboard.** A checkpoint-credited
+crash run does NOT count toward the personal-best floor record or `/tower-leaderboard` eligibility —
+only the PAYOUT rewards and companion leveling/drops listed above are credited. The daily
+leaderboard's own rule ("only a survived — i.e.
+voluntarily left, not lost to an Elite — run counts") doesn't cleanly cover "the run neither survived
+nor died, it just crashed," and a personal-best credit for a floor the player didn't actually see the
+result screen for felt like a separate design call the instruction didn't ask for. Flagged here rather
+than silently decided either way — worth revisiting if it comes up.
+
+**What this does and doesn't fix.** Still not the root cause — whatever throws inside `startRun()` is
+still unconfirmed (same open investigation as the two entries above). This only shrinks the BLAST
+RADIUS of a crash from "the whole run's progress, every time" down to "whatever happened after the
+last floor that actually finished" — someone who crashes on floor 47 of a 50-floor climb now keeps
+46 floors' worth of reward instead of none of it, but a crash on floor 2 of that same climb still
+only banks floor 1. True resume (design #2 above) would close that remaining gap entirely, at the
+cost of the added complexity described above — not built here, but not precluded by this change
+either, since `onFloorComplete`'s own snapshot shape already carries most of what a future resume
+feature would need to reconstruct from.
+
+**Tests.** `towerFactory.test.js` gained a new `describe('per-floor checkpointing (onFloorComplete)')`
+block (3 tests): one drives a real 3-floor run end-to-end and confirms `onFloorComplete` fires exactly
+once per floor with a snapshot matching the live run state at that point (and that snapshots are
+independent copies, not live references — mutating `this.run` further doesn't retroactively change an
+earlier floor's already-reported snapshot); one confirms a rejecting `onFloorComplete` is logged and
+does not abort the run; one confirms omitting `onFloorComplete` entirely is a silent no-op (back-compat
+for any other caller). `enter-tower.test.js`'s admin-bypass describe block gained 3 more tests: the
+stale-checkpoint-cleared-at-start-and-after-success case, the crash-with-a-checkpoint partial-credit
+case (asserting `updateUserFields` is called with the checkpoint's own numbers and the recovery
+message names the credited floor), and the crash-with-no-checkpoint case (confirming byte-for-byte
+unchanged pre-checkpoint behavior — no `updateUserFields` call, the original "nothing was banked"
+wording). Full suite: **122 suites (1 fully skipped) / 2249 tests (17 skipped, 2232 passing)** — net
++6 new tests, 0 broken.
+
+**financial-project scope note.** Not ported — same reasoning as the messaging fix above: this is a
+Discord-interaction-specific recovery mechanism (per-floor checkpointing keyed to a Discord
+interaction's own crash/token-expiry failure modes) with no equivalent concept on the web port, and
+touches no game logic, balance, or data shape `/gromp` implements.
