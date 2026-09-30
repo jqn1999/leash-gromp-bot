@@ -19847,6 +19847,11 @@ Every other existing test in the block reads `docClient.update.mock.calls[0][0]`
 still `bankStored` — write order was preserved) and needed no changes. Full suite: **122 suites (1
 fully skipped) / 2280 tests (17 skipped, 2263 passing)** — net +2 new tests, 0 broken.
 
-**Cross-repo note.** This IS a game-logic/balance-adjacent change — `financial-project`'s `/gromp`
-page implements Guild Raid and the same guild bank/interest model — flagged to the user per this
-repo's standing sibling-repo rule; porting to `financial-project` not yet done as of this entry.
+**Cross-repo note.** Checked, no port needed. `financial-project`'s own `gromp-guilds/handler.ts`
+has a `getGuildDailyInterest` that mirrors this formula, but its own comment says so explicitly:
+"DISPLAY ONLY... Nothing here actually credits potatoes" — the web has no scheduled Lambda of its
+own crediting treasury interest at all; only the bot's `applyGuildTreasuryInterest` cron actually
+writes `bankStored`/`totalEarnings` into the SAME shared DynamoDB table both platforms read. A web
+player already sees whatever `guild.totalEarnings` the bot's own tick last wrote
+(`gromp-guilds/handler.ts` just echoes `guild.totalEarnings` straight through) — so this fix is
+already live on both surfaces the moment it ships here, with no separate web-side write to port.
