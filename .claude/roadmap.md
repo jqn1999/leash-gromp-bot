@@ -19799,5 +19799,228 @@ discovered as a live Spud Keep/Tower balance surprise. Full suite: **122 suites 
 
 **Cross-repo note.** This IS a game-logic/balance change `financial-project`'s `/gromp` page also
 implements (guild/mercenary `workMulti` buffs and Guild Raid/Bounty success-chance math both exist
-there) — flagged to the user per this repo's standing sibling-repo rule; porting not yet done as of
-this entry.
+there) — flagged to the user per this repo's standing sibling-repo rule. **Ported same session**:
+`financial-project`'s own `NOTES_GROMP_WEB_INTEGRATION.md` entry `#113` covers the port (found and
+flagged, but deliberately did NOT fix, an unrelated pre-existing gap: that port never wired World
+Boss's own `workMulti` buff into Guild Raid/Bounty at all, unlike the bot).
+
+## Guild treasury interest now also counts toward the guild's own Total Earnings figure
+
+**Asked**: "Does guild bank interest count towards the guild total earnings line" — answer at the
+time was no: `applyGuildTreasuryInterest` only ever wrote `bankStored`, never
+`guild.totalEarnings`, which was exclusively incremented by `startRaid.js`'s `resolveRaid` (raid
+winnings only). Direct follow-up instruction: "Make it count."
+
+**Root cause / why this was safe to do without further discussion**: `guild.totalEarnings` (the
+`Total Earnings:` field on `/guild`'s embed) turned out to have exactly one writer (the 4
+`guildTotalEarnings += potatoesGained` call sites inside `startRaid.js`) and exactly one reader
+(`embedFactory.js`'s own display line) anywhere in the codebase — confirmed by grep before making
+the change. No leaderboard, gate, achievement, or other formula reads it, so widening what feeds
+it has no side effect beyond the number itself growing faster and more accurately reflecting real
+guild income.
+
+**Changed** (`src/utils/dynamoHandler.js`, `applyGuildTreasuryInterest`): right after the existing
+`updateGuildDatabase(guild.guildId, 'bankStored', newBankStored)` write, a second write credits
+the identical rounded `interest` amount into `totalEarnings`:
+`const newTotalEarnings = toNumber(guild.totalEarnings) + interest; await updateGuildDatabase(guild.guildId, 'totalEarnings', newTotalEarnings);`
+— same `toNumber` defensive coercion this function already applies to `bankStored`/`memberCount`/
+`raidCount`, since `getGuilds()` is a raw unhealed scan and a pre-existing guild record can be
+missing `totalEarnings` entirely rather than having it at 0. Both writes happen on the same
+5-minute tick, so `bankStored` and `totalEarnings` always move together by the exact same amount
+whenever interest fires — no drift between "what's banked" and "what's ever been earned"
+attributable to interest specifically.
+
+**Cinderroot's own multiplier is already folded into `interest` before either write**, so a
+guild that owns the companion sees its bonus reflected in Total Earnings too, automatically — no
+separate Cinderroot-aware branch was needed for the new write.
+
+**Tests.** `dynamoHandler.test.js`'s `applyGuildTreasuryInterest` describe block: the Cinderroot
+test (`'credits the level-scaled multiplier for a guild that HAS the companion vs. the base amount
+for one without'`) had to be fixed rather than just left alone — it previously deduped
+`docClient.update.mock.calls` by `guildId` alone via `Object.fromEntries`, which silently broke
+once each guild started getting TWO update calls (`bankStored` and `totalEarnings`, now carrying
+DIFFERENT values) instead of one; fixed by filtering to the `bankStored` call specifically before
+the dedup, restoring the test's original intent. Two new tests added: one confirming the exact
+same `interest` amount lands in both `bankStored` and `totalEarnings` on one tick, and one
+confirming a missing `totalEarnings` field (unhealed record) is treated as 0, not `NaN`/thrown.
+Every other existing test in the block reads `docClient.update.mock.calls[0][0]` (the FIRST call,
+still `bankStored` — write order was preserved) and needed no changes. Full suite: **122 suites (1
+fully skipped) / 2280 tests (17 skipped, 2263 passing)** — net +2 new tests, 0 broken.
+
+**Cross-repo note.** Checked, no port needed. `financial-project`'s own `gromp-guilds/handler.ts`
+has a `getGuildDailyInterest` that mirrors this formula, but its own comment says so explicitly:
+"DISPLAY ONLY... Nothing here actually credits potatoes" — the web has no scheduled Lambda of its
+own crediting treasury interest at all; only the bot's `applyGuildTreasuryInterest` cron actually
+writes `bankStored`/`totalEarnings` into the SAME shared DynamoDB table both platforms read. A web
+player already sees whatever `guild.totalEarnings` the bot's own tick last wrote
+(`gromp-guilds/handler.ts` just echoes `guild.totalEarnings` straight through) — so this fix is
+already live on both surfaces the moment it ships here, with no separate web-side write to port.
+
+## `/profile` gets a third page: Work Encounter Counts, Metal split into Success/Failure
+
+**Asked**: "Add a new third page to the profile embed that includes an individual players work
+encounter counts. For metal encounters include fail and success."
+
+**Found while investigating, not built from scratch**: every one of these counts already existed
+and was already being written — `userDetails.workScenarioCounts` (`regular`, `large`, `sweet`,
+`taro`, `poison`, `metalSuccess`, `metalFailure`, `golden`, `companion`, `ancient`, `mimic`,
+`mimicKilled`, `goldenYam`) is incremented by every `/work` scenario handler on every real work
+call, feeding Quests/Achievements progress — it just had no player-facing display anywhere on
+`/profile` itself. Metal Potato was already the one scenario tracked as two separate counters
+(`metalSuccess` in `workFactory.handleMetalPotato`, `metalFailure` in `work.js`'s own miss branch)
+— exactly the fail/success split asked for, already sitting there unused on every account.
+
+**Changed**:
+- `src/utils/embedFactory.js` (`createUserEmbed`): `totalPages` 2 → 3; the previous `if/else`
+  became `if/else if/else` to add the new `pageIndex === 2` branch. New page: a single
+  "Work Encounter Counts:" field, one line per `workScenarioCounts` entry (excluding
+  `mimicKilled`, a bonus sub-stat rather than a distinct encounter type), same order `work.js`'s
+  own scenario roll uses. Metal Potato renders as two lines ("— Success" / "— Failure"); every
+  other scenario gets one count. Guards every count with `|| 0` (and the whole object with `|| {}`)
+  the same way the existing `records` field already does, for a pre-existing account whose
+  `workScenarioCounts` predates self-healing.
+- `src/commands/user/profile.js`: `TOTAL_PAGES` 2 → 3. `buildPaginationRow`/`runPaginatedReply`
+  needed no changes — both are already fully generic over page count.
+- `src/utils/eventFactory.js`: gained a new exported `SCENARIO_LABELS` map (moved from
+  `workOdds.js`, which used to be its only owner) — "the established colloquial terms" per its own
+  original comment (e.g. "Poison Potato," not `poisonPotato.name`'s "Poisonous Potato"), needed a
+  second consumer for this new page and a straight duplicate copy risked the two commands' labels
+  drifting apart over time.
+- `src/commands/user/workOdds.js`: now imports `SCENARIO_LABELS` from `eventFactory.js` instead of
+  declaring its own copy — a move, not a rewrite; `/work-odds`'s own output is byte-identical.
+
+**Tests.** New `describe('createUserEmbed page 3 — Work Encounter Counts')` block in
+`embedFactory.test.js`: the full page-3 field content with every count populated (including the
+Metal split), a missing-`workScenarioCounts` account rendering every line as 0 rather than
+`undefined`/`NaN`, and a regression check that page 2 (Activity & Records) still renders correctly
+at `pageIndex === 1` and does NOT show the new field. `eventFactory.test.js`/`workOdds.test.js`
+both re-run clean with no changes needed — `SCENARIO_LABELS`' move didn't change either file's own
+observable behavior. Full suite: **122 suites (1 fully skipped) / 2283 tests (17 skipped, 2266
+passing)** — net +3 new tests, 0 broken.
+
+**Cross-repo note.** Checked `financial-project`'s own `gromp-economy/handler.ts` — it already
+tracks the identical `workScenarioCounts.*` fields (including the `metalSuccess`/`metalFailure`
+split, both already referenced there, e.g. by its own Achievements' `statPath` lookups) into the
+SAME shared DynamoDB table this bot writes to. But its `/gromp` page's own profile display never
+surfaces any of it — same gap this entry just closed here, just not yet closed there. Since this
+is a display-only addition (no new field, no new write, purely surfacing data that already
+existed on both platforms), whether to build the equivalent page on `/gromp` is a product
+question for the user rather than an automatic port under this repo's sibling-repo rule — not
+built as of this entry, flagged to the user instead.
+
+## Work Encounter Counts page gets an above/below-expected indicator
+
+**Asked** (same-day follow-up to the page-3 entry above): "Is there a way to color the numbers or
+some other indicator to show if they are above or below the expected number of each encounter for
+their number of works for the base encounter chances." Flagged first that Discord embed field
+values can't carry real per-line text color (only one color for the whole embed sidebar) and
+offered two options: an ANSI color-code block (desktop/web-only, breaks on mobile) or an emoji
+indicator (universally compatible). Confirmed: emoji, comparing against BASE encounter chances
+only (not live event/festival/Prospector-adjusted odds).
+
+**Changed**:
+- `src/utils/eventFactory.js` — the constructor's `workProbability` literal array and
+  `setBaseWorkProbability`'s identical reset copy (previously duplicated verbatim, a pre-existing
+  smell noticed while looking for "the" base rate to reuse) were both replaced with
+  `[...BASE_WORK_PROBABILITY]`, a new module-level exported constant holding the one canonical copy
+  of those 10 numbers. Both call sites spread a fresh copy rather than sharing the array itself,
+  since `workProbability` gets mutated in place by live event multipliers (`applyEvent`'s `*= 2`
+  etc.) and that must never touch the shared base.
+- `src/utils/constants.js` (`Work.METAL_SUCCESS_CHANCE: .1`) — moved out of a local
+  `BASE_METAL_SUCCESS_CHANCE` const that used to live inside `work.js`'s own METAL scenario
+  closure, since a utility (`embedFactory.js`) needed to read the same value and importing a
+  command file into a utility is the wrong dependency direction. `src/commands/user/work.js`'s
+  METAL branch now reads `Work.METAL_SUCCESS_CHANCE` instead — pure rename, no behavior change.
+- `src/utils/embedFactory.js` — new module-level `formatEncounterCountValue(actualCount,
+  expectedCount)` helper (not exported — same "tested through `createUserEmbed`'s own output"
+  convention every other private helper in this file already follows): rounds `expectedCount` to
+  the nearest whole encounter, appends 🔺 if `actualCount` is above that, 🔻 if below, nothing if
+  equal. Page 3's field-building code now computes an `expected` object (one entry per scenario,
+  `workCount * BASE_WORK_PROBABILITY[scenario]`, Metal split via `Work.METAL_SUCCESS_CHANCE`,
+  REGULAR as the base-probability leftover) and threads every count through the new helper. A
+  second, unnamed (`​`) field spells out the 🔺/🔻 legend once rather than repeating it on
+  every line.
+
+**Why base-only, not live odds**: this is a LIFETIME counter — a player's `workCount` was rolled
+against whatever hourly event/festival/Prospector odds happened to be live at each individual
+`/work` call over their entire history, so there's no single "current live rate" that would mean
+anything summed across that history. The base rate is the only stable yardstick, which is exactly
+what was asked for ("for the base encounter chances").
+
+**Tests.** `embedFactory.test.js`'s existing full-content page-3 test needed updating (not
+breaking on its own — its fixture's `workCount` was left at the default 0, so every nonzero count
+correctly now reads as "above" a 0 expected value; the assertion just needed the new 🔺 suffixes
+added). New dedicated test: `workCount: 1000` against `BASE_WORK_PROBABILITY` gives clean expected
+counts per scenario, with each scenario's actual count deliberately set above/at/below its own
+expected value to exercise all three indicator states (🔺/🔻/none) in one pass, including the
+Ancient Potato half-integer-rounds-up case (expected 0.5 → rounds to 1) and Metal's own
+success/failure split. `eventFactory.test.js` re-run clean with no changes needed — the
+`BASE_WORK_PROBABILITY` refactor is behavior-preserving (same literal values, same mutation
+semantics). Full suite: **122 suites (1 fully skipped) / 2284 tests (17 skipped, 2267 passing)** —
+net +1 new test (one test rewritten, one added), 0 broken.
+
+**Cross-repo note.** No port — this sits entirely on top of the `/profile` page-3 display feature
+from the entry above, which was itself flagged as not-yet-built on `financial-project`'s own
+`/gromp` page. Nothing to layer an indicator onto there until that base page exists.
+
+## Golden Reels resolves its whole run up front instead of racing the player's own balance mid-animation
+
+**Asked**: "Since each embed change for long running reels constantly updates the user's potatoes,
+it's causing issues with players working or doing other things while reels is running in the
+background. Can you perform all the calculations for their bet and number of runs to get the total
+gain/loss applied to the users balance and then have the embed still move at the pace it is before
+but with a new skip to end button. The potatoes gained is resolved at command start rather than
+actually during embed execution."
+
+**Root cause**: every spin used to write the player's ABSOLUTE `potatoes` total to the DB as the
+animation advanced (`userPotatoes` kept only as this command's own local running variable, one
+`updateUserFields` call per spin). At up to `GoldenReels.MAX_SPINS * SPIN_DELAY_MS ≈ 3.3 minutes`
+per run, any OTHER command the player ran concurrently (`/work` being the reported case) would
+read/write the real balance mid-run and get silently overwritten by this command's next stale
+in-memory write on its next spin, or vice versa — a genuine lost-update race on real currency, not
+a display bug. The same race existed on the SHARED `goldenReels` stats-table row too (every
+player's own concurrent run touched the same document, one field-write per spin).
+
+**Changed** (`src/commands/games/goldenReels.js`):
+- The entire run is now resolved in one synchronous pass, before any embed is sent: every spin's
+  symbol/delta, the affordability check that decides `stoppedEarly`, and every `goldenReels`
+  stat-counter increment, all against local variables only (a `simulatedPotatoes` running total
+  seeded from the pre-loop snapshot) — zero DB access inside this pass.
+- The whole outcome is then applied in exactly ONE `updateUserFields` call
+  (`potatoes`/`totalEarnings`/`totalLosses` together, even when a run left one of the latter two
+  unchanged — simpler than conditionally omitting a no-op field) and one `updateStatDatabase` call
+  per `goldenReels` counter the run actually touched (still skips a counter untouched by this run
+  entirely, preserving the "absent means never written" contract the stats row's own top comment
+  describes).
+- The per-spin animation loop that follows is now purely cosmetic — same `interaction.editReply`
+  call and `SPIN_DELAY_MS` (~2s) pacing as before, just replaying already-resolved results instead
+  of computing them live. No DB calls happen inside it at all anymore.
+- New "Skip to End" button (`ButtonBuilder`/`ActionRowBuilder`, only shown once there's more than
+  one spin to animate) attached via `reply.createMessageComponentCollector` — this codebase's
+  first use of that API; every other button flow elsewhere uses the simpler one-shot
+  `awaitMessageComponent`, which blocks and can't run alongside an ongoing loop the way this needed
+  to. A single `skipPromise`, created once and resolved by the collector's own `collect` handler,
+  is raced (`Promise.race`) against every remaining per-spin delay — once resolved, every later
+  race settles instantly via plain microtasks (no timer wait needed), so the loop's own next
+  early-exit check ends the animation and jumps straight to the summary. Skipping never changes the
+  resolved outcome — that was already decided and written before the animation began — only how
+  much of it the player actually watches.
+
+**Tests.** `goldenReels.test.js`'s existing per-spin `updateUserFields` call-count/shape
+assertions were rewritten for the new one-write-per-run shape (e.g. `toHaveBeenCalledTimes(4)` for
+a 4-spin run → `toHaveBeenCalledTimes(1)`; single-spin win/loss assertions gained the
+previously-implicit unchanged `totalEarnings`/`totalLosses: 0` field, since the new write always
+includes all three fields together). `fakeInteraction`'s `editReply` mock now resolves a fake
+Message exposing `createMessageComponentCollector`, matching what a real `interaction.editReply()`
+actually returns. New `describe('"Skip to End" button')` block: the collector attaches only on a
+multi-spin run (never on a single-spin one — nothing to skip), and a dedicated test that captures
+the collector's `collect` handler, invokes it mid-run to simulate a real click, and confirms both
+that the animation visibly ends early (far fewer `editReply` calls than the full spin count) AND
+that the final `updateUserFields` call still reflects the FULL requested run's worth of
+gain/loss — proving skip only shortens the animation, never the resolved outcome. Full suite:
+**122 suites (1 fully skipped) / 2287 tests (17 skipped, 2270 passing)** — net +3 new tests, 0
+broken.
+
+**Cross-repo note.** No port — Golden Reels has no equivalent anywhere in `financial-project`
+(confirmed: no `goldenReels`/`GoldenReels` reference in any Lambda or the `/gromp` page), so this
+is a Discord-only reliability fix with nothing to port.

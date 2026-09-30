@@ -1,4 +1,4 @@
-const { ApplicationCommandOptionType } = require("discord.js");
+const { ApplicationCommandOptionType, ButtonBuilder, ActionRowBuilder, ButtonStyle } = require("discord.js");
 const { getUserInteractionDetails, requireUserDetails, parseAndValidateBet } = require("../../utils/helperCommands")
 const dynamoHandler = require("../../utils/dynamoHandler");
 const { EmbedFactory } = require("../../utils/embedFactory");
@@ -28,6 +28,10 @@ function rollSymbol() {
         if (roll < cumulative) return symbol;
     }
     return null;
+}
+
+function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 module.exports = {
@@ -86,13 +90,26 @@ module.exports = {
             ...(await dynamoHandler.getStatDatabase('goldenReels') || {})
         };
 
-        let spinsRun = 0;
+        // Resolve EVERY spin up front (2026-09-30, direct instruction — each spin used to
+        // write the player's ABSOLUTE potatoes total to the DB as the embed advanced,
+        // computed off a running total kept only in this function's own local memory. A
+        // long run (up to MAX_SPINS * SPIN_DELAY_MS ≈ 3.3 minutes) left a wide window where
+        // any OTHER command the player ran concurrently (/work, etc.) would read/write the
+        // real DB value, get silently clobbered by this command's next stale in-memory
+        // write, or vice versa — a lost-update race, not a display bug. Everything below is
+        // pure local-variable math against the snapshot read above, no DB access at all, so
+        // there's nothing left for a concurrent command to race against until the single
+        // batched write right after this loop.
+        const spinResults = [];
+        let simulatedPotatoes = userPotatoes;
         let netTotal = 0;
         let jackpotHits = 0;
+        let spinsRun = 0;
         let stoppedEarly = false;
+        const statDeltas = { totalPayout: 0, totalReceived: 0, jackpotCount: 0, metalCount: 0, largeCount: 0, regularCount: 0, lossCount: 0 };
 
         for (let i = 1; i <= spinsRequested; i++) {
-            if (bet > userPotatoes) {
+            if (bet > simulatedPotatoes) {
                 stoppedEarly = true;
                 break;
             }
@@ -105,39 +122,97 @@ module.exports = {
             // loss (multiplier 0) to exactly -bet without a separate branch.
             const delta = Math.round(bet * (payoutMultiplier - 1));
 
-            userPotatoes += delta;
+            simulatedPotatoes += delta;
             if (delta >= 0) {
-                userTotalEarnings += delta;
-                await dynamoHandler.updateUserFields(userId, { potatoes: userPotatoes, totalEarnings: userTotalEarnings });
-                await dynamoHandler.updateStatDatabase('goldenReels', 'totalPayout', goldenReelsStats.totalPayout + delta);
-                goldenReelsStats.totalPayout += delta;
+                statDeltas.totalPayout += delta;
             } else {
-                userTotalLosses -= bet;
-                await dynamoHandler.updateUserFields(userId, { potatoes: userPotatoes, totalLosses: userTotalLosses });
-                await dynamoHandler.updateStatDatabase('goldenReels', 'totalReceived', goldenReelsStats.totalReceived - bet);
-                goldenReelsStats.totalReceived -= bet;
+                statDeltas.totalReceived -= bet;
             }
 
             if (symbol) {
                 const statKey = SYMBOL_STAT_KEYS[symbol.name];
-                goldenReelsStats[statKey] += 1;
-                await dynamoHandler.updateStatDatabase('goldenReels', statKey, goldenReelsStats[statKey]);
+                statDeltas[statKey] += 1;
                 if (symbol.name === 'Golden Potato') jackpotHits += 1;
             } else {
-                goldenReelsStats.lossCount += 1;
-                await dynamoHandler.updateStatDatabase('goldenReels', 'lossCount', goldenReelsStats.lossCount);
+                statDeltas.lossCount += 1;
             }
 
             netTotal += delta;
             spinsRun += 1;
+            spinResults.push({ spinNumber: i, symbolName, payoutMultiplier, delta, potatoesAfter: simulatedPotatoes });
+        }
 
-            await interaction.editReply({ embeds: [embedFactory.createGoldenReelsSpinEmbed(i, spinsRequested, symbolName, payoutMultiplier, delta, userPotatoes)] });
+        // Apply the WHOLE run's outcome in one write — see the loop's own comment above
+        // for why this replaced a per-spin absolute-value write. All 3 fields are written
+        // together even if a given run never touched one of them (e.g. an all-losses run
+        // leaves totalEarnings unchanged) — simpler and no less correct than conditionally
+        // omitting unchanged fields, since re-writing an unchanged value is a no-op.
+        if (spinsRun > 0) {
+            userPotatoes += netTotal;
+            userTotalEarnings += statDeltas.totalPayout;
+            userTotalLosses += statDeltas.totalReceived; // statDeltas.totalReceived is already negative
+            await dynamoHandler.updateUserFields(userId, { potatoes: userPotatoes, totalEarnings: userTotalEarnings, totalLosses: userTotalLosses });
 
-            if (i < spinsRequested) {
-                await new Promise(resolve => setTimeout(resolve, GoldenReels.SPIN_DELAY_MS));
+            // Same one-write-per-touched-counter batching for the shared goldenReels stats
+            // row — previously one updateStatDatabase call per spin per touched counter,
+            // racing every OTHER player's own concurrent golden-reels run on the same row.
+            // Still skips a counter this run never touched at all, preserving the "absent
+            // means never written, not 0" contract this file's own top comment describes.
+            for (const [key, delta] of Object.entries(statDeltas)) {
+                if (delta === 0) continue;
+                goldenReelsStats[key] += delta;
+                await dynamoHandler.updateStatDatabase('goldenReels', key, goldenReelsStats[key]);
             }
         }
 
-        await interaction.editReply({ embeds: [embedFactory.createGoldenReelsSummaryEmbed(spinsRun, spinsRequested, netTotal, jackpotHits, stoppedEarly, bet)] });
+        // Animate at the same pace as before (GoldenReels.SPIN_DELAY_MS between spins) —
+        // purely cosmetic now, since every number above was already resolved and written
+        // before this loop even starts. "Skip to End" (2026-09-30, direct instruction) lets
+        // an impatient player jump straight to the summary without waiting out the
+        // remaining delays; only shown when there's more than one spin's worth of
+        // animation to actually skip. skipPromise is created once and raced against EVERY
+        // remaining delay — once it resolves (the button was clicked), every subsequent
+        // race resolves instantly too, so the very next loop iteration's own `if
+        // (skipRequested) break;` check ends the animation immediately.
+        let skipResolve;
+        const skipPromise = new Promise(resolve => { skipResolve = resolve; });
+        let skipRequested = false;
+        let collector = null;
+        const skipRow = new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId('golden_reels_skip').setLabel('Skip to End').setStyle(ButtonStyle.Secondary)
+        );
+
+        for (let idx = 0; idx < spinResults.length; idx++) {
+            if (skipRequested) break;
+            const result = spinResults[idx];
+            const isLastSpin = idx === spinResults.length - 1;
+            const canSkip = spinResults.length > 1 && !isLastSpin;
+
+            const reply = await interaction.editReply({
+                embeds: [embedFactory.createGoldenReelsSpinEmbed(result.spinNumber, spinsRequested, result.symbolName, result.payoutMultiplier, result.delta, result.potatoesAfter)],
+                components: canSkip ? [skipRow] : [],
+            });
+
+            // Attached once, off the first spin's own reply message — every later edit in
+            // this loop reuses the same underlying message, so the collector stays valid.
+            if (idx === 0 && canSkip) {
+                collector = reply.createMessageComponentCollector({
+                    filter: i => i.user.id === interaction.user.id && i.customId === 'golden_reels_skip',
+                    time: GoldenReels.SPIN_DELAY_MS * spinResults.length + 30_000,
+                });
+                collector.on('collect', async buttonInteraction => {
+                    skipRequested = true;
+                    skipResolve();
+                    await buttonInteraction.deferUpdate().catch(() => {});
+                });
+            }
+
+            if (!isLastSpin && !skipRequested) {
+                await Promise.race([sleep(GoldenReels.SPIN_DELAY_MS), skipPromise]);
+            }
+        }
+        if (collector) collector.stop();
+
+        await interaction.editReply({ embeds: [embedFactory.createGoldenReelsSummaryEmbed(spinsRun, spinsRequested, netTotal, jackpotHits, stoppedEarly, bet)], components: [] });
     }
 }

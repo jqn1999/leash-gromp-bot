@@ -1,3 +1,28 @@
+// Base per-scenario probability MASS (not cumulative), index-matched to
+// WORK_SCENARIO_INDICES (GOLDEN=0 ... GOLDEN_YAM=9; REGULAR has no entry — it's whatever
+// mass is left over, 1 - sum(this array)). The one canonical copy of these 10 numbers —
+// previously duplicated verbatim between the constructor below and setBaseWorkProbability
+// (the post-event reset copy), now both just spread a fresh copy of this array instead
+// (never the array itself — workProbability gets mutated in place by live event
+// multipliers, e.g. applyEvent's `*= 2`, which must never touch this shared base).
+// Exported (2026-09-30) for a second consumer: embedFactory.js's /profile page 3
+// expected-vs-actual encounter comparison, which needs the true base rate untouched by
+// whatever event/festival/companion odds happen to be live right now.
+const BASE_WORK_PROBABILITY = [
+    .001,
+    .01,
+    .04,
+    .01,
+    .02,
+    .015,
+    .02,
+    .0005, // ANCIENT — halved again 2026-08-29 (was .0015), direct instruction: rarer
+           // than Golden Potato's own .001, so "Ancient" actually reads as the rarest
+           // encounter in the game rather than sitting above Golden's own floor.
+    .01,
+    .001
+];
+
 class EventFactory {
     constructor() {
         if (EventFactory._instance) {
@@ -5,20 +30,7 @@ class EventFactory {
         }
         EventFactory._instance = this;
         this.currentEvent = null;
-        this.workProbability = [
-            .001,
-            .01,
-            .04,
-            .01,
-            .02,
-            .015,
-            .02,
-            .0005, // ANCIENT — halved again 2026-08-29 (was .0015), direct instruction: rarer
-                   // than Golden Potato's own .001, so "Ancient" actually reads as the rarest
-                   // encounter in the game rather than sitting above Golden's own floor.
-            .01,
-            .001
-        ];
+        this.workProbability = [...BASE_WORK_PROBABILITY];
         this.workChances = [
             .001,
             .011,
@@ -130,19 +142,7 @@ class EventFactory {
     }
 
     setBaseWorkProbability() {
-        this.workProbability = [
-            .001,
-            .01,
-            .04,
-            .01,
-            .02,
-            .015,
-            .02,
-            .0005, // ANCIENT — halved again 2026-08-29 (was .0015), direct instruction: rarer
-                   // than Golden Potato's own .001 (see the constructor's own comment)
-            .01,
-            .001
-        ];
+        this.workProbability = [...BASE_WORK_PROBABILITY];
     }
 
     getCurrentEvent() {
@@ -177,6 +177,26 @@ const WORK_SCENARIO_INDICES = {
     MIMIC: 8,
     GOLDEN_YAM: 9,
     REGULAR: -1
+};
+
+// Human-readable labels per /work scenario type — matches the established colloquial terms
+// already used elsewhere (Prospector's own perk description), not each mob constant's own
+// raw `.name` field (poisonPotato.name is "Poisonous Potato," never shown to players as
+// such anywhere else). Moved here from workOdds.js (2026-09-30, added a second consumer —
+// createUserEmbed's new "Work Encounter Counts" profile page — so this became the one
+// canonical copy rather than a second, easy-to-drift map.
+const SCENARIO_LABELS = {
+    [WORK_SCENARIO_INDICES.GOLDEN]: "Golden Potato",
+    [WORK_SCENARIO_INDICES.POISON]: "Poison Potato",
+    [WORK_SCENARIO_INDICES.LARGE]: "Large Potato",
+    [WORK_SCENARIO_INDICES.METAL]: "Metal Potato",
+    [WORK_SCENARIO_INDICES.SWEET]: "Sweet Potato",
+    [WORK_SCENARIO_INDICES.COMPANION]: "Wandering Companion",
+    [WORK_SCENARIO_INDICES.TARO]: "Taro Trader",
+    [WORK_SCENARIO_INDICES.ANCIENT]: "Ancient Potato",
+    [WORK_SCENARIO_INDICES.MIMIC]: "Mimic Potato",
+    [WORK_SCENARIO_INDICES.GOLDEN_YAM]: "Golden Yam",
+    [WORK_SCENARIO_INDICES.REGULAR]: "Regular Work",
 };
 
 // Cross-repo contract for the shared active-event record persisted to the stats table
@@ -229,6 +249,8 @@ function buildActiveEventPayload(eventKey, eventLabel = null) {
 module.exports = {
     EventFactory,
     WORK_SCENARIO_INDICES,
+    SCENARIO_LABELS,
+    BASE_WORK_PROBABILITY,
     EVENT_SCENARIO_MAP,
     buildActiveEventPayload
 }

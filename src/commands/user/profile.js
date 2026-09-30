@@ -4,7 +4,7 @@ const dynamoHandler = require("../../utils/dynamoHandler");
 const { EmbedFactory } = require("../../utils/embedFactory");
 const embedFactory = new EmbedFactory();
 
-const TOTAL_PAGES = 2;
+const TOTAL_PAGES = 3;
 
 module.exports = {
     name: "profile",

@@ -1153,8 +1153,14 @@ const applyGuildTreasuryInterest = async function (timesInADay) {
         // instead of it silently capping to a no-op every tick once bankStored reaches
         // bankCapacity.
         const newBankStored = bankStored + interest;
+        // Treasury interest previously grew bankStored without ever showing up in the
+        // guild's own Total Earnings figure (embedFactory.js's `/guild` display) — that
+        // field was startRaid.js-only, tracking raid winnings alone. Folded in here so the
+        // lifetime figure actually reflects everything that's grown the bank, not just wins.
+        const newTotalEarnings = toNumber(guild.totalEarnings) + interest;
 
         await updateGuildDatabase(guild.guildId, 'bankStored', newBankStored);
+        await updateGuildDatabase(guild.guildId, 'totalEarnings', newTotalEarnings);
     }));
 }
 

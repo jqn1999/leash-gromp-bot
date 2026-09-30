@@ -2250,3 +2250,143 @@ describe('createWorkOddsEmbed', () => {
         expect(embed.data.description).not.toContain('boosted');
     });
 });
+
+// New third profile page (2026-09-30, direct instruction: "Add a new third page to the
+// profile embed that includes an individual players work encounter counts. For metal
+// encounters include fail and success"). Reuses eventFactory.js's own SCENARIO_LABELS —
+// the same canonical label map /work-odds already uses — so a scenario's label can't read
+// differently on the two commands.
+describe('createUserEmbed page 3 — Work Encounter Counts', () => {
+    function baseUserDetails(overrides = {}) {
+        return {
+            rebirthCount: 0,
+            companions: { ownedCount: 0 },
+            guildId: 0,
+            isMercenary: false,
+            potatoes: 0,
+            bankStored: 0,
+            starches: 0,
+            workMultiplierAmount: 1,
+            passiveAmount: 0,
+            bankCapacity: 50000,
+            maxStarches: 250,
+            workCount: 0,
+            loginStreak: 0,
+            records: {},
+            totalEarnings: 0,
+            totalLosses: 0,
+            sweetPotatoBuffs: { workMultiplierAmount: 0, passiveAmount: 0, bankCapacity: 0 },
+            regrades: {
+                workMulti: { regradeAmount: 0, failStack: 0 },
+                passiveAmount: { regradeAmount: 0, failStack: 0 },
+                bankCapacity: { regradeAmount: 0, failStack: 0 }
+            },
+            ...overrides
+        };
+    }
+
+    test('createUserEmbed(pageIndex 2) shows Page 3 / 3 and each encounter type\'s own count, with Metal split into Success/Failure', async () => {
+        const workScenarioCounts = {
+            regular: 40, large: 5, sweet: 6, taro: 7, poison: 8,
+            metalSuccess: 2, metalFailure: 9, golden: 1, companion: 10,
+            ancient: 3, mimic: 4, mimicKilled: 1, goldenYam: 1,
+        };
+        // workCount left at baseUserDetails' default (0) — every BASE_WORK_PROBABILITY-
+        // scaled expected count is then 0 too, so every nonzero actual count here reads as
+        // "above expected" (🔺). The indicator's own above/below/equal logic is exercised
+        // precisely in the dedicated test below instead; this test's job is just the label
+        // text/order/Metal-split content, unaffected by the indicator feature.
+        const embed = await embedFactory.createUserEmbed('user-1', 'Player', 'hash', baseUserDetails({ workScenarioCounts }), 2);
+
+        expect(embed.data.description).toContain('Page 3 / 3');
+        const field = embed.data.fields.find(f => f.name === 'Work Encounter Counts:');
+        expect(field.value).toBe(
+            'Golden Potato: 1 🔺\n'
+            + 'Golden Yam: 1 🔺\n'
+            + 'Poison Potato: 8 🔺\n'
+            + 'Large Potato: 5 🔺\n'
+            + 'Metal Potato — Success: 2 🔺\n'
+            + 'Metal Potato — Failure: 9 🔺\n'
+            + 'Sweet Potato: 6 🔺\n'
+            + 'Wandering Companion: 10 🔺\n'
+            + 'Taro Trader: 7 🔺\n'
+            + 'Ancient Potato: 3 🔺\n'
+            + 'Mimic Potato: 4 🔺\n'
+            + 'Regular Work: 40 🔺'
+        );
+    });
+
+    // Above/below-expected indicator (2026-09-30, direct instruction: "color the numbers
+    // or some other indicator to show if they are above or below the expected number... for
+    // the base encounter chances"). workCount: 1000 against BASE_WORK_PROBABILITY gives
+    // clean expected counts (golden/goldenYam expected 1, poison expected 10, large
+    // expected 40, metal overall expected 10 -> success 1/failure 9 via
+    // Work.METAL_SUCCESS_CHANCE, sweet expected 20, companion expected 15, taro expected
+    // 20, ancient expected 0.5 -> rounds to 1, mimic expected 10, regular expected 872.5 ->
+    // rounds to 873) — each scenario's actual count below is deliberately set above, at, or
+    // below that rounded expected value to exercise all three indicator states.
+    test('shows 🔺 for an above-expected count, 🔻 for below-expected, and no indicator when a count matches its expected value', async () => {
+        const workScenarioCounts = {
+            golden: 2,        // expected 1 -> above
+            goldenYam: 1,     // expected 1 -> equal
+            poison: 5,        // expected 10 -> below
+            large: 40,        // expected 40 -> equal
+            metalSuccess: 3,  // expected 1 -> above
+            metalFailure: 2,  // expected 9 -> below
+            sweet: 20,        // expected 20 -> equal
+            companion: 20,    // expected 15 -> above
+            taro: 10,         // expected 20 -> below
+            ancient: 1,       // expected 0.5 (rounds to 1) -> equal
+            mimic: 10,        // expected 10 -> equal
+            regular: 900,     // expected 872.5 (rounds to 873) -> above
+        };
+        const embed = await embedFactory.createUserEmbed('user-1', 'Player', 'hash', baseUserDetails({ workCount: 1000, workScenarioCounts }), 2);
+
+        const field = embed.data.fields.find(f => f.name === 'Work Encounter Counts:');
+        expect(field.value).toBe(
+            'Golden Potato: 2 🔺\n'
+            + 'Golden Yam: 1\n'
+            + 'Poison Potato: 5 🔻\n'
+            + 'Large Potato: 40\n'
+            + 'Metal Potato — Success: 3 🔺\n'
+            + 'Metal Potato — Failure: 2 🔻\n'
+            + 'Sweet Potato: 20\n'
+            + 'Wandering Companion: 20 🔺\n'
+            + 'Taro Trader: 10 🔻\n'
+            + 'Ancient Potato: 1\n'
+            + 'Mimic Potato: 10\n'
+            + 'Regular Work: 900 🔺'
+        );
+    });
+
+    // findUser's self-healing backfills workScenarioCounts on any pre-existing account, but
+    // this page shouldn't throw/show "undefined" for a caller that skips findUser (mirrors
+    // this same describe's "records" `|| {}` guard right above it in createUserEmbed itself).
+    test('a missing workScenarioCounts field renders every count as 0, not undefined/NaN', async () => {
+        const embed = await embedFactory.createUserEmbed('user-1', 'Player', 'hash', baseUserDetails(), 2);
+
+        const field = embed.data.fields.find(f => f.name === 'Work Encounter Counts:');
+        expect(field.value).toBe(
+            'Golden Potato: 0\n'
+            + 'Golden Yam: 0\n'
+            + 'Poison Potato: 0\n'
+            + 'Large Potato: 0\n'
+            + 'Metal Potato — Success: 0\n'
+            + 'Metal Potato — Failure: 0\n'
+            + 'Sweet Potato: 0\n'
+            + 'Wandering Companion: 0\n'
+            + 'Taro Trader: 0\n'
+            + 'Ancient Potato: 0\n'
+            + 'Mimic Potato: 0\n'
+            + 'Regular Work: 0'
+        );
+    });
+
+    test('page 2 (Activity & Records) is unaffected by the new third page — pageIndex 1 still resolves to it', async () => {
+        const embed = await embedFactory.createUserEmbed('user-1', 'Player', 'hash', baseUserDetails(), 1);
+
+        expect(embed.data.description).toContain('Page 2 / 3');
+        expect(embed.data.fields.some(f => f.name === 'Work Count:')).toBe(true);
+        expect(embed.data.fields.some(f => f.name === 'Work Encounter Counts:')).toBe(false);
+    });
+});

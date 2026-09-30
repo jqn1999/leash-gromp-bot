@@ -657,6 +657,68 @@ Every handler increments `workScenarioCounts.<type>`, adds 1 to `workCount`,
 and resets the work timer — all folded into one combined `dynamoHandler.updateUserFields` write per
 handler (see [architecture/data-model.md](../architecture/data-model.md)).
 
+### `/profile` page 3 — Work Encounter Counts
+
+Added 2026-09-30, direct instruction: "Add a new third page to the profile embed that includes an
+individual players work encounter counts. For metal encounters include fail and success." Before
+this, `workScenarioCounts` (every field listed above — `regular`, `large`, `sweet`, `taro`,
+`poison`, `metalSuccess`, `metalFailure`, `golden`, `companion`, `ancient`, `mimic`, `mimicKilled`,
+`goldenYam`) was written on every `/work` call but never surfaced anywhere on `/profile` itself —
+the only player-facing place it fed into was Quests/Achievements progress checks.
+
+`createUserEmbed` (`embedFactory.js`) grew from a 2-page to a 3-page embed (`totalPages`, `profile.js`'s
+own `TOTAL_PAGES`, both bumped 2 → 3); `buildPaginationRow`/`runPaginatedReply`
+([architecture/...](../../src/utils/helperCommands.js)) are already fully generic over page count, so
+neither needed a change. Page 3's single "Work Encounter Counts:" field lists every
+`workScenarioCounts` entry except `mimicKilled` (a bonus lifetime-kill sub-stat of `mimic`, not a
+distinct encounter type — left off to match the literal ask), in the same order `work.js`'s own
+scenario array rolls against (golden → regular, not alphabetical). Metal Potato is the one scenario
+shown as two lines — "Metal Potato — Success" (`metalSuccess`) and "Metal Potato — Failure"
+(`metalFailure`) — per the direct instruction; every other scenario gets a single lifetime count.
+
+**Labels reuse `eventFactory.js`'s own `SCENARIO_LABELS`** (moved there from `workOdds.js`, which
+used to be its only consumer/owner) rather than each mob constant's own `.name` field
+(`poisonPotato.name` is "Poisonous Potato," never shown to players as such anywhere else — see
+`/work-odds`'s own original comment on this, now inherited by `eventFactory.js`). This was a
+straight move-and-re-export, not a rewrite — `workOdds.js` now imports `SCENARIO_LABELS` from
+`eventFactory.js` instead of declaring its own copy, so a scenario's label can never read
+differently between `/work-odds` and `/profile`'s new page.
+
+**Above/below-expected indicator (2026-09-30, same-day follow-up, direct instruction: "color the
+numbers or some other indicator to show if they are above or below the expected number... for the
+base encounter chances")** — Discord embed field values can't carry real text color (only the
+embed's own single sidebar color); an ANSI color-code block was considered and rejected (desktop/
+web-only, breaks on mobile, forces monospacing). Each count instead gets a 🔺 (above expected) or
+🔻 (below expected) suffix, with no indicator when a count sits exactly at its expected value
+(after rounding — see below). A small unnamed (`​`) field right under the counts spells out
+the legend once rather than repeating it 12 times.
+
+**Expected count = `userDetails.workCount * BASE_WORK_PROBABILITY[scenario]`** — deliberately the
+BASE rate only, per the direct instruction, never whatever event/festival/Prospector-adjusted odds
+happened to be live at any point across a player's whole `/work` history (there's no single "live"
+rate that would even mean anything summed over a lifetime counter). `BASE_WORK_PROBABILITY`
+(`eventFactory.js`) is a new export — the same 10 per-scenario probability-mass numbers that used
+to be duplicated verbatim between `EventFactory`'s own constructor and its `setBaseWorkProbability`
+reset method; both now just spread a copy of this one array instead (`[...BASE_WORK_PROBABILITY]`,
+never the array itself — `workProbability` gets mutated in place by live event multipliers, which
+must never touch the shared base). REGULAR has no entry of its own in that array — its expected
+count is `workCount * (1 - sum(BASE_WORK_PROBABILITY))`, the same "whatever's left over" shape
+`work.js`'s own scenario roll gives it (`chance: 1`, always the final/fallback bracket). Metal's
+expected count is split the same way the real roll is: an overall expected Metal ENCOUNTER count
+off `BASE_WORK_PROBABILITY[METAL]`, then `Work.METAL_SUCCESS_CHANCE` (`constants.js`, `.1` — moved
+here from a local const inside `work.js`'s own METAL scenario closure, needing a second consumer)
+divides that between Success and Failure.
+
+**Rounded, not raw-float, comparison** — `expectedCount` is rounded to the nearest whole encounter
+before comparing against the actual integer count. A brand-new account's expected count for a rare
+scenario can be a tiny fraction (e.g. 0.03 expected Golden Potatoes at `workCount` 30); comparing
+against the raw float would make any single real hit "above expected" in a trivial, not
+statistically meaningful, sense — rounding to 0 first means the same hit still correctly reads as
+above expected, just not for a misleading reason. `formatEncounterCountValue` (`embedFactory.js`,
+module-level, not exported — same "internal helper, tested through `createUserEmbed`'s own output"
+convention this file already uses for its other private helpers) is the one function both branches
+of the comparison funnel through.
+
 ## `/work-odds` — live personal odds preview
 
 2026-09-28, direct instruction: "add a command that shows a user ephemerally via embed their

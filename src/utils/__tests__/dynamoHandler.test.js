@@ -742,14 +742,21 @@ describe('applyGuildTreasuryInterest', () => {
 
         await dynamoHandler.applyGuildTreasuryInterest(288);
 
-        const updateByGuildId = Object.fromEntries(docClient.update.mock.calls.map(([params]) => [params.Key.guildId, Object.values(params.ExpressionAttributeValues)[0]]));
+        // Filtered to the bankStored write specifically (2026-09-30's totalEarnings write,
+        // added below, lands a DIFFERENT value per guild now — a plain last-write-wins
+        // dedup by guildId would pick whichever of the two calls happened to run last).
+        const bankStoredByGuildId = Object.fromEntries(
+            docClient.update.mock.calls
+                .filter(([params]) => params.ExpressionAttributeNames['#attrName'] === 'bankStored')
+                .map(([params]) => [params.Key.guildId, Object.values(params.ExpressionAttributeValues)[0]])
+        );
         // g1 (owns companion, no raidCount -> level 1): dailyRate = .001 * 2 = .002;
         // interestRaw = 1,000,000 * .002 / 288 ≈ 6.9444; *(1 + CinderrootTreasuryBonusPercent[0]=.25)
         // = 6.9444 * 1.25 ≈ 8.6806 -> rounds to 9
-        expect(updateByGuildId.g1).toBe(1000009);
+        expect(bankStoredByGuildId.g1).toBe(1000009);
         // g2 (no companion, no raidCount -> level 1): dailyRate = .001 * 2 = .002;
         // per-tick = 1,000,000 * .002 / 288 ≈ 6.94 -> 7 (unaffected by the companion rework)
-        expect(updateByGuildId.g2).toBe(1000007);
+        expect(bankStoredByGuildId.g2).toBe(1000007);
     });
 
     // Proves the multiplier is genuinely level-scaled (not the old flat additive bump in
@@ -783,6 +790,40 @@ describe('applyGuildTreasuryInterest', () => {
 
         const newValue = Object.values(docClient.update.mock.calls[0][0].ExpressionAttributeValues)[0];
         expect(newValue).toBe(1000007);
+    });
+
+    // Added 2026-09-30, direct instruction ("make it count") — interest used to grow
+    // bankStored without ever touching the guild's own Total Earnings figure
+    // (embedFactory.js's `/guild` display), which was startRaid.js-only, raid-wins-only.
+    // Now the same interest amount is credited to both fields on the same tick.
+    test('also credits the same interest amount into totalEarnings', async () => {
+        docClient.scan.mockReturnValue(resolved({
+            Items: [{ guildId: 'g1', bankStored: 1000000, bankCapacity: 5000000, totalEarnings: 500000, memberList: [{ id: 'a' }, { id: 'b' }] }],
+        }));
+        docClient.update.mockReturnValue(resolved({}));
+
+        await dynamoHandler.applyGuildTreasuryInterest(288);
+
+        // no raidCount -> level 1; dailyRate = .001 * 2 = .002; interest = 1,000,000 * .002 / 288 ≈ 6.94 -> 7
+        const bankStoredCall = docClient.update.mock.calls.find(([params]) => params.ExpressionAttributeNames['#attrName'] === 'bankStored');
+        const totalEarningsCall = docClient.update.mock.calls.find(([params]) => params.ExpressionAttributeNames['#attrName'] === 'totalEarnings');
+        expect(Object.values(bankStoredCall[0].ExpressionAttributeValues)[0]).toBe(1000007);
+        expect(Object.values(totalEarningsCall[0].ExpressionAttributeValues)[0]).toBe(500007);
+    });
+
+    // getGuilds() is a raw scanAll (unhealed) — a guild record from before totalEarnings
+    // existed has the field missing entirely, not zero. Same toNumber defensive coercion
+    // bankStored/memberCount/raidCount already get at the top of this function.
+    test('treats a missing totalEarnings field as 0, same as any other unhealed numeric field', async () => {
+        docClient.scan.mockReturnValue(resolved({
+            Items: [{ guildId: 'g1', bankStored: 1000000, bankCapacity: 5000000, memberList: [{ id: 'a' }, { id: 'b' }] }],
+        }));
+        docClient.update.mockReturnValue(resolved({}));
+
+        await dynamoHandler.applyGuildTreasuryInterest(288);
+
+        const totalEarningsCall = docClient.update.mock.calls.find(([params]) => params.ExpressionAttributeNames['#attrName'] === 'totalEarnings');
+        expect(Object.values(totalEarningsCall[0].ExpressionAttributeValues)[0]).toBe(7);
     });
 });
 
