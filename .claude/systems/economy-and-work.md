@@ -688,10 +688,16 @@ differently between `/work-odds` and `/profile`'s new page.
 numbers or some other indicator to show if they are above or below the expected number... for the
 base encounter chances")** — Discord embed field values can't carry real text color (only the
 embed's own single sidebar color); an ANSI color-code block was considered and rejected (desktop/
-web-only, breaks on mobile, forces monospacing). Each count instead gets a 🔺 (above expected) or
-🔻 (below expected) suffix, with no indicator when a count sits exactly at its expected value
+web-only, breaks on mobile, forces monospacing). Each count instead gets a 🔹 (above expected) or
+🔸 (below expected) suffix, with no indicator when a count sits exactly at its expected value
 (after rounding — see below). A small unnamed (`​`) field right under the counts spells out
 the legend once rather than repeating it 12 times.
+
+**Emoji swapped same day, direct instruction: ":small_orange_diamond: for lower than expected and
+:small_blue_diamond: for higher than expected"** — originally shipped as 🔺 (above)/🔻 (below);
+`formatEncounterCountValue` (`embedFactory.js`) now returns 🔹/🔸 instead, same two-state logic,
+written as the literal unicode characters (matching every other emoji already in that file) rather
+than the ":shortcode:" text.
 
 **Expected count = `userDetails.workCount * BASE_WORK_PROBABILITY[scenario]`** — deliberately the
 BASE rate only, per the direct instruction, never whatever event/festival/Prospector-adjusted odds

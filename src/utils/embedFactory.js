@@ -533,16 +533,21 @@ function buildCinderrootStatusValue(guild, level) {
 // direct instruction: "color the numbers or some other indicator to show if they are above
 // or below the expected number... for the base encounter chances" — emoji chosen over
 // Discord's ANSI-code-block trick, which only renders on desktop/web and breaks mobile).
+// Diamonds (same-day follow-up, direct instruction: ":small_orange_diamond: for lower than
+// expected and :small_blue_diamond: for higher than expected") replaced the original up/down
+// triangles — same two-state logic, just different emoji. Written as the literal unicode
+// characters (🔸/🔹), not the ":shortcode:" text, matching every other emoji already used in
+// this file (✅❌🔺🎉 etc.) rather than relying on Discord's client-side shortcode rendering.
 // expectedCount is compared rounded to the nearest whole encounter, not as a raw float —
 // a brand-new account's expected count for a rare scenario can be a tiny fraction (e.g.
 // 0.03 expected Golden Potatoes at workCount 30), and rounding to 0 there means a single
 // real hit correctly reads as "above expected" instead of the float difference alone
 // making every nonzero count read as trivially "above." Equal-after-rounding shows neither
-// arrow — there's nothing to signal when a count is sitting right where it should be.
+// diamond — there's nothing to signal when a count is sitting right where it should be.
 function formatEncounterCountValue(actualCount, expectedCount) {
     const roundedExpected = Math.round(expectedCount);
-    if (actualCount > roundedExpected) return `${actualCount.toLocaleString()} 🔺`;
-    if (actualCount < roundedExpected) return `${actualCount.toLocaleString()} 🔻`;
+    if (actualCount > roundedExpected) return `${actualCount.toLocaleString()} 🔹`;
+    if (actualCount < roundedExpected) return `${actualCount.toLocaleString()} 🔸`;
     return actualCount.toLocaleString();
 }
 
@@ -832,7 +837,7 @@ class EmbedFactory {
             // /work-odds and this page). Metal Potato is the one scenario with two
             // outcomes (success/failure), per direct instruction — every other scenario
             // gets a single lifetime count here. Each count is run through
-            // formatEncounterCountValue for the 🔺/🔻 above/below-expected indicator.
+            // formatEncounterCountValue for the 🔹/🔸 above/below-expected indicator.
             fields.push({
                 name: "Work Encounter Counts:",
                 value: `${SCENARIO_LABELS[WORK_SCENARIO_INDICES.GOLDEN]}: ${formatEncounterCountValue(counts.golden || 0, expected.golden)}\n`
@@ -851,7 +856,7 @@ class EmbedFactory {
             });
             fields.push({
                 name: "​",
-                value: "🔺 above expected · 🔻 below expected, for your work count — based on base encounter chances only, not live events/boosts",
+                value: "🔹 above expected · 🔸 below expected, for your work count — based on base encounter chances only, not live events/boosts",
                 inline: false,
             });
         }

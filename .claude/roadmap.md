@@ -20076,3 +20076,22 @@ fix on its own.)
 
 **Cross-repo note.** Not ported to `financial-project` — Tower (and this admin recovery command
 specifically) has no web equivalent at all, same reasoning as every other Tower-only entry today.
+
+## Work Encounter Counts indicator swapped from up/down triangles to diamonds
+
+**Asked**, same-day follow-up: "on profile third page can i use :small_orange_diamond: for lower
+than expected and :small_blue_diamond: for higher than expected."
+
+**Changed** (`src/utils/embedFactory.js`): `formatEncounterCountValue` now appends 🔹 (above
+expected) / 🔸 (below expected) instead of 🔺/🔻 — same rounded-comparison logic, unchanged. Written
+as the literal unicode characters, not the `:shortcode:` text, matching every other emoji already
+in this file (✅❌🎉 etc.) rather than relying on Discord's client-side shortcode rendering. The
+legend field right under the counts updated to match.
+
+**Tests.** Both `embedFactory.test.js` tests asserting the indicator's exact field-value string
+(the full-content test and the dedicated above/below/equal test) updated their expected emoji;
+no logic changed, so no new tests were needed. Full suite: **122 suites (1 fully skipped) / 2289
+tests (18 skipped, 2271 passing)** — net 0 new tests, 0 broken.
+
+**Cross-repo note.** No port — same reasoning as the page-3 feature itself (not yet built on
+`financial-project`'s `/gromp` page).
