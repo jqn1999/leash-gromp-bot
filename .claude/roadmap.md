@@ -20024,3 +20024,55 @@ broken.
 **Cross-repo note.** No port — Golden Reels has no equivalent anywhere in `financial-project`
 (confirmed: no `goldenReels`/`GoldenReels` reference in any Lambda or the `/gromp` page), so this
 is a Discord-only reliability fix with nothing to port.
+
+## Tower's leaderboard-based resume now restores the run's temporary work modifier too
+
+**Asked**, same-day follow-up to `resume-from-leaderboard`: "can you have tower also store the
+temporary work multi the user picks up along the run and save that to the leaderboard/user tower
+saving entry? i want to be able to reset users and have the work multi/passive/bank/potatoes they
+gained get removed which is working but i also want to restore their temporary work multi they
+gained during the run so they can start back exactly how they were during the tower when it
+crashes."
+
+**Investigated first, since "start back exactly how they were" sounded like it might already be
+true.** Tower actually has TWO different "work multiplier" concepts, easy to conflate: `PAYOUT.
+WORK_MULTIPLIER` is the PERMANENT reward banked to the player's real account only once the run
+concludes; `MODIFIER.WORK_MULTIPLIER` is a completely separate, TEMPORARY, this-run-only bonus
+(labeled "Temp Work Modifier (this run only)" in the run's own embeds) that only ever affects floor
+success chance during the climb and is never itself banked. True-resume's own live
+`towerRunCheckpoint` already restores `MODIFIER.WORK_MULTIPLIER` perfectly for free — `checkpoint()`
+spreads the whole `this.run` object wholesale on every floor, no special-casing needed. The actual
+gap was narrower and specific to `/admin reset-tower resume-from-leaderboard`'s OWN reconstruction
+path (`buildResumeCheckpointFromLeaderboardEntry`): the `tower_leaderboard` entry itself never
+recorded `MODIFIER.WORK_MULTIPLIER` at all (only the four PERMANENT PAYOUT figures), so that specific
+recovery path silently defaulted the temp modifier to 0 — a player resumed this way came back
+measurably weaker than they actually were mid-climb, the opposite of "exactly how they were."
+
+**Changed**:
+- `src/commands/tower/enter-tower.js` — the leaderboard entry built on every survived run now also
+  carries `tempWorkMultiplier: rewards[tC.MODIFIER.WORK_MULTIPLIER] || 0`, alongside the existing
+  four PAYOUT figures.
+- `src/commands/moderation/admin.js` (`buildResumeCheckpointFromLeaderboardEntry`) — reads `entry.
+  tempWorkMultiplier || 0` for the reconstructed checkpoint's `[MODIFIER.WORK_MULTIPLIER]` instead of
+  a hardcoded `0`. The admin's own reply wording updated to say the temp work modifier is now
+  correctly reconstructed, alongside Elite difficulty.
+
+**Backward compatible by construction, not by special-casing**: a `tower_leaderboard` entry recorded
+before this change simply has no `tempWorkMultiplier` field at all — `|| 0` degrades to exactly the
+old (safe, if imperfect) default rather than reading `undefined` or throwing, so no migration or
+one-off backfill was needed for entries already sitting in a live leaderboard batch.
+
+**Tests.** `enter-tower.test.js` gained a new test confirming `tempWorkMultiplier` is sourced from
+`run[MODIFIER.WORK_MULTIPLIER]` (index 4 of `startRun()`'s own run array) and written onto the
+leaderboard entry. `admin.test.js`'s existing `resume-from-leaderboard` reconstruction test now
+includes a nonzero `tempWorkMultiplier` in its mocked entry and asserts it lands correctly in the
+rebuilt checkpoint's `run`; a new dedicated test confirms a pre-change entry with no such field
+defaults the reconstructed modifier to 0, not `undefined`. Full suite: **122 suites (1 fully
+skipped) / 2289 tests (18 skipped, 2271 passing)** — net +2 new tests, 0 broken. (One of the two new
+`enter-tower.test.js` tests landed inside that file's own pre-existing `describe.skip('normal
+gameplay...')` block — the same "skipped while `tower_access` is disabled/unset by default" gate
+every other test in that block already sits behind, not something this change introduced or should
+fix on its own.)
+
+**Cross-repo note.** Not ported to `financial-project` — Tower (and this admin recovery command
+specifically) has no web equivalent at all, same reasoning as every other Tower-only entry today.
