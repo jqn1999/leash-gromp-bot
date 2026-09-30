@@ -24,6 +24,7 @@ const { addChatChannelIndexEntry, removeChatChannelIndexEntry } = require('../..
 const festivalFactory = require('../../../utils/festivalFactory');
 const bigEventsChannel = require('../../../utils/bigEventsChannel.js');
 const { resetTowerCallback, setActivityChannelCallback, setMercChatChannelCallback, startFestivalCallback, endFestivalCallback, revokeImmuneToVenomCallback, grantTitleCallback, maintenanceModeCallback, towerAccessCallback, towerLeaderboardPayoutCallback } = require('../admin');
+const tC = require('../../../utils/towerConstants');
 
 beforeEach(() => {
     jest.clearAllMocks();
@@ -35,14 +36,18 @@ beforeEach(() => {
 // partway through — see admin.js's runResetTower comment and enter-tower.js).
 // ---------------------------------------------------------------------------------------
 describe('/admin reset-tower', () => {
-    function fakeInteraction(playerId, fullWipe = false) {
+    function fakeInteraction(playerId, fullWipe = false, resumeFromLeaderboard = false) {
         return {
             deferReply: jest.fn().mockResolvedValue(),
             editReply: jest.fn().mockResolvedValue(),
             user: { id: 'admin-1', username: 'Admin', displayName: 'Admin' },
             options: {
                 get: (name) => (name === 'player' && playerId !== undefined ? { value: playerId } : undefined),
-                getBoolean: (name) => (name === 'full-wipe' ? fullWipe : null),
+                getBoolean: (name) => {
+                    if (name === 'full-wipe') return fullWipe;
+                    if (name === 'resume-from-leaderboard') return resumeFromLeaderboard;
+                    return null;
+                },
             },
             guild: {
                 members: {
@@ -209,6 +214,121 @@ describe('/admin reset-tower', () => {
 
             expect(dynamoHandler.removeTowerLeaderboardEntry).not.toHaveBeenCalled();
             expect(dynamoHandler.updateUserFields).not.toHaveBeenCalled();
+        });
+    });
+
+    // resume-from-leaderboard (2026-09-30, direct instruction: "update admin reset tower so
+    // that there is also the option of getting a user's run from leaderboard if they run into
+    // this stale click leave scenario so that I can reset them and have them continue from the
+    // floor that was recorded in the leaderboard. Stats and rewards should be removed like
+    // normal so that they get the right numbers at the end of the run") — targets the
+    // stale-click/timeout-as-leave bug fixed earlier the same day: a run concluded and
+    // leaderboarded even though the player never actually chose to leave.
+    describe('resume-from-leaderboard option', () => {
+        test('reports nothing to revert or resume from when the player has no leaderboard entry today', async () => {
+            const interaction = fakeInteraction('target-1', false, true);
+            interaction.guild.members.fetch.mockResolvedValue(memberFixture());
+            dynamoHandler.findUser.mockResolvedValue({
+                userId: 'target-1', username: 'targetplayer', canEnterTower: false,
+                sweetPotatoBuffs: { workMultiplierAmount: 0, passiveAmount: 0, bankCapacity: 0 },
+            });
+            dynamoHandler.removeTowerLeaderboardEntry.mockResolvedValue(null);
+
+            await resetTowerCallback({}, interaction);
+
+            expect(dynamoHandler.removeTowerLeaderboardEntry).toHaveBeenCalledWith('target-1');
+            expect(dynamoHandler.updateUserFields).not.toHaveBeenCalled();
+            expect(interaction.editReply).toHaveBeenCalledWith(expect.stringMatching(/nothing to revert or resume from/i));
+            // No checkpoint to seed — the always-write still lands, just with null (same as the
+            // plain "no pending checkpoint" case).
+            expect(dynamoHandler.updateUserDatabase).toHaveBeenCalledWith('target-1', 'towerRunCheckpoint', null);
+        });
+
+        test('reverts the stats like full-wipe AND seeds a resumable checkpoint reconstructed from the entry', async () => {
+            const interaction = fakeInteraction('target-1', false, true);
+            interaction.guild.members.fetch.mockResolvedValue(memberFixture());
+            dynamoHandler.findUser.mockResolvedValue({
+                userId: 'target-1', username: 'targetplayer', canEnterTower: false,
+                sweetPotatoBuffs: { workMultiplierAmount: 5, passiveAmount: 100000, bankCapacity: 200000 },
+            });
+            dynamoHandler.removeTowerLeaderboardEntry.mockResolvedValue({
+                userId: 'target-1', username: 'targetplayer', floor: 47, elitesKilled: 3,
+                potatoes: 50000, workMultiplier: 0.2, passiveIncome: 20000, bankCapacity: 30000,
+            });
+
+            await resetTowerCallback({}, interaction);
+
+            // Same reversal full-wipe alone already does.
+            expect(dynamoHandler.updateUserFields).toHaveBeenCalledWith('target-1',
+                { sweetPotatoBuffs: { workMultiplierAmount: 4.8, passiveAmount: 80000, bankCapacity: 170000 } },
+                { potatoes: -50000, totalEarnings: -50000, workMultiplierAmount: -0.2, passiveAmount: -20000, bankCapacity: -30000 }
+            );
+
+            // Checkpoint reconstructed from the entry: floor 47 -> 4 forced Elites already
+            // fought (Math.floor(47/10)) -> difficulty = INITIAL * RATIO^4.
+            const expectedDifficulty = tC.TOWER_ELITE_DIFFICULTY_INITIAL * Math.pow(tC.TOWER_ELITE_DIFFICULTY_RATIO, 4);
+            expect(dynamoHandler.updateUserDatabase).toHaveBeenCalledWith('target-1', 'towerRunCheckpoint', {
+                floor: 47,
+                run: {
+                    [tC.PAYOUT.POTATOES]: 50000,
+                    [tC.PAYOUT.WORK_MULTIPLIER]: 0.2,
+                    [tC.PAYOUT.PASSIVE_INCOME]: 20000,
+                    [tC.PAYOUT.BANK_CAPACITY]: 30000,
+                    [tC.MODIFIER.WORK_MULTIPLIER]: 0,
+                    [tC.PAYOUT.ELITE_KILL]: [],
+                },
+                elitesSurvivedCount: 3,
+                towerCompanionHits: 0,
+                wardUsed: true,
+                policy: tC.POLICY.SAFE,
+                usedRewards: [],
+                difficulty: expectedDifficulty,
+            });
+
+            const reply = interaction.editReply.mock.calls[interaction.editReply.mock.calls.length - 1][0];
+            expect(reply).toMatch(/floor 47/);
+            expect(reply).toMatch(/CONTINUE from floor 48/);
+            expect(reply).toMatch(/re-credited in full/i);
+            expect(reply).toMatch(/could not be recovered/i);
+        });
+
+        test('works without full-wipe also being passed — resume-from-leaderboard triggers the reversal on its own', async () => {
+            const interaction = fakeInteraction('target-1', false, true);
+            interaction.guild.members.fetch.mockResolvedValue(memberFixture());
+            dynamoHandler.findUser.mockResolvedValue({
+                userId: 'target-1', username: 'targetplayer', canEnterTower: false,
+                sweetPotatoBuffs: { workMultiplierAmount: 0, passiveAmount: 0, bankCapacity: 0 },
+            });
+            dynamoHandler.removeTowerLeaderboardEntry.mockResolvedValue({
+                userId: 'target-1', username: 'targetplayer', floor: 5, elitesKilled: 0,
+                potatoes: 1000, workMultiplier: 0, passiveIncome: 0, bankCapacity: 0,
+            });
+
+            await resetTowerCallback({}, interaction);
+
+            expect(dynamoHandler.updateUserFields).toHaveBeenCalled();
+            expect(dynamoHandler.updateUserDatabase).toHaveBeenCalledWith('target-1', 'towerRunCheckpoint', expect.objectContaining({ floor: 5 }));
+        });
+
+        test('the seeded checkpoint replaces (not adds to) an existing pending checkpoint, and the reply describes the new one, not a discard', async () => {
+            const interaction = fakeInteraction('target-1', false, true);
+            interaction.guild.members.fetch.mockResolvedValue(memberFixture());
+            dynamoHandler.findUser.mockResolvedValue({
+                userId: 'target-1', username: 'targetplayer', canEnterTower: true,
+                sweetPotatoBuffs: { workMultiplierAmount: 0, passiveAmount: 0, bankCapacity: 0 },
+                towerRunCheckpoint: { floor: 12, run: {} },
+            });
+            dynamoHandler.removeTowerLeaderboardEntry.mockResolvedValue({
+                userId: 'target-1', username: 'targetplayer', floor: 30, elitesKilled: 2,
+                potatoes: 2000, workMultiplier: 0, passiveIncome: 0, bankCapacity: 0,
+            });
+
+            await resetTowerCallback({}, interaction);
+
+            expect(dynamoHandler.updateUserDatabase).toHaveBeenCalledWith('target-1', 'towerRunCheckpoint', expect.objectContaining({ floor: 30 }));
+            const lastReply = interaction.editReply.mock.calls[interaction.editReply.mock.calls.length - 1][0];
+            expect(lastReply).toMatch(/floor 30/);
+            expect(lastReply).not.toMatch(/discards it/i);
         });
     });
 });

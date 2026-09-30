@@ -19693,3 +19693,45 @@ skipped, 2252 passing)** — net -1 overall (3 removed/replaced, 2 added), 0 bro
 
 **Cross-repo note.** Not ported to `financial-project` — same reasoning as the timeout entry
 above.
+
+## Tower: `/admin reset-tower` can now resume a run the stale-click bug already miscredited
+
+**Asked**: "update admin reset tower so that there is also the option of getting a user's run
+from leaderboard if they run into this stale click leave scenario so that I can reset them and
+have them continue from the floor that was recorded in the leaderboard. Stats and rewards should
+be removed like normal so that they get the right numbers at the end of the run." Covers runs the
+stale-click/timeout-as-leave bug already miscredited BEFORE the two same-day fixes above shipped —
+those close the bug going forward, but don't undo damage already done.
+
+**Changed** (`src/commands/moderation/admin.js`): new `resume-from-leaderboard` boolean option on
+the existing `reset-tower` subcommand. Shares `full-wipe`'s own leaderboard-entry lookup and stat
+reversal (one shared code path — `resume-from-leaderboard` doesn't need `full-wipe` passed
+alongside it, and never double-fetches the entry if both are set). New behavior: if an entry was
+found and reverted, `buildResumeCheckpointFromLeaderboardEntry` reconstructs a `towerRunCheckpoint`
+from that same entry and writes it, so the player's next `/enter-tower` resumes from that floor via
+the existing true-resume machinery instead of starting fresh.
+
+**Why reverting first is required, not just "like normal" cosmetically**: the entry's own reward
+figures get carried INTO the new checkpoint's own `run` field, not discarded — reverting them off
+the live account and re-seeding them inside the checkpoint moves the same numbers from "already
+credited" to "pending re-credit," so `processRewardPayouts` grants the full cumulative amount again
+once the resumed run actually concludes, rather than losing or double-counting anything.
+
+**What's reconstructable vs. defaulted**: `floor`/`elitesKilled` map straight across; Elite
+difficulty is derived EXACTLY (`INITIAL * RATIO^Math.floor(floor/10)` — forced Elites escalate
+unconditionally every 10 floors, win/lose/decline all count). `towerCompanionHits` (0),
+`wardUsed` (`true` — the deliberately SAFE default against a double-ward-save risk, at the cost
+of a genuinely-unused ward being lost), `policy` (SAFE), and `usedRewards` (empty) can't be
+recovered from a bare leaderboard entry at all — all called out explicitly in the admin's own
+reply rather than silently guessed.
+
+**Tests.** `admin.test.js` gained a 4-test `describe('resume-from-leaderboard option')` block: no
+entry found, the main reconstruction case (exact reversal + exact checkpoint object, including
+derived difficulty), working without `full-wipe` also passed, and correctly replacing (not
+duplicating) an existing pending checkpoint. `getLocalCommands.test.js`'s Discord length-limit
+check caught the new option's description running over 100 chars on the first pass — trimmed to
+fit. Full suite: **122 suites (1 fully skipped) / 2273 tests (17 skipped, 2256 passing)** — net +4
+new tests, 0 broken.
+
+**Cross-repo note.** Not ported to `financial-project` — an admin-only Discord moderation command
+with no web equivalent, touching no game logic, balance, or data shape `/gromp` implements.

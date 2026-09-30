@@ -3487,3 +3487,73 @@ came from), so `enter-tower.test.js` needed no changes. Full suite: **122 suites
 0 broken.
 
 **financial-project scope note.** Not ported — same reasoning as the section above.
+
+## `/admin reset-tower resume-from-leaderboard`: manual recovery for runs the stale-click bug already miscredited (2026-09-30, direct instruction: "update admin reset tower so that there is also the option of getting a user's run from leaderboard if they run into this stale click leave scenario so that I can reset them and have them continue from the floor that was recorded in the leaderboard. Stats and rewards should be removed like normal so that they get the right numbers at the end of the run")
+
+The two same-day fixes above (timeout, then stale clicks) close the bug going FORWARD, but any run
+that already got prematurely concluded and leaderboarded by that bug BEFORE the fix shipped is
+stuck as-is — the player was credited and recorded for a floor they never actually chose to stop
+at. This gives an admin a manual, one-command way to both undo that premature credit and let the
+player pick the run back up from where it really was.
+
+**New option on the existing `/admin reset-tower` subcommand**: `resume-from-leaderboard`
+(boolean). Triggers the exact same leaderboard-entry lookup and stat reversal `full-wipe` already
+does — `resume-from-leaderboard: true` doesn't need `full-wipe: true` passed alongside it, both
+flags share one lookup/reversal code path so a leaderboard entry is never fetched-and-removed
+twice in one call. What's different: if an entry was found and reverted, it also builds a
+`towerRunCheckpoint` (`buildResumeCheckpointFromLeaderboardEntry`, `admin.js`) from that SAME
+entry and writes it to the player's record, so their next `/enter-tower` resumes from that floor
+via the existing true-resume machinery instead of starting fresh at floor 1.
+
+**Why the reversal is required, not optional, for a correct resume**: the leaderboard entry's own
+potatoes/workMultiplier/passiveIncome/bankCapacity are carried INTO the new checkpoint's own `run`
+field, not discarded — reverting them off the player's live account now (identical to `full-wipe`)
+and re-seeding them inside the checkpoint means the SAME numbers move from "already on the
+account" to "pending re-credit," rather than being lost or double-counted. When the resumed run
+finally concludes for real (leave/death/warded-death), `processRewardPayouts` credits the full
+cumulative amount again, from floor 1 through wherever the continued run actually ends — "the
+right numbers at the end of the run," per the instruction.
+
+**What can and can't be reconstructed from a bare leaderboard entry.** A `tower_leaderboard` entry
+only ever stored `userId, username, floor, elitesKilled, potatoes, workMultiplier, passiveIncome,
+bankCapacity` — nowhere near everything a real `towerRunCheckpoint` carries. Two are recoverable:
+- `floor` and `elitesKilled` (→ `elitesSurvivedCount`) map straight across.
+- Elite difficulty is derivable EXACTLY, not guessed: `TOWER_ELITE_DIFFICULTY_INITIAL *
+  TOWER_ELITE_DIFFICULTY_RATIO^N`, where `N = Math.floor(floor / 10)` — the difficulty escalates by
+  that ratio once per forced Elite floor reached (every 10 floors, unconditionally — win, lose, or
+  decline all count, see `startRun()`'s own loop), so exactly `N` forced Elites have necessarily
+  already been fought by the floor a leaderboard entry records.
+
+The rest are NOT recoverable and default conservatively (all called out explicitly in the admin's
+own reply, not silently guessed):
+- `towerCompanionHits: 0` — no leaderboard field captures this at all.
+- `wardUsed: true` — deliberately the SAFE default, not the accurate one. Defaulting `false`
+  risks letting a player who already spent their ward spend it again (a real, if minor, exploit);
+  defaulting `true` only costs a player who never actually used their ward one already-used Ward
+  they'll have to wait for the next daily reset to get back. Chosen because the failure mode of
+  the wrong default matters more in one direction than the other.
+- `policy: SAFE`, `usedRewards: []` — no lasting gameplay-balance consequence either way (Fast
+  Forward risk preference, and a small chance of one repeated REWARD-type roll), so these default
+  to whatever's simplest/safest rather than needing the same scrutiny as the ward.
+
+**Interaction with the existing "discard pending checkpoint" default.** `reset-tower` already
+writes `towerRunCheckpoint` unconditionally on every call (previously always `null` — see the true-
+resume entry above) — this is now `resumeCheckpoint` (the freshly-built one, or `null` if
+`resume-from-leaderboard` wasn't set or found nothing), so the single write correctly either seeds
+the new checkpoint or preserves the existing discard-by-default behavior. If the player ALSO had
+some other pending checkpoint at call time, it's silently superseded by the new one — the reply
+message reflects whichever actually happened (seeded vs. discarded), never both.
+
+**Tests.** `admin.test.js` gained a new `describe('resume-from-leaderboard option')` block (4
+tests): no leaderboard entry found (reports nothing to revert OR resume from, still writes a null
+checkpoint), the main reconstruction case (asserts the exact stat reversal AND the exact checkpoint
+object built — including the derived difficulty for a non-multiple-of-10 floor), working without
+`full-wipe` also passed, and the "replaces an existing pending checkpoint, message describes the
+new one not a discard" interaction case. `getLocalCommands.test.js`'s own Discord length-limit
+check caught the option's first-draft description running over 100 characters — trimmed twice to
+fit. Full suite: **122 suites (1 fully skipped) / 2273 tests (17 skipped, 2256 passing)** — net +4
+new tests, 0 broken.
+
+**financial-project scope note.** Not ported — an admin-only Discord moderation command reading a
+Discord-specific tower_leaderboard doc shape, with no web equivalent and no game logic, balance, or
+data shape `/gromp` implements.
