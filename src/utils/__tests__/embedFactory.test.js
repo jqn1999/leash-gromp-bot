@@ -896,13 +896,14 @@ describe('createSpudKeepStatusEmbed pagination', () => {
 // computed off consecutiveHoldCycles at grant time), not the flat base constant.
 describe('createSpudKeepStatusEmbed Holder Buffs field', () => {
     test('shows the base range when unclaimed (no live buff to read a current value from)', () => {
-        // Base rate cut 8% -> 4% (2026-09-30, alongside widening 5 steps -> 10 — see
-        // SpudKeep.PASSIVE_BUFF_VALUE's own comment) — max (40%) is unchanged.
+        // Base rate briefly cut 8% -> 4% (2026-09-30, alongside widening 5 steps -> 10), then
+        // reverted back to 8% the same day alongside the 5-step revert — max (40%) untouched
+        // throughout — see SpudKeep.PASSIVE_BUFF_VALUE's own comment.
         const preview = { currentBuff: null, cooldownBuff: null, spudKeep: {}, entrants: [], attackerBonusPercent: 0, consecutiveHoldCycles: 0 };
         const embed = embedFactory.createSpudKeepStatusEmbed(preview);
         const field = embed.data.fields.find(f => f.name === 'Holder Buffs:');
-        expect(field.value).toContain('+4%');
-        expect(field.value).toContain('-4%');
+        expect(field.value).toContain('+8%');
+        expect(field.value).toContain('-8%');
         expect(field.value).toContain('40%');
     });
 

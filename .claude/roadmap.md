@@ -19325,3 +19325,63 @@ touches no game logic, balance, or data shape that repo's `/gromp` page implemen
 confirm or rule out what's actually crashing `startRun()` mid-climb. If a real stack trace ever
 comes back from one of these newly-surfaced channel messages or from a future report, that's still
 the fastest path to root-causing the crash itself.
+
+## Spud Keep hold-buff reverted to 5 steps; Attacker's Bonus ceiling dialed back 1000% → 500%; /work's own skip-chain cap lowered 10 → 5
+
+**Asked**, in one message, a same-day partial walk-back of the previous rebalance entry above plus
+one new, unrelated cap lower:
+1. "make spud keep a 5 step increment again but make the attacker bonus go up to 500% instead for
+   1-5 consecutive"
+2. "Lower max work skips to 5 instead of 10"
+
+**Changed** (`src/utils/constants.js`):
+1. `SpudKeep.PASSIVE_BUFF_VALUE`/`COOLDOWN_BUFF_VALUE` restored 4% → 8%;
+   `PASSIVE_BUFF_PER_HOLD_CYCLE`/`COOLDOWN_BUFF_PER_HOLD_CYCLE` restored 4% → 8%;
+   `HOLD_BUFF_STREAK_CAP` restored 9 → 4 — a straight revert of the same-day-earlier "10 steps
+   instead of 5" change, back to cycles 0/1/2/3/4+ giving exactly 8%/16%/24%/32%/40%.
+   `PASSIVE_BUFF_MAX_VALUE`/`COOLDOWN_BUFF_MAX_VALUE` (40%) were never touched by either the
+   original change or this revert.
+2. `SpudKeep.ATTACKER_BONUS_PER_HOLD_CYCLE` re-solved again, from 2.485 (the earlier same-day
+   "+1000%" change) to 1.235 — `ATTACKER_BONUS_BASE` (6%) and `ATTACKER_BONUS_STREAK_CAP` (4,
+   i.e. the "1-5 consecutive" holds the cadence already spanned) stayed untouched throughout, so
+   the new target solves as `(5.00 - 0.06) / 4 = 1.235`. Streak 0/1/2/3/4+ now gives every
+   non-holder challenger +6%/129.5%/253%/376.5%/500% power — still a much steeper disadvantage
+   than the original +66% ceiling this whole thread started from, just not the near-guaranteed
+   turnover the brief +1000% version produced. `ATTACKER_BONUS_STREAK_CAP` (4) and
+   `HOLD_BUFF_STREAK_CAP` (4, reverted above) coincidentally match again, though they remain
+   independent constants rather than a deliberately-shared pair.
+3. `Work.MAX_COOLDOWN_SKIP_CHAIN_LENGTH` (a pure safety-valve chain-recursion cap on `/work`'s
+   own auto-chain, unrelated to `DEFAULT_SKIP_CHANCE_CAP`'s percentage cap from the previous
+   rebalance entry, which was NOT touched by this ask) lowered 10 → 5 — now matches
+   `Work.MAX_BOUNTY_RAID_COOLDOWN_SKIP_CHAIN_LENGTH`'s own 5 (Bounty/Heist/Guild Raid's sibling
+   constant, lowered on 2026-09-29), kept as its own separate constant since `/work` and Bounty/
+   Heist/Guild Raid have been asked to change independently of each other so far.
+
+**Tests.** `spudKeepFactory.test.js`'s `getCompoundingBuffValue` suite and `resolveCycle`'s own
+"compounded value" test reverted back to their pre-10-step form (5-step cycle table, streak
+going-in 3→4 instead of 8→9, back to an exact-literal `toHaveBeenCalledWith` assertion since
+`0.08+0.08*4` lands on exactly `0.4` in IEEE 754 — no float-precision noise the way
+`0.04+0.04*9` had). `getAttackerBonusMultiplier`'s own tests read `SpudKeep.ATTACKER_BONUS_*`
+directly and needed no edits — they picked up the new 500%-ceiling constants automatically.
+`embedFactory.test.js`'s Holder Buffs base-range test reverted `+4%`/`-4%` back to `+8%`/`-8%`.
+No test changes were needed for the `MAX_COOLDOWN_SKIP_CHAIN_LENGTH` lower — nothing in the suite
+asserts against its literal value. Full suite: **122 suites (1 fully skipped) / 2243 tests (17
+skipped, 2226 passing)** — net 0 new tests, 0 broken.
+
+**Docs.** `spud-keep.md`'s two inline sections (hold-buff widening, Attacker's Bonus re-solve)
+rewritten to narrate BOTH the original widen/steepen and the same-day revert/dial-back, rather
+than describing only the current end state — this thread has now reversed itself once, so the
+full round-trip is worth keeping visible. `economy-and-work.md` gained an inline update at its
+own "companion-boosted /work" DB-cost paragraph (the literal `MAX_COOLDOWN_SKIP_CHAIN_LENGTH(10)`
+citation there is now wrong) plus a flagged-not-recomputed note in the "Cooldown-skip chain"
+architecture analysis section, since that section's own `Σ pⁱ (i=1..10)` sums are now a
+conservative overestimate rather than being re-derived exactly for `i=1..5` — the qualitative
+"bounded, not runaway" conclusion only strengthens with a smaller cap, so a full re-derivation
+wasn't worth the churn. `mercenary-bounties.md` got a one-line addendum noting `/work`'s own chain
+cap has since also moved to 5, so the two sibling chain-length constants now coincidentally match.
+`guilds.md` needed no change — its own mention of `Work.MAX_COOLDOWN_SKIP_CHAIN_LENGTH` never
+cited a literal number.
+
+**Cross-repo note.** Not yet ported to `financial-project` — checking that repo next, since all
+three constants are the same game-logic/balance numbers `/gromp` also implements (the same ones
+the previous rebalance entry above was ported for).

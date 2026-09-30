@@ -1631,9 +1631,13 @@ combined **chance to skip the cooldown entirely**, rolled once via `cooldownFact
 `bountyTimer`/`npcRobTimer` by the FULL cooldown (ready immediately) and auto-chains another
 attempt — `takeBounty.js`'s `runBountyAttempt`/`robNpc.js`'s `runNpcRobAttempt` recurse the same
 shape as `/work`'s `performWork`, but capped at `Work.MAX_BOUNTY_RAID_COOLDOWN_SKIP_CHAIN_LENGTH`
-(5, lowered from `Work.MAX_COOLDOWN_SKIP_CHAIN_LENGTH` — still 10, still `/work`'s own — on
+(5, lowered from `Work.MAX_COOLDOWN_SKIP_CHAIN_LENGTH` — 10 at the time, still `/work`'s own — on
 2026-09-29, direct instruction: "make the maximum amount of times bounty/rob-npc/guild raids can
 skip 5 times instead of 10"; Guild Raid's own `startRaid.js` chain shares this same constant).
+`Work.MAX_COOLDOWN_SKIP_CHAIN_LENGTH` itself was separately lowered 10 → 5 the next day
+(2026-09-30, direct instruction: "Lower max work skips to 5 instead of 10"), so the two chain
+caps now coincidentally match at 5 — still two independent constants, not merged into one, since
+`/work` and Bounty/Heist/Guild Raid have been asked to change on separate occasions so far.
 
 **Why `cooldownReductionPercent`'s 2026-09-07 max (38%) stayed more modest than
 `rewardMultiplier`/`rivalSuccessBonus`'s own jumps**: this value feeds `combineSkipChance`

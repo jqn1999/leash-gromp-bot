@@ -97,19 +97,18 @@ needed any changes. `/current-spud-keep`'s "Holder Buffs" field shows the LIVE c
 while held (`currentBuff.value`/`cooldownBuff.value`), or the base-to-max range when unclaimed,
 since there's no live streak to read yet.
 
-**Widened 5 steps → 10, same 8% base halved to 4%/step (2026-09-30, direct instruction: "change
-spud keep to be a 10 step increment instead of 5 granting 4% skip/passive chance for each
-consecutive hold").** `PASSIVE_BUFF_VALUE`/`COOLDOWN_BUFF_VALUE` cut 8% → 4% (the "value at
-cycle 0" base), `PASSIVE_BUFF_PER_HOLD_CYCLE`/`COOLDOWN_BUFF_PER_HOLD_CYCLE` cut 8% → 4% to
-match, `HOLD_BUFF_STREAK_CAP` raised 4 → 9 — at cycles 0/1/2/…/9 that's now exactly
-4%/8%/12%/…/40% for either track (day 1 of a fresh capture through day 10+ of an unbroken hold).
-`PASSIVE_BUFF_MAX_VALUE`/`COOLDOWN_BUFF_MAX_VALUE` (40%) are unchanged — 10 steps of 4% lands on
-the exact same ceiling 5 steps of 8% did, just reached twice as gradually, so a holder now needs
-roughly double the unbroken-defense streak to reach the same peak buff they used to reach in half
-the time. `HOLD_BUFF_STREAK_CAP` and `ATTACKER_BONUS_STREAK_CAP` (Attacker's Bonus, below) used
-to both be 4 and were described as "sharing one cap, deliberately symmetric" — that's no longer
-true now that only this track's cap moved; the two are independent constants that happened to
-match before, not a pair that's kept in lockstep on principle.
+**Briefly widened 5 steps → 10, then reverted the same day (2026-09-30).** First widened to 10
+steps at 4%/step (direct instruction: "change spud keep to be a 10 step increment instead of 5
+granting 4% skip/passive chance for each consecutive hold") — `PASSIVE_BUFF_VALUE`/
+`COOLDOWN_BUFF_VALUE` cut 8% → 4%, `PASSIVE_BUFF_PER_HOLD_CYCLE`/`COOLDOWN_BUFF_PER_HOLD_CYCLE`
+cut 8% → 4% to match, `HOLD_BUFF_STREAK_CAP` raised 4 → 9. Then reverted back to the original 5
+steps at 8%/step the SAME day (direct instruction: "make spud keep a 5 step increment again") —
+all four constants moved back to their original values (8%/8%/cap 4), so at cycles 0/1/2/3/4+
+that's again exactly 8%/16%/24%/32%/40% for either track (day 1 of a fresh capture through day
+5+ of an unbroken hold). `PASSIVE_BUFF_MAX_VALUE`/`COOLDOWN_BUFF_MAX_VALUE` (40%) were never
+touched across either change. `HOLD_BUFF_STREAK_CAP` and `ATTACKER_BONUS_STREAK_CAP` (Attacker's
+Bonus, below) are back to both being 4, coincidentally — see that section's own note on why
+they're independent constants rather than a deliberately-shared pair.
 
 - **`+8%` (base) passive income** (`SpudKeep.PASSIVE_BUFF_VALUE`) — one read inside
   `dynamoHandler.passivePotatoHandler`'s existing per-user
@@ -402,20 +401,23 @@ design was marked a nice-to-have, not a v1 requirement, and was **not implemente
 `ATTACKER_BONUS_STREAK_CAP = 4` originally gave streak 0/1/2/3/4+ every challenger +6%/21%/36%/51%/66%
 power.
 
-**Escalation steepened massively, 66% → 1000% at max (2026-09-30, direct instruction: "I want
-spud keep to be more difficult to hold. i want the attacker bonus to go to +1000% instead of
-just 66% at max").** Same shape (flat base + escalation over the same 4 further cycles, still
-resetting to 0 the instant `(holderType, holderId)` changes) — `ATTACKER_BONUS_BASE` (6%) was
-NOT part of this instruction and stays untouched, so `ATTACKER_BONUS_PER_HOLD_CYCLE` was
-re-solved to land the ceiling exactly on the new target: `(10.0 - 0.06) / 4 = 2.485` (248.5%
-per additional consecutive-hold cycle). Streak 0/1/2/3/4+ now gives every challenger
-+6%/254.5%/503%/751.5%/1000% power — a holder who successfully defends even a handful of times
-in a row now faces overwhelming, near-guaranteed turnover the next cycle, a deliberate,
-substantial difficulty increase from the old 66% ceiling (a real but survivable disadvantage).
-Deliberately NOT widened to 10 steps the way `HOLD_BUFF_STREAK_CAP` was (above) — only the
-ceiling was asked to change, not the cadence — so `ATTACKER_BONUS_STREAK_CAP` (4) and
-`HOLD_BUFF_STREAK_CAP` (9) are independent constants that happen to differ now, not the "share
-one cap, deliberately symmetric" pair they used to be.
+**Escalation steepened, then dialed back, both same day (2026-09-30).** First steepened
+massively to a 1000% ceiling (direct instruction: "I want spud keep to be more difficult to
+hold. i want the attacker bonus to go to +1000% instead of just 66% at max") —
+`ATTACKER_BONUS_PER_HOLD_CYCLE` re-solved to `(10.0 - 0.06) / 4 = 2.485`, giving streak 0/1/2/3/4+
+every challenger +6%/254.5%/503%/751.5%/1000% power. Then dialed back to a 500% ceiling the SAME
+day (direct instruction: "make the attacker bonus go up to 500% instead for 1-5 consecutive") —
+same shape throughout (flat base + escalation over the same 4 further cycles spanning day 1
+through day 5+ of an unbroken hold, i.e. "1-5 consecutive" holds, still resetting to 0 the instant
+`(holderType, holderId)` changes). `ATTACKER_BONUS_BASE` (6%) and `ATTACKER_BONUS_STREAK_CAP` (4)
+were untouched across both changes — only the ceiling itself moved — so
+`ATTACKER_BONUS_PER_HOLD_CYCLE` re-solves to `(5.0 - 0.06) / 4 = 1.235` (123.5% per additional
+consecutive-hold cycle). Streak 0/1/2/3/4+ now gives every challenger +6%/129.5%/253%/376.5%/500%
+power — still a steep, real disadvantage for an unbroken hold streak versus the original 66%
+ceiling, just not the near-guaranteed-turnover 1000% version. `ATTACKER_BONUS_STREAK_CAP` (4) and
+`HOLD_BUFF_STREAK_CAP` (4, reverted back to matching above) are independent constants that
+coincidentally line up again, not a "share one cap, deliberately symmetric" pair kept in lockstep
+on principle.
 
 ### Per-entrant display now shows post-bonus Power, with the bonus itself called out (2026-09-28)
 

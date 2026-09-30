@@ -315,11 +315,14 @@ of the loss). Two changes, both in `workFactory.js`:
    invocation even at that ceiling. A companion's own `workCooldownSkipChance` perk maxes out
    around 20% (Mochi, Mythic tier) — stacked on top of an already-60%-capped rest of the stack,
    a maxed-out player's real total can reach ~80%, averaging closer to ~3.5 extra chain links
-   per `/work` call (still hard-bounded by `Work.MAX_COOLDOWN_SKIP_CHAIN_LENGTH(10)` — see that
-   constant's own "a safety valve, not a balance lever" comment, which already anticipated a
-   high skip chance driving deeper chains). A real, bounded increase in per-call DB cost for a
-   companion-invested player, not a runaway/infinite risk — worth knowing given the existing
-   architectural analysis's own numbers, not a reason this change wasn't made as asked.
+   per `/work` call (still hard-bounded by `Work.MAX_COOLDOWN_SKIP_CHAIN_LENGTH` — 10 as written
+   here 2026-09-28, lowered again to 5 on 2026-09-30, direct instruction: "Lower max work skips to
+   5 instead of 10" — see that constant's own "a safety valve, not a balance lever" comment, which
+   already anticipated a high skip chance driving deeper chains). A real, bounded increase in
+   per-call DB cost for a companion-invested player, not a runaway/infinite risk — worth knowing
+   given the existing architectural analysis's own numbers, not a reason this change wasn't made
+   as asked. The lower cap only shrinks this further; see the "Cooldown-skip chain" section below
+   for the note on how it affects that section's own numeric analysis.
 
    **Tests.** `combineSkipChanceWithCompanionBonus` — 5 new tests in `cooldownFactory.test.js`
    (additive stacking, the other sources still cap at 60% before companion's addition, no-op
@@ -1055,6 +1058,11 @@ of thing a future rebalance or refactor could get wrong in either direction:
   sense even though the SKIP CHANCE itself now is. The DB-cost problem this mechanic creates is
   real but bounded — most invocations still chain far short of the 10-link cap, just no longer as
   short as this section's original 2026-09-20 numbers assumed for every player.
+  **Flagged, not recomputed (2026-09-30): `MAX_COOLDOWN_SKIP_CHAIN_LENGTH` lowered again 10 → 5**
+  (direct instruction: "Lower max work skips to 5 instead of 10"), so every `Σ pⁱ (i=1..10)` sum
+  above now overstates the real worst case — the true bound is `Σ pⁱ (i=1..5)`, roughly half the
+  quoted extra-link averages at the same p. Left as an upper bound rather than re-derived exactly,
+  since the qualitative conclusion (bounded, not runaway) only gets stronger with a smaller cap.
 - **`/work`'s own chain links are NOT safe to fold into a single write.** Every one of the 10
   scenario handlers in `workFactory.js` (`handleGoldenPotato`, `handleLargePotato`, etc.) does its
   own direct `dynamoHandler.updateUserFields` write, and `calculateWorkTimerValue` (called from
