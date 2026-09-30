@@ -181,6 +181,23 @@ Works against either a healed (`findGuildById`) or unhealed (`findGuildByName`) 
 `bankStored`/`raidCount` are read with `Number.isFinite` guards, mirroring
 `applyGuildTreasuryInterest`'s own `toNumber` coercion for the same raw-scan reason.
 
+**Also credited into `guild.totalEarnings` (2026-09-30, direct instruction: "make it count",
+following a player question of "does guild bank interest count towards the guild total earnings
+line" — answer at the time was no)** — before this, `guild.totalEarnings` (the `Total Earnings:`
+field on `createGuildEmbed`, shown right alongside `Daily Treasury Interest:`) was written
+EXCLUSIVELY by `startRaid.js`'s `resolveRaid` (`guildTotalEarnings += potatoesGained`, 4 call
+sites), so it only ever tracked raid winnings — treasury interest grew the bank silently without
+ever showing up in that lifetime figure, even though both are genuine income into the guild.
+`applyGuildTreasuryInterest` now writes the SAME rounded `interest` amount into both fields on the
+same tick: `const newTotalEarnings = toNumber(guild.totalEarnings) + interest;` (the `toNumber`
+coercion matters here too — an unhealed record can have `totalEarnings` missing entirely, same
+reasoning as `bankStored`/`memberCount`/`raidCount` above), via a second
+`updateGuildDatabase(guild.guildId, 'totalEarnings', newTotalEarnings)` call right after the
+existing `bankStored` write. Confirmed before making this change that `guild.totalEarnings` has no
+other reader anywhere in the codebase besides `startRaid.js` (the increment) and
+`embedFactory.js`'s own display line — no leaderboard, gate, or other formula keys off it — so
+this was safe to extend with no side effects beyond the number itself growing faster.
+
 **Raid payouts once the bank is already over capacity from interest overflow (2026-09-14, player
 question: "make sure if a guild loses a raid with guild bank above the max due to interest that
 loss is calculated correctly")** — since interest can leave `bankStored` sitting above

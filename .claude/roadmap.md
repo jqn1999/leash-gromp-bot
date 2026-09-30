@@ -19799,5 +19799,54 @@ discovered as a live Spud Keep/Tower balance surprise. Full suite: **122 suites 
 
 **Cross-repo note.** This IS a game-logic/balance change `financial-project`'s `/gromp` page also
 implements (guild/mercenary `workMulti` buffs and Guild Raid/Bounty success-chance math both exist
-there) — flagged to the user per this repo's standing sibling-repo rule; porting not yet done as of
-this entry.
+there) — flagged to the user per this repo's standing sibling-repo rule. **Ported same session**:
+`financial-project`'s own `NOTES_GROMP_WEB_INTEGRATION.md` entry `#113` covers the port (found and
+flagged, but deliberately did NOT fix, an unrelated pre-existing gap: that port never wired World
+Boss's own `workMulti` buff into Guild Raid/Bounty at all, unlike the bot).
+
+## Guild treasury interest now also counts toward the guild's own Total Earnings figure
+
+**Asked**: "Does guild bank interest count towards the guild total earnings line" — answer at the
+time was no: `applyGuildTreasuryInterest` only ever wrote `bankStored`, never
+`guild.totalEarnings`, which was exclusively incremented by `startRaid.js`'s `resolveRaid` (raid
+winnings only). Direct follow-up instruction: "Make it count."
+
+**Root cause / why this was safe to do without further discussion**: `guild.totalEarnings` (the
+`Total Earnings:` field on `/guild`'s embed) turned out to have exactly one writer (the 4
+`guildTotalEarnings += potatoesGained` call sites inside `startRaid.js`) and exactly one reader
+(`embedFactory.js`'s own display line) anywhere in the codebase — confirmed by grep before making
+the change. No leaderboard, gate, achievement, or other formula reads it, so widening what feeds
+it has no side effect beyond the number itself growing faster and more accurately reflecting real
+guild income.
+
+**Changed** (`src/utils/dynamoHandler.js`, `applyGuildTreasuryInterest`): right after the existing
+`updateGuildDatabase(guild.guildId, 'bankStored', newBankStored)` write, a second write credits
+the identical rounded `interest` amount into `totalEarnings`:
+`const newTotalEarnings = toNumber(guild.totalEarnings) + interest; await updateGuildDatabase(guild.guildId, 'totalEarnings', newTotalEarnings);`
+— same `toNumber` defensive coercion this function already applies to `bankStored`/`memberCount`/
+`raidCount`, since `getGuilds()` is a raw unhealed scan and a pre-existing guild record can be
+missing `totalEarnings` entirely rather than having it at 0. Both writes happen on the same
+5-minute tick, so `bankStored` and `totalEarnings` always move together by the exact same amount
+whenever interest fires — no drift between "what's banked" and "what's ever been earned"
+attributable to interest specifically.
+
+**Cinderroot's own multiplier is already folded into `interest` before either write**, so a
+guild that owns the companion sees its bonus reflected in Total Earnings too, automatically — no
+separate Cinderroot-aware branch was needed for the new write.
+
+**Tests.** `dynamoHandler.test.js`'s `applyGuildTreasuryInterest` describe block: the Cinderroot
+test (`'credits the level-scaled multiplier for a guild that HAS the companion vs. the base amount
+for one without'`) had to be fixed rather than just left alone — it previously deduped
+`docClient.update.mock.calls` by `guildId` alone via `Object.fromEntries`, which silently broke
+once each guild started getting TWO update calls (`bankStored` and `totalEarnings`, now carrying
+DIFFERENT values) instead of one; fixed by filtering to the `bankStored` call specifically before
+the dedup, restoring the test's original intent. Two new tests added: one confirming the exact
+same `interest` amount lands in both `bankStored` and `totalEarnings` on one tick, and one
+confirming a missing `totalEarnings` field (unhealed record) is treated as 0, not `NaN`/thrown.
+Every other existing test in the block reads `docClient.update.mock.calls[0][0]` (the FIRST call,
+still `bankStored` — write order was preserved) and needed no changes. Full suite: **122 suites (1
+fully skipped) / 2280 tests (17 skipped, 2263 passing)** — net +2 new tests, 0 broken.
+
+**Cross-repo note.** This IS a game-logic/balance-adjacent change — `financial-project`'s `/gromp`
+page implements Guild Raid and the same guild bank/interest model — flagged to the user per this
+repo's standing sibling-repo rule; porting to `financial-project` not yet done as of this entry.
