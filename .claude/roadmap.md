@@ -19855,3 +19855,55 @@ writes `bankStored`/`totalEarnings` into the SAME shared DynamoDB table both pla
 player already sees whatever `guild.totalEarnings` the bot's own tick last wrote
 (`gromp-guilds/handler.ts` just echoes `guild.totalEarnings` straight through) — so this fix is
 already live on both surfaces the moment it ships here, with no separate web-side write to port.
+
+## `/profile` gets a third page: Work Encounter Counts, Metal split into Success/Failure
+
+**Asked**: "Add a new third page to the profile embed that includes an individual players work
+encounter counts. For metal encounters include fail and success."
+
+**Found while investigating, not built from scratch**: every one of these counts already existed
+and was already being written — `userDetails.workScenarioCounts` (`regular`, `large`, `sweet`,
+`taro`, `poison`, `metalSuccess`, `metalFailure`, `golden`, `companion`, `ancient`, `mimic`,
+`mimicKilled`, `goldenYam`) is incremented by every `/work` scenario handler on every real work
+call, feeding Quests/Achievements progress — it just had no player-facing display anywhere on
+`/profile` itself. Metal Potato was already the one scenario tracked as two separate counters
+(`metalSuccess` in `workFactory.handleMetalPotato`, `metalFailure` in `work.js`'s own miss branch)
+— exactly the fail/success split asked for, already sitting there unused on every account.
+
+**Changed**:
+- `src/utils/embedFactory.js` (`createUserEmbed`): `totalPages` 2 → 3; the previous `if/else`
+  became `if/else if/else` to add the new `pageIndex === 2` branch. New page: a single
+  "Work Encounter Counts:" field, one line per `workScenarioCounts` entry (excluding
+  `mimicKilled`, a bonus sub-stat rather than a distinct encounter type), same order `work.js`'s
+  own scenario roll uses. Metal Potato renders as two lines ("— Success" / "— Failure"); every
+  other scenario gets one count. Guards every count with `|| 0` (and the whole object with `|| {}`)
+  the same way the existing `records` field already does, for a pre-existing account whose
+  `workScenarioCounts` predates self-healing.
+- `src/commands/user/profile.js`: `TOTAL_PAGES` 2 → 3. `buildPaginationRow`/`runPaginatedReply`
+  needed no changes — both are already fully generic over page count.
+- `src/utils/eventFactory.js`: gained a new exported `SCENARIO_LABELS` map (moved from
+  `workOdds.js`, which used to be its only owner) — "the established colloquial terms" per its own
+  original comment (e.g. "Poison Potato," not `poisonPotato.name`'s "Poisonous Potato"), needed a
+  second consumer for this new page and a straight duplicate copy risked the two commands' labels
+  drifting apart over time.
+- `src/commands/user/workOdds.js`: now imports `SCENARIO_LABELS` from `eventFactory.js` instead of
+  declaring its own copy — a move, not a rewrite; `/work-odds`'s own output is byte-identical.
+
+**Tests.** New `describe('createUserEmbed page 3 — Work Encounter Counts')` block in
+`embedFactory.test.js`: the full page-3 field content with every count populated (including the
+Metal split), a missing-`workScenarioCounts` account rendering every line as 0 rather than
+`undefined`/`NaN`, and a regression check that page 2 (Activity & Records) still renders correctly
+at `pageIndex === 1` and does NOT show the new field. `eventFactory.test.js`/`workOdds.test.js`
+both re-run clean with no changes needed — `SCENARIO_LABELS`' move didn't change either file's own
+observable behavior. Full suite: **122 suites (1 fully skipped) / 2283 tests (17 skipped, 2266
+passing)** — net +3 new tests, 0 broken.
+
+**Cross-repo note.** Checked `financial-project`'s own `gromp-economy/handler.ts` — it already
+tracks the identical `workScenarioCounts.*` fields (including the `metalSuccess`/`metalFailure`
+split, both already referenced there, e.g. by its own Achievements' `statPath` lookups) into the
+SAME shared DynamoDB table this bot writes to. But its `/gromp` page's own profile display never
+surfaces any of it — same gap this entry just closed here, just not yet closed there. Since this
+is a display-only addition (no new field, no new write, purely surfacing data that already
+existed on both platforms), whether to build the equivalent page on `/gromp` is a product
+question for the user rather than an automatic port under this repo's sibling-repo rule — not
+built as of this entry, flagged to the user instead.

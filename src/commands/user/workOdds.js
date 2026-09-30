@@ -3,29 +3,11 @@ const dynamoHandler = require("../../utils/dynamoHandler");
 const { getEffectiveScenarioChances, PROSPECTOR_COMPANION_SCENARIO_MULTIPLIER } = require("../../utils/workFactory");
 const companionFactory = require("../../utils/companionFactory");
 const festivalFactory = require("../../utils/festivalFactory");
-const { WORK_SCENARIO_INDICES } = require("../../utils/eventFactory");
+const { SCENARIO_LABELS } = require("../../utils/eventFactory");
 const { Festival } = require("../../utils/constants");
 const { workScenarios } = require("./work.js");
 const { EmbedFactory } = require("../../utils/embedFactory");
 const embedFactory = new EmbedFactory();
-
-// Human-readable labels per /work scenario type — matches the established colloquial terms
-// already used elsewhere (Prospector's own perk description), not each mob constant's own
-// raw `.name` field (poisonPotato.name is "Poisonous Potato," never shown to players as
-// such anywhere else).
-const SCENARIO_LABELS = {
-    [WORK_SCENARIO_INDICES.GOLDEN]: "Golden Potato",
-    [WORK_SCENARIO_INDICES.POISON]: "Poison Potato",
-    [WORK_SCENARIO_INDICES.LARGE]: "Large Potato",
-    [WORK_SCENARIO_INDICES.METAL]: "Metal Potato",
-    [WORK_SCENARIO_INDICES.SWEET]: "Sweet Potato",
-    [WORK_SCENARIO_INDICES.COMPANION]: "Wandering Companion",
-    [WORK_SCENARIO_INDICES.TARO]: "Taro Trader",
-    [WORK_SCENARIO_INDICES.ANCIENT]: "Ancient Potato",
-    [WORK_SCENARIO_INDICES.MIMIC]: "Mimic Potato",
-    [WORK_SCENARIO_INDICES.GOLDEN_YAM]: "Golden Yam",
-    [WORK_SCENARIO_INDICES.REGULAR]: "Regular Work",
-};
 
 // Converts a scenario table's own cumulative thresholds ([.001, .011, .051, ...]) into each
 // scenario's real, independent probability mass ([.001, .01, .04, ...]) — the same

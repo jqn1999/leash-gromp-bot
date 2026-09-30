@@ -657,6 +657,33 @@ Every handler increments `workScenarioCounts.<type>`, adds 1 to `workCount`,
 and resets the work timer — all folded into one combined `dynamoHandler.updateUserFields` write per
 handler (see [architecture/data-model.md](../architecture/data-model.md)).
 
+### `/profile` page 3 — Work Encounter Counts
+
+Added 2026-09-30, direct instruction: "Add a new third page to the profile embed that includes an
+individual players work encounter counts. For metal encounters include fail and success." Before
+this, `workScenarioCounts` (every field listed above — `regular`, `large`, `sweet`, `taro`,
+`poison`, `metalSuccess`, `metalFailure`, `golden`, `companion`, `ancient`, `mimic`, `mimicKilled`,
+`goldenYam`) was written on every `/work` call but never surfaced anywhere on `/profile` itself —
+the only player-facing place it fed into was Quests/Achievements progress checks.
+
+`createUserEmbed` (`embedFactory.js`) grew from a 2-page to a 3-page embed (`totalPages`, `profile.js`'s
+own `TOTAL_PAGES`, both bumped 2 → 3); `buildPaginationRow`/`runPaginatedReply`
+([architecture/...](../../src/utils/helperCommands.js)) are already fully generic over page count, so
+neither needed a change. Page 3's single "Work Encounter Counts:" field lists every
+`workScenarioCounts` entry except `mimicKilled` (a bonus lifetime-kill sub-stat of `mimic`, not a
+distinct encounter type — left off to match the literal ask), in the same order `work.js`'s own
+scenario array rolls against (golden → regular, not alphabetical). Metal Potato is the one scenario
+shown as two lines — "Metal Potato — Success" (`metalSuccess`) and "Metal Potato — Failure"
+(`metalFailure`) — per the direct instruction; every other scenario gets a single lifetime count.
+
+**Labels reuse `eventFactory.js`'s own `SCENARIO_LABELS`** (moved there from `workOdds.js`, which
+used to be its only consumer/owner) rather than each mob constant's own `.name` field
+(`poisonPotato.name` is "Poisonous Potato," never shown to players as such anywhere else — see
+`/work-odds`'s own original comment on this, now inherited by `eventFactory.js`). This was a
+straight move-and-re-export, not a rewrite — `workOdds.js` now imports `SCENARIO_LABELS` from
+`eventFactory.js` instead of declaring its own copy, so a scenario's label can never read
+differently between `/work-odds` and `/profile`'s new page.
+
 ## `/work-odds` — live personal odds preview
 
 2026-09-28, direct instruction: "add a command that shows a user ephemerally via embed their

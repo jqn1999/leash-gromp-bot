@@ -7,7 +7,7 @@ const rebirthFactory = require("../utils/rebirthFactory");
 const guildBuffFactory = require("../utils/guildBuffFactory");
 const mercenaryBuffFactory = require("../utils/mercenaryBuffFactory");
 const guildCompanionFactory = require("../utils/guildCompanionFactory");
-const { EventFactory } = require("../utils/eventFactory");
+const { EventFactory, SCENARIO_LABELS, WORK_SCENARIO_INDICES } = require("../utils/eventFactory");
 const { getRaidLevelInfo, getGuildDailyInterest } = require("../utils/raidFactory");
 const mercenaryFactory = require("../utils/mercenaryFactory");
 const cooldownFactory = require("../utils/cooldownFactory");
@@ -557,7 +557,7 @@ class EmbedFactory {
             if (guild) title += ` (${guild.guildName})`
         }
 
-        const totalPages = 2;
+        const totalPages = 3;
         let fields = [];
         let description;
 
@@ -747,7 +747,7 @@ class EmbedFactory {
             // Reuses activeWorldBuff fetched above rather than a second read.
             const activeWorldBuffField = buildActiveWorldBuffField(activeWorldBuff);
             if (activeWorldBuffField) fields.push(activeWorldBuffField);
-        } else {
+        } else if (pageIndex === 1) {
             description = `Activity & Records\nPage 2 / ${totalPages}`;
             fields.push({
                 name: "Work Count:",
@@ -768,6 +768,38 @@ class EmbedFactory {
                 value: `Highest Tower floor: ${(records.highestTowerFloor || 0).toLocaleString()}\n`
                     + `Biggest /work payout: ${(records.biggestWorkPayout || 0).toLocaleString()} potatoes\n`
                     + `Largest raid contribution: ${(records.largestRaidContribution || 0).toLocaleString()} potatoes`,
+                inline: false,
+            });
+        } else {
+            description = `Work Encounter Counts\nPage 3 / ${totalPages}`;
+            // workScenarioCounts is backfilled by findUser's self-healing for any account
+            // that existed before this field was added — guard with `|| {}`/`|| 0` anyway,
+            // same reasoning as `records` above, rather than assume every caller of
+            // createUserEmbed went through findUser.
+            const counts = userDetails.workScenarioCounts || {};
+            // Same scenario order work.js's own scenario array rolls against (golden ...
+            // regular), not alphabetical or count-sorted — a player already reads /work
+            // results in this rarity order, so this page doesn't introduce a second one.
+            // Labels reused from eventFactory.js's own SCENARIO_LABELS (workOdds.js's
+            // established colloquial terms — "Poison Potato," not poisonPotato.name's
+            // "Poisonous Potato" — same map, so a scenario's label can't drift between
+            // /work-odds and this page). Metal Potato is the one scenario with two
+            // outcomes (success/failure), per direct instruction — every other scenario
+            // gets a single lifetime count here.
+            fields.push({
+                name: "Work Encounter Counts:",
+                value: `${SCENARIO_LABELS[WORK_SCENARIO_INDICES.GOLDEN]}: ${(counts.golden || 0).toLocaleString()}\n`
+                    + `${SCENARIO_LABELS[WORK_SCENARIO_INDICES.GOLDEN_YAM]}: ${(counts.goldenYam || 0).toLocaleString()}\n`
+                    + `${SCENARIO_LABELS[WORK_SCENARIO_INDICES.POISON]}: ${(counts.poison || 0).toLocaleString()}\n`
+                    + `${SCENARIO_LABELS[WORK_SCENARIO_INDICES.LARGE]}: ${(counts.large || 0).toLocaleString()}\n`
+                    + `${SCENARIO_LABELS[WORK_SCENARIO_INDICES.METAL]} — Success: ${(counts.metalSuccess || 0).toLocaleString()}\n`
+                    + `${SCENARIO_LABELS[WORK_SCENARIO_INDICES.METAL]} — Failure: ${(counts.metalFailure || 0).toLocaleString()}\n`
+                    + `${SCENARIO_LABELS[WORK_SCENARIO_INDICES.SWEET]}: ${(counts.sweet || 0).toLocaleString()}\n`
+                    + `${SCENARIO_LABELS[WORK_SCENARIO_INDICES.COMPANION]}: ${(counts.companion || 0).toLocaleString()}\n`
+                    + `${SCENARIO_LABELS[WORK_SCENARIO_INDICES.TARO]}: ${(counts.taro || 0).toLocaleString()}\n`
+                    + `${SCENARIO_LABELS[WORK_SCENARIO_INDICES.ANCIENT]}: ${(counts.ancient || 0).toLocaleString()}\n`
+                    + `${SCENARIO_LABELS[WORK_SCENARIO_INDICES.MIMIC]}: ${(counts.mimic || 0).toLocaleString()}\n`
+                    + `${SCENARIO_LABELS[WORK_SCENARIO_INDICES.REGULAR]}: ${(counts.regular || 0).toLocaleString()}`,
                 inline: false,
             });
         }

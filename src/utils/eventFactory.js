@@ -179,6 +179,26 @@ const WORK_SCENARIO_INDICES = {
     REGULAR: -1
 };
 
+// Human-readable labels per /work scenario type — matches the established colloquial terms
+// already used elsewhere (Prospector's own perk description), not each mob constant's own
+// raw `.name` field (poisonPotato.name is "Poisonous Potato," never shown to players as
+// such anywhere else). Moved here from workOdds.js (2026-09-30, added a second consumer —
+// createUserEmbed's new "Work Encounter Counts" profile page — so this became the one
+// canonical copy rather than a second, easy-to-drift map.
+const SCENARIO_LABELS = {
+    [WORK_SCENARIO_INDICES.GOLDEN]: "Golden Potato",
+    [WORK_SCENARIO_INDICES.POISON]: "Poison Potato",
+    [WORK_SCENARIO_INDICES.LARGE]: "Large Potato",
+    [WORK_SCENARIO_INDICES.METAL]: "Metal Potato",
+    [WORK_SCENARIO_INDICES.SWEET]: "Sweet Potato",
+    [WORK_SCENARIO_INDICES.COMPANION]: "Wandering Companion",
+    [WORK_SCENARIO_INDICES.TARO]: "Taro Trader",
+    [WORK_SCENARIO_INDICES.ANCIENT]: "Ancient Potato",
+    [WORK_SCENARIO_INDICES.MIMIC]: "Mimic Potato",
+    [WORK_SCENARIO_INDICES.GOLDEN_YAM]: "Golden Yam",
+    [WORK_SCENARIO_INDICES.REGULAR]: "Regular Work",
+};
+
 // Cross-repo contract for the shared active-event record persisted to the stats table
 // (2026-09-18 — "does 5x poison impact website at all," direct instruction to close the gap).
 // Translates each of `this.events`' bot-only names into the repo-agnostic {scenario, multiplier}
@@ -229,6 +249,7 @@ function buildActiveEventPayload(eventKey, eventLabel = null) {
 module.exports = {
     EventFactory,
     WORK_SCENARIO_INDICES,
+    SCENARIO_LABELS,
     EVENT_SCENARIO_MAP,
     buildActiveEventPayload
 }
