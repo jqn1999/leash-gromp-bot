@@ -89,14 +89,27 @@ outright on EVERY resolution (even a successful defense) — zero coverage gap.
 and both now scale UP with `consecutiveHoldCycles` (the same counter `getAttackerBonusMultiplier`
 already reads, just applied to the DEFENDING side's reward instead of every attacker's odds):
 `spudKeepFactory.getCompoundingBuffValue(base, perHoldCycle, max, consecutiveHoldCycles)` returns
-`min(base + perHoldCycle * min(cycles, HOLD_BUFF_STREAK_CAP), max)` — at cycles 0/1/2/3/4+ that's
-exactly 8%/16%/24%/32%/40% for either track (day 1 of a fresh capture through day 5+ of an unbroken
-hold). Computed ONCE, in `resolveCycle`, at the moment each buff is granted (using
-`newConsecutiveHoldCycles`) and stored directly as that buff doc's own `value` — every downstream
-consumer (`passivePotatoHandler`, `/work`/raid/Bounty/rob-npc cooldown sites) already just reads
-`buff.value`, so none of them needed any changes. `/current-spud-keep`'s "Holder Buffs" field shows
-the LIVE current value while held (`currentBuff.value`/`cooldownBuff.value`), or the base-to-max
-range when unclaimed, since there's no live streak to read yet.
+`min(base + perHoldCycle * min(cycles, HOLD_BUFF_STREAK_CAP), max)`. Computed ONCE, in
+`resolveCycle`, at the moment each buff is granted (using `newConsecutiveHoldCycles`) and stored
+directly as that buff doc's own `value` — every downstream consumer (`passivePotatoHandler`,
+`/work`/raid/Bounty/rob-npc cooldown sites) already just reads `buff.value`, so none of them
+needed any changes. `/current-spud-keep`'s "Holder Buffs" field shows the LIVE current value
+while held (`currentBuff.value`/`cooldownBuff.value`), or the base-to-max range when unclaimed,
+since there's no live streak to read yet.
+
+**Widened 5 steps → 10, same 8% base halved to 4%/step (2026-09-30, direct instruction: "change
+spud keep to be a 10 step increment instead of 5 granting 4% skip/passive chance for each
+consecutive hold").** `PASSIVE_BUFF_VALUE`/`COOLDOWN_BUFF_VALUE` cut 8% → 4% (the "value at
+cycle 0" base), `PASSIVE_BUFF_PER_HOLD_CYCLE`/`COOLDOWN_BUFF_PER_HOLD_CYCLE` cut 8% → 4% to
+match, `HOLD_BUFF_STREAK_CAP` raised 4 → 9 — at cycles 0/1/2/…/9 that's now exactly
+4%/8%/12%/…/40% for either track (day 1 of a fresh capture through day 10+ of an unbroken hold).
+`PASSIVE_BUFF_MAX_VALUE`/`COOLDOWN_BUFF_MAX_VALUE` (40%) are unchanged — 10 steps of 4% lands on
+the exact same ceiling 5 steps of 8% did, just reached twice as gradually, so a holder now needs
+roughly double the unbroken-defense streak to reach the same peak buff they used to reach in half
+the time. `HOLD_BUFF_STREAK_CAP` and `ATTACKER_BONUS_STREAK_CAP` (Attacker's Bonus, below) used
+to both be 4 and were described as "sharing one cap, deliberately symmetric" — that's no longer
+true now that only this track's cap moved; the two are independent constants that happened to
+match before, not a pair that's kept in lockstep on principle.
 
 - **`+8%` (base) passive income** (`SpudKeep.PASSIVE_BUFF_VALUE`) — one read inside
   `dynamoHandler.passivePotatoHandler`'s existing per-user
@@ -378,14 +391,31 @@ effective_power_i = power_i * (1 + ATTACKER_BONUS_BASE
 // applied to every entrant i that is NOT the current holder
 ```
 
-`ATTACKER_BONUS_BASE = 0.06`, `ATTACKER_BONUS_PER_HOLD_CYCLE = 0.15`,
-`ATTACKER_BONUS_STREAK_CAP = 4` → streak 0/1/2/3/4+ gives every challenger +6%/21%/36%/51%/66% power.
 `consecutiveHoldCycles` (on `spud_keep_buff`) increments when the winning `(holderType, holderId)`
 pair is identical to the previous cycle's, and resets to 0 the instant either changes — a lifetime
 "how many times has this guild ever held it" counter was deliberately NOT built, since the goal is
 stopping a single unbroken reign, not punishing a guild that fairly wins back something it lost.
 Left untouched on a skipped cycle. The optional streak-9 "+90%/96%" milestone jump from the original
 design was marked a nice-to-have, not a v1 requirement, and was **not implemented**.
+
+`ATTACKER_BONUS_BASE = 0.06`, `ATTACKER_BONUS_PER_HOLD_CYCLE = 0.15`,
+`ATTACKER_BONUS_STREAK_CAP = 4` originally gave streak 0/1/2/3/4+ every challenger +6%/21%/36%/51%/66%
+power.
+
+**Escalation steepened massively, 66% → 1000% at max (2026-09-30, direct instruction: "I want
+spud keep to be more difficult to hold. i want the attacker bonus to go to +1000% instead of
+just 66% at max").** Same shape (flat base + escalation over the same 4 further cycles, still
+resetting to 0 the instant `(holderType, holderId)` changes) — `ATTACKER_BONUS_BASE` (6%) was
+NOT part of this instruction and stays untouched, so `ATTACKER_BONUS_PER_HOLD_CYCLE` was
+re-solved to land the ceiling exactly on the new target: `(10.0 - 0.06) / 4 = 2.485` (248.5%
+per additional consecutive-hold cycle). Streak 0/1/2/3/4+ now gives every challenger
++6%/254.5%/503%/751.5%/1000% power — a holder who successfully defends even a handful of times
+in a row now faces overwhelming, near-guaranteed turnover the next cycle, a deliberate,
+substantial difficulty increase from the old 66% ceiling (a real but survivable disadvantage).
+Deliberately NOT widened to 10 steps the way `HOLD_BUFF_STREAK_CAP` was (above) — only the
+ceiling was asked to change, not the cadence — so `ATTACKER_BONUS_STREAK_CAP` (4) and
+`HOLD_BUFF_STREAK_CAP` (9) are independent constants that happen to differ now, not the "share
+one cap, deliberately symmetric" pair they used to be.
 
 ### Per-entrant display now shows post-bonus Power, with the bonus itself called out (2026-09-28)
 

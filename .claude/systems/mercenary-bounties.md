@@ -1638,12 +1638,24 @@ skip 5 times instead of 10"; Guild Raid's own `startRaid.js` chain shares this s
 **Why `cooldownReductionPercent`'s 2026-09-07 max (38%) stayed more modest than
 `rewardMultiplier`/`rivalSuccessBonus`'s own jumps**: this value feeds `combineSkipChance`
 alongside Spud Keep's own cooldown buff (`SpudKeep.COOLDOWN_BUFF_MAX_VALUE`, up to 40% at a
-full hold-streak), and the combined result is hard-capped at `DEFAULT_SKIP_CHANCE_CAP` (60%)
-overall. Pushing Rank's own max much past ~40% would mean any mercenary with a decent Spud
-Keep streak auto-saturates that shared cap on Rank alone, making the Spud Keep stacking feel
-pointless instead of rewarding. 38% still leaves real headroom — a maxed Rank + maxed Spud Keep
-computes to `1-(1-.38)(1-.40) ≈ 63%`, clamped to 60% only once BOTH tracks are simultaneously
-maxed, not casually.
+full hold-streak), and the combined result is hard-capped at `DEFAULT_SKIP_CHANCE_CAP` (60% at
+the time this reasoning was written) overall. Pushing Rank's own max much past ~40% would mean
+any mercenary with a decent Spud Keep streak auto-saturates that shared cap on Rank alone,
+making the Spud Keep stacking feel pointless instead of rewarding. 38% still left real headroom
+under that 60% cap — a maxed Rank + maxed Spud Keep computed to `1-(1-.38)(1-.40) ≈ 63%`,
+clamped to 60% only once BOTH tracks were simultaneously maxed, not casually.
+
+**Update (2026-09-30) — `DEFAULT_SKIP_CHANCE_CAP` lowered 60% → 40%** (direct instruction:
+"Reduce max skip chance for work/raid/bounty/rob-npc/etc to cap at 40% instead of 60" — see
+`economy-and-work.md`'s own "Cooldown-skip overhaul" section for the full derivation). This
+undercuts the "38% still leaves real headroom" conclusion above — Rank alone (38%) now sits
+just 2 points below the ENTIRE shared cap by itself, and a maxed Rank + maxed Spud Keep now
+computes to `1-(1-.38)(1-.40) ≈ 63%`, clamped down to the new 40% cap — meaning Spud Keep
+stacking on top of a maxed mercenary Rank is now effectively fully absorbed by the cap rather
+than the "real headroom" case this section originally described. `cooldownReductionPercent`'s
+own 38% max was NOT part of this instruction and stays unchanged — flagging the now-diminished
+"stacking feels rewarding" rationale here rather than silently leaving the stale conclusion
+next to the new cap value, not proposing a fix nobody asked for.
 
 Per explicit follow-up instruction ("on a loss there is no cooldown skip and no auto
 trigger"), **neither source is even rolled on a loss/whiff** — a loss always resets the full

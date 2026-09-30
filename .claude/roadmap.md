@@ -19204,3 +19204,63 @@ commands can run, not a game formula/balance/data-shape the web version also imp
 `CLAUDE.md`'s cross-repo sync rule doesn't apply here. `financial-project` got its own, independent
 site-wide kill switch the same session (see that repo's own notes) — the two are parallel features
 for their own platforms, not a port of each other, though built on the same admin-id-bypass idea.
+
+## Spud Keep hold-buff widened to 10 steps; Attacker's Bonus ceiling raised 66% → 1000%; shared skip-chance cap lowered 60% → 40%
+
+**Asked**, in one message, three separate rebalances:
+1. "change spud keep to be a 10 step increment instead of 5 granting 4% skip/passive chance for
+   each consecutive hold."
+2. "I also want spud keep to be more difficult to hold. i want the attacker bonus to go to
+   +1000% instead of just 66% at max."
+3. "Reduce max skip chance for work/raid/bounty/rob-npc/etc to cap at 40% instead of 60."
+
+**Changed** (`src/utils/constants.js`, `src/utils/cooldownFactory.js`):
+1. `SpudKeep.PASSIVE_BUFF_VALUE`/`COOLDOWN_BUFF_VALUE` cut 8% → 4% (the base, "value at cycle
+   0"); `PASSIVE_BUFF_PER_HOLD_CYCLE`/`COOLDOWN_BUFF_PER_HOLD_CYCLE` cut 8% → 4% to match;
+   `HOLD_BUFF_STREAK_CAP` raised 4 → 9. At cycles 0-9 that's now 4%/8%/12%/…/40% instead of the
+   old 8%/16%/24%/32%/40% at cycles 0-4 — same eventual ceiling (40%, unchanged), reached over
+   twice as many consecutive successful defenses.
+2. `SpudKeep.ATTACKER_BONUS_PER_HOLD_CYCLE` re-solved from 0.15 to 2.485 — `ATTACKER_BONUS_BASE`
+   (6%) wasn't part of the ask, so the per-cycle step was solved to land the ceiling exactly on
+   the new target: `(10.0 - 0.06) / 4 = 2.485`. Streak 0/1/2/3/4+ now gives every non-holder
+   challenger +6%/254.5%/503%/751.5%/1000% power (was +6%/21%/36%/51%/66%) — same cadence
+   (4 further cycles), same reset-on-turnover rule, deliberately NOT widened to the new 10-step
+   cadence above (only the ceiling was asked to change). `HOLD_BUFF_STREAK_CAP` (9) and
+   `ATTACKER_BONUS_STREAK_CAP` (4, untouched) are now independent constants that happen to
+   differ — a pre-existing comment claiming "both tracks share one cap constant, deliberately
+   symmetric" was only ever true because they coincidentally matched at 4; fixed in both
+   `constants.js` and `spud-keep.md` rather than left stale.
+3. `cooldownFactory.DEFAULT_SKIP_CHANCE_CAP` cut 0.60 → 0.40 — the single shared default every
+   `combineSkipChance`/`combineSkipChanceWithCompanionBonus` call site in the codebase uses (none
+   override it), so one constant change covers `/work`, Guild Raid, Bounty, and Heist/`rob-npc`
+   together. `/work`'s own companion bonus is still added on top, uncapped (2026-09-28's own
+   change, untouched by this instruction).
+
+**Tests.** 14 existing assertions across 4 files needed re-deriving against the new constants —
+no test coverage gap, every failure was a hardcoded worked example that predated this change:
+`spudKeepFactory.test.js` (`getCompoundingBuffValue`'s full cycle-by-cycle table rewritten for
+10 steps/4%, `resolveCycle`'s "compounded value" test moved its streak-going-in from 3→4 to
+8→9 to still land on the new cap, plus one `expect.closeTo` fix for float noise
+`0.04+0.04*9` introduces that `0.08+0.08*4` happened not to), `cooldownFactory.test.js` (the
+"24%+21%+9%" stacking-formula worked example now passes an explicit non-default cap to isolate
+the formula from the now-lower default; `combineSkipChanceWithCompanionBonus`'s three worked
+examples re-derived, one companion chance bumped 0.5→0.7 to keep demonstrating a past-100%
+total under the lower base cap), `dynamoHandler.test.js` (3 `calculateWorkTimerValue` companion
+tests re-derived, one mocked roll value adjusted so it still demonstrates "a miss under the cap
+alone becomes a hit with companion added"), `embedFactory.test.js` (2 tests: the unclaimed
+Holder Buffs base-range display, the `/skip-chances` past-cap total). Full suite: **122 suites
+(1 fully skipped) / 2240 tests (17 skipped, 2223 passing)** — net 0 new tests, 0 broken.
+
+**Docs.** `spud-keep.md` gained two inline updates (hold-buff widening, Attacker's Bonus
+re-solve) at their own existing sections rather than new dated sections, since both directly
+supersede numbers stated a few lines above them. `economy-and-work.md` gained a new dated
+paragraph after its "Cooldown-skip overhaul" narrative (every prior "60%" mention there is
+historical and accurate as of ITS OWN date — left untouched, not rewritten). `guilds.md` got a
+one-line pointer update. `mercenary-bounties.md` got a full dated update section flagging that
+its own "Rank's 38% max still leaves real headroom under the cap" reasoning is now largely
+undercut by the lower cap (Rank alone nearly saturates 40% by itself) — flagged as a
+consequence, not silently fixed, since `cooldownReductionPercent`'s own 38% max wasn't part of
+this instruction.
+
+**Cross-repo note.** All three constants are game-logic/balance numbers `financial-project`'s
+`/gromp` page also implements — checking that repo now for the matching port.

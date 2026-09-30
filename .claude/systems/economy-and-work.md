@@ -332,6 +332,23 @@ of the loss). Two changes, both in `workFactory.js`:
    `/work` field shows the same past-60% total. Full suite: **122 suites / 2219 tests, all
    passing** (up from 2210).
 
+   **`DEFAULT_SKIP_CHANCE_CAP` lowered again, 60% → 40% (2026-09-30, direct instruction:
+   "Reduce max skip chance for work/raid/bounty/rob-npc/etc to cap at 40% instead of 60")**.
+   Every "60%" figure in the sections above was accurate as of its own date — left as history,
+   not rewritten — but the LIVE cap as of this update is 40%. Same single constant
+   (`cooldownFactory.js`), same four consumers (`/work` via
+   `combineSkipChanceWithCompanionBonus`, Guild Raid, Bounty, Heist/`rob-npc` via plain
+   `combineSkipChance`), no call site passes an explicit override — one constant change covers
+   all of them. `/work`'s own companion bonus is still added ON TOP of this cap, uncapped
+   (2026-09-28's own change above, untouched by this instruction) — so a maxed companion can
+   still push `/work`'s real total well past 40%, same as it could push past 60% before; only
+   the shared BASE cap moved. Every hardcoded "60%"/"0.6" worked example across
+   `cooldownFactory.test.js`, `dynamoHandler.test.js`, and `embedFactory.test.js` was
+   re-derived against the new cap (the ORIGINAL "24%+21%+9% ≈ 45.4%" stacking-formula worked
+   example now needs an explicit non-default cap argument to isolate the formula from the
+   now-lower default, since 45.4% itself exceeds 40%). Full suite: **122 suites / 2240 tests,
+   all passing** (0 net new tests — every fix was an existing assertion re-derived in place).
+
    **Visibility**: the reduction has to actually show up on the result, or it's just a quieter
    cooldown nobody notices. `handlePoisonPotato` now returns `{ potatoesGained, immune,
    mitigationInfo }` instead of a plain number (same "return an object, not just the number" shape

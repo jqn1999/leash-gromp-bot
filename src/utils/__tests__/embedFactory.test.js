@@ -896,11 +896,13 @@ describe('createSpudKeepStatusEmbed pagination', () => {
 // computed off consecutiveHoldCycles at grant time), not the flat base constant.
 describe('createSpudKeepStatusEmbed Holder Buffs field', () => {
     test('shows the base range when unclaimed (no live buff to read a current value from)', () => {
+        // Base rate cut 8% -> 4% (2026-09-30, alongside widening 5 steps -> 10 — see
+        // SpudKeep.PASSIVE_BUFF_VALUE's own comment) — max (40%) is unchanged.
         const preview = { currentBuff: null, cooldownBuff: null, spudKeep: {}, entrants: [], attackerBonusPercent: 0, consecutiveHoldCycles: 0 };
         const embed = embedFactory.createSpudKeepStatusEmbed(preview);
         const field = embed.data.fields.find(f => f.name === 'Holder Buffs:');
-        expect(field.value).toContain('+8%');
-        expect(field.value).toContain('-8%');
+        expect(field.value).toContain('+4%');
+        expect(field.value).toContain('-4%');
         expect(field.value).toContain('40%');
     });
 
@@ -1750,7 +1752,7 @@ describe('createSkipChancesEmbed', () => {
     // calculateWorkTimerValue actually rolls against, past 60% when companion pushes it
     // there, unlike Bounty/Heist and Guild Raid (neither has a companion source, both still
     // cap at 60%).
-    test('/work shows a total past 60% once companion is added on top of an already-capped rest of the stack', () => {
+    test('/work shows a total past 40% once companion is added on top of an already-capped rest of the stack', () => {
         const highWorkSources = [
             { key: 'companion', chance: 0.2, label: 'Mochi' },
             { key: 'worldBuff', chance: 0.6, label: 'Griseous' },
@@ -1759,9 +1761,10 @@ describe('createSkipChancesEmbed', () => {
         ];
         const embed = embedFactory.createSkipChancesEmbed('User', highWorkSources, null, null);
         const field = embed.data.fields.find(f => f.name.includes('/work'));
-        // worldBuff+guildBuff alone combine to 1-(1-.6)(1-.6)=.84, capped to .60, + companion's
-        // own .20 = .80 total — NOT capped at 60% the way a plain combineSkipChance would.
-        expect(field.name).toContain('80%');
+        // worldBuff+guildBuff alone combine to 1-(1-.6)(1-.6)=.84, capped to .40 (lowered from
+        // .60, 2026-09-30), + companion's own .20 = .60 total — NOT capped at 40% the way a
+        // plain combineSkipChance would.
+        expect(field.name).toContain('60%');
     });
 });
 
