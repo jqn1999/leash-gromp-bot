@@ -19907,3 +19907,58 @@ is a display-only addition (no new field, no new write, purely surfacing data th
 existed on both platforms), whether to build the equivalent page on `/gromp` is a product
 question for the user rather than an automatic port under this repo's sibling-repo rule — not
 built as of this entry, flagged to the user instead.
+
+## Work Encounter Counts page gets an above/below-expected indicator
+
+**Asked** (same-day follow-up to the page-3 entry above): "Is there a way to color the numbers or
+some other indicator to show if they are above or below the expected number of each encounter for
+their number of works for the base encounter chances." Flagged first that Discord embed field
+values can't carry real per-line text color (only one color for the whole embed sidebar) and
+offered two options: an ANSI color-code block (desktop/web-only, breaks on mobile) or an emoji
+indicator (universally compatible). Confirmed: emoji, comparing against BASE encounter chances
+only (not live event/festival/Prospector-adjusted odds).
+
+**Changed**:
+- `src/utils/eventFactory.js` — the constructor's `workProbability` literal array and
+  `setBaseWorkProbability`'s identical reset copy (previously duplicated verbatim, a pre-existing
+  smell noticed while looking for "the" base rate to reuse) were both replaced with
+  `[...BASE_WORK_PROBABILITY]`, a new module-level exported constant holding the one canonical copy
+  of those 10 numbers. Both call sites spread a fresh copy rather than sharing the array itself,
+  since `workProbability` gets mutated in place by live event multipliers (`applyEvent`'s `*= 2`
+  etc.) and that must never touch the shared base.
+- `src/utils/constants.js` (`Work.METAL_SUCCESS_CHANCE: .1`) — moved out of a local
+  `BASE_METAL_SUCCESS_CHANCE` const that used to live inside `work.js`'s own METAL scenario
+  closure, since a utility (`embedFactory.js`) needed to read the same value and importing a
+  command file into a utility is the wrong dependency direction. `src/commands/user/work.js`'s
+  METAL branch now reads `Work.METAL_SUCCESS_CHANCE` instead — pure rename, no behavior change.
+- `src/utils/embedFactory.js` — new module-level `formatEncounterCountValue(actualCount,
+  expectedCount)` helper (not exported — same "tested through `createUserEmbed`'s own output"
+  convention every other private helper in this file already follows): rounds `expectedCount` to
+  the nearest whole encounter, appends 🔺 if `actualCount` is above that, 🔻 if below, nothing if
+  equal. Page 3's field-building code now computes an `expected` object (one entry per scenario,
+  `workCount * BASE_WORK_PROBABILITY[scenario]`, Metal split via `Work.METAL_SUCCESS_CHANCE`,
+  REGULAR as the base-probability leftover) and threads every count through the new helper. A
+  second, unnamed (`​`) field spells out the 🔺/🔻 legend once rather than repeating it on
+  every line.
+
+**Why base-only, not live odds**: this is a LIFETIME counter — a player's `workCount` was rolled
+against whatever hourly event/festival/Prospector odds happened to be live at each individual
+`/work` call over their entire history, so there's no single "current live rate" that would mean
+anything summed across that history. The base rate is the only stable yardstick, which is exactly
+what was asked for ("for the base encounter chances").
+
+**Tests.** `embedFactory.test.js`'s existing full-content page-3 test needed updating (not
+breaking on its own — its fixture's `workCount` was left at the default 0, so every nonzero count
+correctly now reads as "above" a 0 expected value; the assertion just needed the new 🔺 suffixes
+added). New dedicated test: `workCount: 1000` against `BASE_WORK_PROBABILITY` gives clean expected
+counts per scenario, with each scenario's actual count deliberately set above/at/below its own
+expected value to exercise all three indicator states (🔺/🔻/none) in one pass, including the
+Ancient Potato half-integer-rounds-up case (expected 0.5 → rounds to 1) and Metal's own
+success/failure split. `eventFactory.test.js` re-run clean with no changes needed — the
+`BASE_WORK_PROBABILITY` refactor is behavior-preserving (same literal values, same mutation
+semantics). Full suite: **122 suites (1 fully skipped) / 2284 tests (17 skipped, 2267 passing)** —
+net +1 new test (one test rewritten, one added), 0 broken.
+
+**Cross-repo note.** No port — this sits entirely on top of the `/profile` page-3 display feature
+from the entry above, which was itself flagged as not-yet-built on `financial-project`'s own
+`/gromp` page. Nothing to layer an indicator onto there until that base page exists.

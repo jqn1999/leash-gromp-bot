@@ -7,7 +7,7 @@ const rebirthFactory = require("../utils/rebirthFactory");
 const guildBuffFactory = require("../utils/guildBuffFactory");
 const mercenaryBuffFactory = require("../utils/mercenaryBuffFactory");
 const guildCompanionFactory = require("../utils/guildCompanionFactory");
-const { EventFactory, SCENARIO_LABELS, WORK_SCENARIO_INDICES } = require("../utils/eventFactory");
+const { EventFactory, SCENARIO_LABELS, WORK_SCENARIO_INDICES, BASE_WORK_PROBABILITY } = require("../utils/eventFactory");
 const { getRaidLevelInfo, getGuildDailyInterest } = require("../utils/raidFactory");
 const mercenaryFactory = require("../utils/mercenaryFactory");
 const cooldownFactory = require("../utils/cooldownFactory");
@@ -529,12 +529,29 @@ function buildCinderrootStatusValue(guild, level) {
     return `${name} — ${cooldownPct}% chance to skip raid cooldown on a win, +${rewardPct}% raid rewards (winning side), +${treasuryBonusPct}% treasury interest, +${warbandBonusPct}% Warband success chance (/repel-warband). Can be sacrificed on a raid loss to void that loss's penalty entirely.`;
 }
 
+// Above/below-expected indicator for /profile page 3's Work Encounter Counts (2026-09-30,
+// direct instruction: "color the numbers or some other indicator to show if they are above
+// or below the expected number... for the base encounter chances" — emoji chosen over
+// Discord's ANSI-code-block trick, which only renders on desktop/web and breaks mobile).
+// expectedCount is compared rounded to the nearest whole encounter, not as a raw float —
+// a brand-new account's expected count for a rare scenario can be a tiny fraction (e.g.
+// 0.03 expected Golden Potatoes at workCount 30), and rounding to 0 there means a single
+// real hit correctly reads as "above expected" instead of the float difference alone
+// making every nonzero count read as trivially "above." Equal-after-rounding shows neither
+// arrow — there's nothing to signal when a count is sitting right where it should be.
+function formatEncounterCountValue(actualCount, expectedCount) {
+    const roundedExpected = Math.round(expectedCount);
+    if (actualCount > roundedExpected) return `${actualCount.toLocaleString()} 🔺`;
+    if (actualCount < roundedExpected) return `${actualCount.toLocaleString()} 🔻`;
+    return actualCount.toLocaleString();
+}
+
 class EmbedFactory {
-    // Paginated 2 pages — Overview (economy stats) and Activity & Records — same
-    // Previous/Next button mechanics as /quests, just over a fixed field set instead of
-    // a variable-length list, since streaks + personal records made the single-embed
-    // version too tall to read comfortably. pageIndex defaults to 0 so every existing
-    // non-paginating caller (if any) still gets the overview page unchanged.
+    // Paginated 3 pages — Overview (economy stats), Activity & Records, and Work Encounter
+    // Counts — same Previous/Next button mechanics as /quests, just over a fixed field set
+    // instead of a variable-length list, since streaks + personal records made the
+    // single-embed version too tall to read comfortably. pageIndex defaults to 0 so every
+    // existing non-paginating caller (if any) still gets the overview page unchanged.
     async createUserEmbed(userId, currentName, userAvatarHash, userDetails, pageIndex = 0) {
         const avatarUrl = getUserAvatar(userId, userAvatarHash);
         let title = `${currentName}`;
@@ -777,6 +794,35 @@ class EmbedFactory {
             // same reasoning as `records` above, rather than assume every caller of
             // createUserEmbed went through findUser.
             const counts = userDetails.workScenarioCounts || {};
+            // Expected count per scenario = workCount * BASE_WORK_PROBABILITY's own mass for
+            // that scenario — deliberately the BASE rate only (2026-09-30, direct instruction:
+            // "for the base encounter chances"), never the live event/festival/Prospector-
+            // adjusted odds a player's actual workCount was really rolled against at any given
+            // moment. Those all vary hour-to-hour/season-to-season and this is a LIFETIME
+            // counter, so there's no single "live" rate that would even mean anything summed
+            // across a player's whole history — the base rate is the only stable yardstick.
+            // Metal's own expected count is split the same way the real roll is: an overall
+            // expected Metal ENCOUNTER count off BASE_WORK_PROBABILITY, then Work.METAL_SUCCESS_CHANCE
+            // divides that between the two outcomes.
+            const workCount = userDetails.workCount || 0;
+            const expectedMetalEncounters = workCount * BASE_WORK_PROBABILITY[WORK_SCENARIO_INDICES.METAL];
+            const expected = {
+                golden: workCount * BASE_WORK_PROBABILITY[WORK_SCENARIO_INDICES.GOLDEN],
+                goldenYam: workCount * BASE_WORK_PROBABILITY[WORK_SCENARIO_INDICES.GOLDEN_YAM],
+                poison: workCount * BASE_WORK_PROBABILITY[WORK_SCENARIO_INDICES.POISON],
+                large: workCount * BASE_WORK_PROBABILITY[WORK_SCENARIO_INDICES.LARGE],
+                metalSuccess: expectedMetalEncounters * Work.METAL_SUCCESS_CHANCE,
+                metalFailure: expectedMetalEncounters * (1 - Work.METAL_SUCCESS_CHANCE),
+                sweet: workCount * BASE_WORK_PROBABILITY[WORK_SCENARIO_INDICES.SWEET],
+                companion: workCount * BASE_WORK_PROBABILITY[WORK_SCENARIO_INDICES.COMPANION],
+                taro: workCount * BASE_WORK_PROBABILITY[WORK_SCENARIO_INDICES.TARO],
+                ancient: workCount * BASE_WORK_PROBABILITY[WORK_SCENARIO_INDICES.ANCIENT],
+                mimic: workCount * BASE_WORK_PROBABILITY[WORK_SCENARIO_INDICES.MIMIC],
+                // REGULAR has no BASE_WORK_PROBABILITY entry of its own — it's whatever
+                // mass every other scenario didn't claim, same "the fallback bucket" shape
+                // work.js's own scenario array rolls against (chance: 1, always last).
+                regular: workCount * (1 - BASE_WORK_PROBABILITY.reduce((sum, p) => sum + p, 0)),
+            };
             // Same scenario order work.js's own scenario array rolls against (golden ...
             // regular), not alphabetical or count-sorted — a player already reads /work
             // results in this rarity order, so this page doesn't introduce a second one.
@@ -785,21 +831,27 @@ class EmbedFactory {
             // "Poisonous Potato" — same map, so a scenario's label can't drift between
             // /work-odds and this page). Metal Potato is the one scenario with two
             // outcomes (success/failure), per direct instruction — every other scenario
-            // gets a single lifetime count here.
+            // gets a single lifetime count here. Each count is run through
+            // formatEncounterCountValue for the 🔺/🔻 above/below-expected indicator.
             fields.push({
                 name: "Work Encounter Counts:",
-                value: `${SCENARIO_LABELS[WORK_SCENARIO_INDICES.GOLDEN]}: ${(counts.golden || 0).toLocaleString()}\n`
-                    + `${SCENARIO_LABELS[WORK_SCENARIO_INDICES.GOLDEN_YAM]}: ${(counts.goldenYam || 0).toLocaleString()}\n`
-                    + `${SCENARIO_LABELS[WORK_SCENARIO_INDICES.POISON]}: ${(counts.poison || 0).toLocaleString()}\n`
-                    + `${SCENARIO_LABELS[WORK_SCENARIO_INDICES.LARGE]}: ${(counts.large || 0).toLocaleString()}\n`
-                    + `${SCENARIO_LABELS[WORK_SCENARIO_INDICES.METAL]} — Success: ${(counts.metalSuccess || 0).toLocaleString()}\n`
-                    + `${SCENARIO_LABELS[WORK_SCENARIO_INDICES.METAL]} — Failure: ${(counts.metalFailure || 0).toLocaleString()}\n`
-                    + `${SCENARIO_LABELS[WORK_SCENARIO_INDICES.SWEET]}: ${(counts.sweet || 0).toLocaleString()}\n`
-                    + `${SCENARIO_LABELS[WORK_SCENARIO_INDICES.COMPANION]}: ${(counts.companion || 0).toLocaleString()}\n`
-                    + `${SCENARIO_LABELS[WORK_SCENARIO_INDICES.TARO]}: ${(counts.taro || 0).toLocaleString()}\n`
-                    + `${SCENARIO_LABELS[WORK_SCENARIO_INDICES.ANCIENT]}: ${(counts.ancient || 0).toLocaleString()}\n`
-                    + `${SCENARIO_LABELS[WORK_SCENARIO_INDICES.MIMIC]}: ${(counts.mimic || 0).toLocaleString()}\n`
-                    + `${SCENARIO_LABELS[WORK_SCENARIO_INDICES.REGULAR]}: ${(counts.regular || 0).toLocaleString()}`,
+                value: `${SCENARIO_LABELS[WORK_SCENARIO_INDICES.GOLDEN]}: ${formatEncounterCountValue(counts.golden || 0, expected.golden)}\n`
+                    + `${SCENARIO_LABELS[WORK_SCENARIO_INDICES.GOLDEN_YAM]}: ${formatEncounterCountValue(counts.goldenYam || 0, expected.goldenYam)}\n`
+                    + `${SCENARIO_LABELS[WORK_SCENARIO_INDICES.POISON]}: ${formatEncounterCountValue(counts.poison || 0, expected.poison)}\n`
+                    + `${SCENARIO_LABELS[WORK_SCENARIO_INDICES.LARGE]}: ${formatEncounterCountValue(counts.large || 0, expected.large)}\n`
+                    + `${SCENARIO_LABELS[WORK_SCENARIO_INDICES.METAL]} — Success: ${formatEncounterCountValue(counts.metalSuccess || 0, expected.metalSuccess)}\n`
+                    + `${SCENARIO_LABELS[WORK_SCENARIO_INDICES.METAL]} — Failure: ${formatEncounterCountValue(counts.metalFailure || 0, expected.metalFailure)}\n`
+                    + `${SCENARIO_LABELS[WORK_SCENARIO_INDICES.SWEET]}: ${formatEncounterCountValue(counts.sweet || 0, expected.sweet)}\n`
+                    + `${SCENARIO_LABELS[WORK_SCENARIO_INDICES.COMPANION]}: ${formatEncounterCountValue(counts.companion || 0, expected.companion)}\n`
+                    + `${SCENARIO_LABELS[WORK_SCENARIO_INDICES.TARO]}: ${formatEncounterCountValue(counts.taro || 0, expected.taro)}\n`
+                    + `${SCENARIO_LABELS[WORK_SCENARIO_INDICES.ANCIENT]}: ${formatEncounterCountValue(counts.ancient || 0, expected.ancient)}\n`
+                    + `${SCENARIO_LABELS[WORK_SCENARIO_INDICES.MIMIC]}: ${formatEncounterCountValue(counts.mimic || 0, expected.mimic)}\n`
+                    + `${SCENARIO_LABELS[WORK_SCENARIO_INDICES.REGULAR]}: ${formatEncounterCountValue(counts.regular || 0, expected.regular)}`,
+                inline: false,
+            });
+            fields.push({
+                name: "​",
+                value: "🔺 above expected · 🔻 below expected, for your work count — based on base encounter chances only, not live events/boosts",
                 inline: false,
             });
         }

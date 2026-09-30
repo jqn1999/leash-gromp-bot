@@ -1,3 +1,28 @@
+// Base per-scenario probability MASS (not cumulative), index-matched to
+// WORK_SCENARIO_INDICES (GOLDEN=0 ... GOLDEN_YAM=9; REGULAR has no entry — it's whatever
+// mass is left over, 1 - sum(this array)). The one canonical copy of these 10 numbers —
+// previously duplicated verbatim between the constructor below and setBaseWorkProbability
+// (the post-event reset copy), now both just spread a fresh copy of this array instead
+// (never the array itself — workProbability gets mutated in place by live event
+// multipliers, e.g. applyEvent's `*= 2`, which must never touch this shared base).
+// Exported (2026-09-30) for a second consumer: embedFactory.js's /profile page 3
+// expected-vs-actual encounter comparison, which needs the true base rate untouched by
+// whatever event/festival/companion odds happen to be live right now.
+const BASE_WORK_PROBABILITY = [
+    .001,
+    .01,
+    .04,
+    .01,
+    .02,
+    .015,
+    .02,
+    .0005, // ANCIENT — halved again 2026-08-29 (was .0015), direct instruction: rarer
+           // than Golden Potato's own .001, so "Ancient" actually reads as the rarest
+           // encounter in the game rather than sitting above Golden's own floor.
+    .01,
+    .001
+];
+
 class EventFactory {
     constructor() {
         if (EventFactory._instance) {
@@ -5,20 +30,7 @@ class EventFactory {
         }
         EventFactory._instance = this;
         this.currentEvent = null;
-        this.workProbability = [
-            .001,
-            .01,
-            .04,
-            .01,
-            .02,
-            .015,
-            .02,
-            .0005, // ANCIENT — halved again 2026-08-29 (was .0015), direct instruction: rarer
-                   // than Golden Potato's own .001, so "Ancient" actually reads as the rarest
-                   // encounter in the game rather than sitting above Golden's own floor.
-            .01,
-            .001
-        ];
+        this.workProbability = [...BASE_WORK_PROBABILITY];
         this.workChances = [
             .001,
             .011,
@@ -130,19 +142,7 @@ class EventFactory {
     }
 
     setBaseWorkProbability() {
-        this.workProbability = [
-            .001,
-            .01,
-            .04,
-            .01,
-            .02,
-            .015,
-            .02,
-            .0005, // ANCIENT — halved again 2026-08-29 (was .0015), direct instruction: rarer
-                   // than Golden Potato's own .001 (see the constructor's own comment)
-            .01,
-            .001
-        ];
+        this.workProbability = [...BASE_WORK_PROBABILITY];
     }
 
     getCurrentEvent() {
@@ -250,6 +250,7 @@ module.exports = {
     EventFactory,
     WORK_SCENARIO_INDICES,
     SCENARIO_LABELS,
+    BASE_WORK_PROBABILITY,
     EVENT_SCENARIO_MAP,
     buildActiveEventPayload
 }

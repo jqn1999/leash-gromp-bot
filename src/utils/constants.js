@@ -4,6 +4,12 @@ const Work = {
     PERCENT_OF_TOTAL: .002,
     WORK_TIMER_SECONDS: 300,
     MAX_BASE_WORK_GAIN: 1000,
+    // Moved here from a local const inside work.js's own METAL scenario closure
+    // (2026-09-30) — needed a second consumer (embedFactory.js's /profile page 3
+    // expected-vs-actual encounter comparison) and a plain command-file local const isn't
+    // importable from a utility without an awkward command->utility dependency, so this
+    // became the one canonical value both read.
+    METAL_SUCCESS_CHANCE: .1,
     // Purely a safety valve, not a balance lever — a companion's workCooldownSkipChance
     // auto-chains another /work (see work.js's performWork) instead of making the player
     // manually re-run the command, since they'd get the exact same outcome either way at

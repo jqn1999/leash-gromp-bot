@@ -115,9 +115,8 @@ var workScenarios = [
         action: async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction, catchUpBonus, forcedCompanionId, isChainedReply = false) => {
             const userId = userDetails.userId;
             const metalSuccessRoll = Math.random();
-            const BASE_METAL_SUCCESS_CHANCE = .1;
             let potatoesGained;
-            if (metalSuccessRoll < BASE_METAL_SUCCESS_CHANCE) {
+            if (metalSuccessRoll < Work.METAL_SUCCESS_CHANCE) {
                 const metalResult = await workFactory.handleMetalPotato(userDetails, workGainAmount, multiplier, catchUpBonus);
                 potatoesGained = metalResult.potatoesGained;
                 embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, metalPotatoSuccess, userDetails._cooldownSkippedByCompanion, userDetails._companionXpGained, companionFactory.getActiveCompanion(userDetails)?.name, userDetails._cooldownSkipChance, metalResult.statGrant);

@@ -2291,23 +2291,71 @@ describe('createUserEmbed page 3 — Work Encounter Counts', () => {
             metalSuccess: 2, metalFailure: 9, golden: 1, companion: 10,
             ancient: 3, mimic: 4, mimicKilled: 1, goldenYam: 1,
         };
+        // workCount left at baseUserDetails' default (0) — every BASE_WORK_PROBABILITY-
+        // scaled expected count is then 0 too, so every nonzero actual count here reads as
+        // "above expected" (🔺). The indicator's own above/below/equal logic is exercised
+        // precisely in the dedicated test below instead; this test's job is just the label
+        // text/order/Metal-split content, unaffected by the indicator feature.
         const embed = await embedFactory.createUserEmbed('user-1', 'Player', 'hash', baseUserDetails({ workScenarioCounts }), 2);
 
         expect(embed.data.description).toContain('Page 3 / 3');
         const field = embed.data.fields.find(f => f.name === 'Work Encounter Counts:');
         expect(field.value).toBe(
-            'Golden Potato: 1\n'
+            'Golden Potato: 1 🔺\n'
+            + 'Golden Yam: 1 🔺\n'
+            + 'Poison Potato: 8 🔺\n'
+            + 'Large Potato: 5 🔺\n'
+            + 'Metal Potato — Success: 2 🔺\n'
+            + 'Metal Potato — Failure: 9 🔺\n'
+            + 'Sweet Potato: 6 🔺\n'
+            + 'Wandering Companion: 10 🔺\n'
+            + 'Taro Trader: 7 🔺\n'
+            + 'Ancient Potato: 3 🔺\n'
+            + 'Mimic Potato: 4 🔺\n'
+            + 'Regular Work: 40 🔺'
+        );
+    });
+
+    // Above/below-expected indicator (2026-09-30, direct instruction: "color the numbers
+    // or some other indicator to show if they are above or below the expected number... for
+    // the base encounter chances"). workCount: 1000 against BASE_WORK_PROBABILITY gives
+    // clean expected counts (golden/goldenYam expected 1, poison expected 10, large
+    // expected 40, metal overall expected 10 -> success 1/failure 9 via
+    // Work.METAL_SUCCESS_CHANCE, sweet expected 20, companion expected 15, taro expected
+    // 20, ancient expected 0.5 -> rounds to 1, mimic expected 10, regular expected 872.5 ->
+    // rounds to 873) — each scenario's actual count below is deliberately set above, at, or
+    // below that rounded expected value to exercise all three indicator states.
+    test('shows 🔺 for an above-expected count, 🔻 for below-expected, and no indicator when a count matches its expected value', async () => {
+        const workScenarioCounts = {
+            golden: 2,        // expected 1 -> above
+            goldenYam: 1,     // expected 1 -> equal
+            poison: 5,        // expected 10 -> below
+            large: 40,        // expected 40 -> equal
+            metalSuccess: 3,  // expected 1 -> above
+            metalFailure: 2,  // expected 9 -> below
+            sweet: 20,        // expected 20 -> equal
+            companion: 20,    // expected 15 -> above
+            taro: 10,         // expected 20 -> below
+            ancient: 1,       // expected 0.5 (rounds to 1) -> equal
+            mimic: 10,        // expected 10 -> equal
+            regular: 900,     // expected 872.5 (rounds to 873) -> above
+        };
+        const embed = await embedFactory.createUserEmbed('user-1', 'Player', 'hash', baseUserDetails({ workCount: 1000, workScenarioCounts }), 2);
+
+        const field = embed.data.fields.find(f => f.name === 'Work Encounter Counts:');
+        expect(field.value).toBe(
+            'Golden Potato: 2 🔺\n'
             + 'Golden Yam: 1\n'
-            + 'Poison Potato: 8\n'
-            + 'Large Potato: 5\n'
-            + 'Metal Potato — Success: 2\n'
-            + 'Metal Potato — Failure: 9\n'
-            + 'Sweet Potato: 6\n'
-            + 'Wandering Companion: 10\n'
-            + 'Taro Trader: 7\n'
-            + 'Ancient Potato: 3\n'
-            + 'Mimic Potato: 4\n'
-            + 'Regular Work: 40'
+            + 'Poison Potato: 5 🔻\n'
+            + 'Large Potato: 40\n'
+            + 'Metal Potato — Success: 3 🔺\n'
+            + 'Metal Potato — Failure: 2 🔻\n'
+            + 'Sweet Potato: 20\n'
+            + 'Wandering Companion: 20 🔺\n'
+            + 'Taro Trader: 10 🔻\n'
+            + 'Ancient Potato: 1\n'
+            + 'Mimic Potato: 10\n'
+            + 'Regular Work: 900 🔺'
         );
     });
 
