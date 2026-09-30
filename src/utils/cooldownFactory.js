@@ -10,7 +10,17 @@
 // (a near-guaranteed 90%-every-time skip, chained up to 15 deep, was too strong once every
 // source in the app got folded into this single mechanic). Still enforced as a hard ceiling
 // below, independent of the stacking formula.
-const DEFAULT_SKIP_CHANCE_CAP = 0.60;
+//
+// Lowered again 60% -> 40% (2026-09-30, direct instruction: "Reduce max skip chance for
+// work/raid/bounty/rob-npc/etc to cap at 40% instead of 60"). This is the single shared
+// default every combineSkipChance/combineSkipChanceWithCompanionBonus call site in the
+// codebase uses (none pass an explicit override) — /work (dynamoHandler.js's cooldown-skip
+// resolution), Guild Raid (startRaid.js), Bounty (takeBounty.js), and Heist/rob-npc
+// (robNpc.js) all get the lower ceiling from this one constant. /work's own companion bonus
+// is still added ON TOP of this cap, uncapped (see combineSkipChanceWithCompanionBonus below)
+// — unchanged by this instruction, which was about the shared stacking cap, not that
+// separate uncapped bonus.
+const DEFAULT_SKIP_CHANCE_CAP = 0.40;
 
 // Multiple sources stack via the standard independent-probability combination
 // 1-∏(1-pᵢ) — switched 2026-09-05 from a straight sum-then-cap (direct instruction, after

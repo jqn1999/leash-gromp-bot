@@ -145,30 +145,39 @@ describe('getAttackerBonusMultiplier', () => {
 // getAttackerBonusMultiplier above, verified against both real tracks (passive/cooldown
 // currently share identical base/per-cycle/max constants, but the function itself takes
 // them as plain arguments so it's not coupled to that).
+// Widened 5 steps -> 10, 8%/step -> 4%/step (2026-09-30, direct instruction: "change spud
+// keep to be a 10 step increment instead of 5 granting 4% skip/passive chance for each
+// consecutive hold") — see SpudKeep.PASSIVE_BUFF_VALUE's own comment. MAX_VALUE (40%)
+// unchanged, HOLD_BUFF_STREAK_CAP 4 -> 9.
 describe('getCompoundingBuffValue', () => {
     test('cycle 0 (fresh capture, day 1) is exactly the base value for both tracks', () => {
-        expect(spudKeepFactory.getCompoundingBuffValue(SpudKeep.PASSIVE_BUFF_VALUE, SpudKeep.PASSIVE_BUFF_PER_HOLD_CYCLE, SpudKeep.PASSIVE_BUFF_MAX_VALUE, 0)).toBeCloseTo(0.08);
-        expect(spudKeepFactory.getCompoundingBuffValue(SpudKeep.COOLDOWN_BUFF_VALUE, SpudKeep.COOLDOWN_BUFF_PER_HOLD_CYCLE, SpudKeep.COOLDOWN_BUFF_MAX_VALUE, 0)).toBeCloseTo(0.08);
+        expect(spudKeepFactory.getCompoundingBuffValue(SpudKeep.PASSIVE_BUFF_VALUE, SpudKeep.PASSIVE_BUFF_PER_HOLD_CYCLE, SpudKeep.PASSIVE_BUFF_MAX_VALUE, 0)).toBeCloseTo(0.04);
+        expect(spudKeepFactory.getCompoundingBuffValue(SpudKeep.COOLDOWN_BUFF_VALUE, SpudKeep.COOLDOWN_BUFF_PER_HOLD_CYCLE, SpudKeep.COOLDOWN_BUFF_MAX_VALUE, 0)).toBeCloseTo(0.04);
     });
 
-    test('escalates linearly through days 2-5 (cycles 1-4): 16%, 24%, 32%, 40%', () => {
+    test('escalates linearly through days 2-10 (cycles 1-9): 8%, 12%, ..., 36%, 40%', () => {
         const value = c => spudKeepFactory.getCompoundingBuffValue(SpudKeep.PASSIVE_BUFF_VALUE, SpudKeep.PASSIVE_BUFF_PER_HOLD_CYCLE, SpudKeep.PASSIVE_BUFF_MAX_VALUE, c);
-        expect(value(1)).toBeCloseTo(0.16);
-        expect(value(2)).toBeCloseTo(0.24);
-        expect(value(3)).toBeCloseTo(0.32);
-        expect(value(4)).toBeCloseTo(0.40);
+        expect(value(1)).toBeCloseTo(0.08);
+        expect(value(2)).toBeCloseTo(0.12);
+        expect(value(3)).toBeCloseTo(0.16);
+        expect(value(4)).toBeCloseTo(0.20);
+        expect(value(5)).toBeCloseTo(0.24);
+        expect(value(6)).toBeCloseTo(0.28);
+        expect(value(7)).toBeCloseTo(0.32);
+        expect(value(8)).toBeCloseTo(0.36);
+        expect(value(9)).toBeCloseTo(0.40);
     });
 
-    test('caps at the max value beyond HOLD_BUFF_STREAK_CAP — day 6+ is identical to day 5', () => {
+    test('caps at the max value beyond HOLD_BUFF_STREAK_CAP — day 11+ is identical to day 10', () => {
         const value = c => spudKeepFactory.getCompoundingBuffValue(SpudKeep.PASSIVE_BUFF_VALUE, SpudKeep.PASSIVE_BUFF_PER_HOLD_CYCLE, SpudKeep.PASSIVE_BUFF_MAX_VALUE, c);
-        expect(value(4)).toBe(value(99));
+        expect(value(9)).toBe(value(99));
         expect(value(99)).toBeCloseTo(SpudKeep.PASSIVE_BUFF_MAX_VALUE);
     });
 
     test('a NaN/undefined streak is treated as 0, not propagated', () => {
         const value = c => spudKeepFactory.getCompoundingBuffValue(SpudKeep.PASSIVE_BUFF_VALUE, SpudKeep.PASSIVE_BUFF_PER_HOLD_CYCLE, SpudKeep.PASSIVE_BUFF_MAX_VALUE, c);
-        expect(value(undefined)).toBeCloseTo(0.08);
-        expect(value(NaN)).toBeCloseTo(0.08);
+        expect(value(undefined)).toBeCloseTo(0.04);
+        expect(value(NaN)).toBeCloseTo(0.04);
     });
 });
 
@@ -514,20 +523,24 @@ describe('resolveCycle', () => {
     test('a successful defense grants the COMPOUNDED buff value, not the flat base', async () => {
         dynamoHandler.getStatDatabase.mockResolvedValue({ potPotatoes: 0 });
         dynamoHandler.getGuilds.mockResolvedValue([{ guildId: 'g1', autoJoinSpudKeep: true }]);
-        // Already 3 consecutive holds going in -> this defense makes it 4 (day 5, the cap).
-        dynamoHandler.getActiveSpudKeepBuff.mockResolvedValue({ holderType: 'guild', holderId: 'g1', holderName: 'g1-name', expiresAt: Date.now() + 1000, consecutiveHoldCycles: 3 });
+        // Already 8 consecutive holds going in -> this defense makes it 9 (day 10, the cap —
+        // widened 5 steps -> 10, 2026-09-30, see SpudKeep.PASSIVE_BUFF_VALUE's own comment).
+        dynamoHandler.getActiveSpudKeepBuff.mockResolvedValue({ holderType: 'guild', holderId: 'g1', holderName: 'g1-name', expiresAt: Date.now() + 1000, consecutiveHoldCycles: 8 });
         dynamoHandler.getActiveSpudKeepCooldownBuff.mockResolvedValue(undefined);
         dynamoHandler.findGuildById.mockImplementation(async (guildId) => guild(guildId, [{ id: 'm1', username: 'm1' }]));
         jest.spyOn(Math, 'random').mockReturnValue(0);
 
         const result = await spudKeepFactory.resolveCycle();
 
-        expect(result.consecutiveHoldCycles).toBe(4);
-        expect(result.passiveBuffValue).toBeCloseTo(SpudKeep.PASSIVE_BUFF_MAX_VALUE); // 40% at cycle 4
+        expect(result.consecutiveHoldCycles).toBe(9);
+        expect(result.passiveBuffValue).toBeCloseTo(SpudKeep.PASSIVE_BUFF_MAX_VALUE); // 40% at cycle 9
         expect(result.cooldownBuffValue).toBeCloseTo(SpudKeep.COOLDOWN_BUFF_MAX_VALUE);
+        // expect.closeTo (not an exact literal) — 0.04 + 0.04*9 lands on 0.39999999999999997
+        // in IEEE 754, not exactly 0.4, the same float-precision noise toBeCloseTo above
+        // already tolerates; objectContaining's own per-field match is exact otherwise.
         expect(dynamoHandler.setActiveSpudKeepBundle).toHaveBeenCalledWith(
-            expect.objectContaining({ value: SpudKeep.PASSIVE_BUFF_MAX_VALUE }),
-            expect.objectContaining({ value: SpudKeep.COOLDOWN_BUFF_MAX_VALUE })
+            expect.objectContaining({ value: expect.closeTo(SpudKeep.PASSIVE_BUFF_MAX_VALUE, 5) }),
+            expect.objectContaining({ value: expect.closeTo(SpudKeep.COOLDOWN_BUFF_MAX_VALUE, 5) })
         );
     });
 

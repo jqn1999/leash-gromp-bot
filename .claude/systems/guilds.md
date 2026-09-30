@@ -382,8 +382,9 @@ for a combined reduction north of 80% off the base 1-hour cooldown.
 cooldown perk, and Cinderroot's guild-companion perk (3a, see the "Guild Raid Companion" design
 below) are no longer additive REDUCTIONS to `raidTimer`. All four are now skip-chance SOURCES fed
 into `cooldownFactory.combineSkipChance`/`rollCooldownSkip` (combined via `1-∏(1-pᵢ)`, not a sum
-— switched same day, direct instruction — and capped at 60%, `DEFAULT_SKIP_CHANCE_CAP`, lowered
-from 90%) and rolled **once, only on
+— switched same day, direct instruction — and capped at `DEFAULT_SKIP_CHANCE_CAP`, lowered
+90% → 60% → 40% as of 2026-09-30 — see `economy-and-work.md`'s own "Cooldown-skip overhaul"
+section for the full history) and rolled **once, only on
 a WIN** — see [raids-and-world-events.md](raids-and-world-events.md#guild-raid-cooldown-skip) for
 the full mechanic. Per explicit follow-up instruction ("on a loss there is no cooldown skip and no
 auto trigger"), **none of these four sources are even consulted for a skip roll on a loss** — a

@@ -19204,3 +19204,124 @@ commands can run, not a game formula/balance/data-shape the web version also imp
 `CLAUDE.md`'s cross-repo sync rule doesn't apply here. `financial-project` got its own, independent
 site-wide kill switch the same session (see that repo's own notes) — the two are parallel features
 for their own platforms, not a port of each other, though built on the same admin-id-bypass idea.
+
+## Spud Keep hold-buff widened to 10 steps; Attacker's Bonus ceiling raised 66% → 1000%; shared skip-chance cap lowered 60% → 40%
+
+**Asked**, in one message, three separate rebalances:
+1. "change spud keep to be a 10 step increment instead of 5 granting 4% skip/passive chance for
+   each consecutive hold."
+2. "I also want spud keep to be more difficult to hold. i want the attacker bonus to go to
+   +1000% instead of just 66% at max."
+3. "Reduce max skip chance for work/raid/bounty/rob-npc/etc to cap at 40% instead of 60."
+
+**Changed** (`src/utils/constants.js`, `src/utils/cooldownFactory.js`):
+1. `SpudKeep.PASSIVE_BUFF_VALUE`/`COOLDOWN_BUFF_VALUE` cut 8% → 4% (the base, "value at cycle
+   0"); `PASSIVE_BUFF_PER_HOLD_CYCLE`/`COOLDOWN_BUFF_PER_HOLD_CYCLE` cut 8% → 4% to match;
+   `HOLD_BUFF_STREAK_CAP` raised 4 → 9. At cycles 0-9 that's now 4%/8%/12%/…/40% instead of the
+   old 8%/16%/24%/32%/40% at cycles 0-4 — same eventual ceiling (40%, unchanged), reached over
+   twice as many consecutive successful defenses.
+2. `SpudKeep.ATTACKER_BONUS_PER_HOLD_CYCLE` re-solved from 0.15 to 2.485 — `ATTACKER_BONUS_BASE`
+   (6%) wasn't part of the ask, so the per-cycle step was solved to land the ceiling exactly on
+   the new target: `(10.0 - 0.06) / 4 = 2.485`. Streak 0/1/2/3/4+ now gives every non-holder
+   challenger +6%/254.5%/503%/751.5%/1000% power (was +6%/21%/36%/51%/66%) — same cadence
+   (4 further cycles), same reset-on-turnover rule, deliberately NOT widened to the new 10-step
+   cadence above (only the ceiling was asked to change). `HOLD_BUFF_STREAK_CAP` (9) and
+   `ATTACKER_BONUS_STREAK_CAP` (4, untouched) are now independent constants that happen to
+   differ — a pre-existing comment claiming "both tracks share one cap constant, deliberately
+   symmetric" was only ever true because they coincidentally matched at 4; fixed in both
+   `constants.js` and `spud-keep.md` rather than left stale.
+3. `cooldownFactory.DEFAULT_SKIP_CHANCE_CAP` cut 0.60 → 0.40 — the single shared default every
+   `combineSkipChance`/`combineSkipChanceWithCompanionBonus` call site in the codebase uses (none
+   override it), so one constant change covers `/work`, Guild Raid, Bounty, and Heist/`rob-npc`
+   together. `/work`'s own companion bonus is still added on top, uncapped (2026-09-28's own
+   change, untouched by this instruction).
+
+**Tests.** 14 existing assertions across 4 files needed re-deriving against the new constants —
+no test coverage gap, every failure was a hardcoded worked example that predated this change:
+`spudKeepFactory.test.js` (`getCompoundingBuffValue`'s full cycle-by-cycle table rewritten for
+10 steps/4%, `resolveCycle`'s "compounded value" test moved its streak-going-in from 3→4 to
+8→9 to still land on the new cap, plus one `expect.closeTo` fix for float noise
+`0.04+0.04*9` introduces that `0.08+0.08*4` happened not to), `cooldownFactory.test.js` (the
+"24%+21%+9%" stacking-formula worked example now passes an explicit non-default cap to isolate
+the formula from the now-lower default; `combineSkipChanceWithCompanionBonus`'s three worked
+examples re-derived, one companion chance bumped 0.5→0.7 to keep demonstrating a past-100%
+total under the lower base cap), `dynamoHandler.test.js` (3 `calculateWorkTimerValue` companion
+tests re-derived, one mocked roll value adjusted so it still demonstrates "a miss under the cap
+alone becomes a hit with companion added"), `embedFactory.test.js` (2 tests: the unclaimed
+Holder Buffs base-range display, the `/skip-chances` past-cap total). Full suite: **122 suites
+(1 fully skipped) / 2240 tests (17 skipped, 2223 passing)** — net 0 new tests, 0 broken.
+
+**Docs.** `spud-keep.md` gained two inline updates (hold-buff widening, Attacker's Bonus
+re-solve) at their own existing sections rather than new dated sections, since both directly
+supersede numbers stated a few lines above them. `economy-and-work.md` gained a new dated
+paragraph after its "Cooldown-skip overhaul" narrative (every prior "60%" mention there is
+historical and accurate as of ITS OWN date — left untouched, not rewritten). `guilds.md` got a
+one-line pointer update. `mercenary-bounties.md` got a full dated update section flagging that
+its own "Rank's 38% max still leaves real headroom under the cap" reasoning is now largely
+undercut by the lower cap (Rank alone nearly saturates 40% by itself) — flagged as a
+consequence, not silently fixed, since `cooldownReductionPercent`'s own 38% max wasn't part of
+this instruction.
+
+**Cross-repo note.** All three constants are game-logic/balance numbers `financial-project`'s
+`/gromp` page also implements — checking that repo now for the matching port.
+
+## Tower crash investigation, continued: last-resort channel fallback when notification itself fails
+
+**Asked**: "continue fixing tater tower, still getting random sporadic drops from tower with no
+messaging" — a live report from the admin (the only one who can currently run `/enter-tower`
+while `TOWER_DISABLED` is true) that runs are still dropping sporadically with zero messaging
+reaching them, even after the 2026-09-29 crash-hardening pass (see the section above) added
+recovery/notification messages at every failure point found in that investigation.
+
+**Root cause, one layer further than the prior fix.** Every one of the 2026-09-29 pass's own
+notification paths was itself an `interaction.editReply`/`interaction.reply`/`interaction.
+followUp` call — all of which depend on the interaction's own webhook token. Discord invalidates
+that token roughly 15 minutes after the interaction was created, a hard platform limit unrelated
+to this bot's own code. Tower runs have no internal time budget: each floor's own
+`awaitMessageComponent` alone can wait up to 30s, and a long, slow climb through many floors can
+realistically add up past 15 minutes. Once the token is dead, *every* interaction-based call
+fails, including the attempted recovery message — so all three catch blocks previously just
+`console.error`'d and stopped, leaving the player with literally nothing. This explains "random"
+(depends on how long the run took) and "sporadic" (only long/slow climbs hit the 15-minute
+window) exactly.
+
+**Changed** (`src/commands/tower/enter-tower.js`): added a `sendFallbackChannelMessage(
+interaction, userId, content)` helper that sends a plain `interaction.channel.send({ content:
+"<@userId> ..." })` message — an ordinary bot message via the bot's standard REST permissions,
+not tied to the interaction's webhook token at all, so it survives even a fully dead token. Wired
+into all three existing catch blocks from the 2026-09-29 pass, called only after the
+interaction-based attempt has already failed (a healthy interaction never gets a redundant second
+message):
+1. `startRun()` crash recovery — if `editReply`/`reply` also reject, the same recovery message
+   goes to the channel instead, still `@`-mentioning the player.
+2. Results-embed followUp failure — falls back to a plain-text reward summary (floor, potatoes,
+   work multiplier, passive income, bank capacity) instead of the real embed.
+3. Tail-bookkeeping failure — the same "something went wrong saving part of your run" message
+   goes to the channel, necessarily without `ephemeral` (that property has no equivalent for a
+   plain channel send).
+
+**What this doesn't fix**: the token's ~15-minute expiry itself is a structural Discord limit,
+not something the application can prevent short of capping run length — which would be its own
+player-facing behavior change, not something to silently introduce. This only ensures the player
+is told *something* once the token dies, instead of the run vanishing with no messaging at all,
+which was the actual reported symptom. Not addressed: `interaction.channel` itself being unusable
+(deleted channel, bot kicked, missing permission) — not raised as a concern, so left alone rather
+than guarded against speculatively.
+
+**Tests.** `enter-tower.test.js`'s `fakeInteraction()` helper gained a `channel: { send: jest.fn()
+}` stub (inherited automatically by `adminInteraction()`, which wraps it). Three new tests added
+to the admin-bypass describe block, one per fallback site, each forcing the primary
+interaction-based attempt to also fail and asserting `interaction.channel.send` receives the
+right content (and, for the tail-bookkeeping case, that the options carry no `ephemeral` key).
+Full suite: **122 suites (1 fully skipped) / 2243 tests (17 skipped, 2226 passing)** — net +3 new
+tests, 0 broken.
+
+**Cross-repo note.** Not ported to `financial-project` — this is Discord-interaction-specific
+mechanics (webhook token lifetime, `interaction.channel.send`) with no web equivalent, and
+touches no game logic, balance, or data shape that repo's `/gromp` page implements.
+
+**Investigation status**: still open, same as the 2026-09-29 entry above — this closes a real gap
+(silent total notification failure) found by tracing the reported symptom, but doesn't itself
+confirm or rule out what's actually crashing `startRun()` mid-climb. If a real stack trace ever
+comes back from one of these newly-surfaced channel messages or from a future report, that's still
+the fastest path to root-causing the crash itself.

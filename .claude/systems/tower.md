@@ -2996,3 +2996,59 @@ real stack trace — they're every concrete gap the static-analysis deep-dive ac
 their own merits. If another crash report comes in once the command is back (even just from the
 admin bypass), a real stack trace is still the fastest way to confirm which one it actually was,
 rather than continuing to guess.
+
+## Last-resort channel fallback for notification, same investigation (2026-09-30, live report: "still getting random sporadic drops from tower with no messaging")
+
+The 2026-09-29 crash-hardening pass above added recovery/notification messages at every failure
+point in `enter-tower.js` (`startRun()` crash, results-embed followUp, tail-bookkeeping throw) — but
+even with the admin bypass active, the admin reported still hitting sporadic drops with **zero
+messaging** reaching them at all. Root cause: all three of those recovery paths were themselves
+`interaction.editReply`/`interaction.reply`/`interaction.followUp` calls, which depend on the
+interaction's own webhook token. Discord invalidates that token roughly 15 minutes after the
+interaction was created — a hard platform limit, not a bug in this bot's own code — and Tower runs
+have no internal time budget at all: each floor's own `awaitMessageComponent` alone can wait up to
+30s, and a long, slow climb through many floors can realistically add up past 15 minutes. Once the
+token is dead, *every* interaction-based call fails, including the recovery message itself — so all
+three catch blocks used to just `console.error` and stop, leaving the player with literally nothing.
+
+**The fix.** A new `sendFallbackChannelMessage(interaction, userId, content)` helper in
+`enter-tower.js` sends a plain `interaction.channel.send({ content: "<@userId> ..." })` message —
+this is an ordinary bot message via the bot's standard REST permissions, not tied to the
+interaction's own webhook token in any way, so it still works even once that token is fully dead.
+It's called ONLY as a last resort, from inside the existing catch blocks, after the interaction-based
+attempt has already failed — a healthy interaction never gets a redundant second message:
+
+1. **`startRun()` crash recovery** — if both `editReply`/`reply` reject, the same
+   floor-and-recovery-instructions message that would have gone to `editReply` now goes to the
+   channel instead, still `@`-mentioning the player.
+2. **Results-embed followUp failure** — if the results embed itself can't be sent, the fallback is a
+   plain-text reward summary (floor reached, potatoes/work-multiplier/passive-income/bank-capacity
+   granted) rather than the real embed, with a note that Discord wouldn't show the usual results
+   screen. The reward was already credited by this point regardless (climb finished, `startRun()`
+   returned) — this only affects whether the player is told about it.
+3. **Tail-bookkeeping failure** — if the "something went wrong saving part of your run" followUp
+   itself fails, the same message goes to the channel. It can no longer be `ephemeral` once it falls
+   back to a plain channel message — that property only exists for interaction replies, there's no
+   private-to-one-user equivalent for a normal channel send.
+
+**What this does and doesn't fix.** This does not prevent the interaction token from expiring — that
+window is a structural Discord platform limit, not something fixable at the application level short
+of capping run length (not requested, and would itself be a player-facing behavior change flagged
+before implementing). It only ensures the player is still told *something* once that happens, instead
+of the run silently vanishing with no messaging at all, which was the actual reported symptom. A
+residual gap remains if `interaction.channel` is itself unusable (channel deleted, bot kicked, missing
+send permission) — not raised as a concern and not addressed here, consistent with fixing what was
+actually reported rather than every hypothetical failure mode.
+
+**Tests.** `enter-tower.test.js`'s `fakeInteraction()` helper (and therefore the admin-bypass
+describe block's `adminInteraction()`, which wraps it) now stubs `channel: { send: jest.fn() }`. Three
+new tests in the admin-bypass describe block force the primary interaction-based attempt to also
+fail at each of the three sites above and assert `interaction.channel.send` is called with the
+correct content (and, for the tail-bookkeeping case, that the send options carry no `ephemeral` key).
+Full suite: **122 suites (1 reporting fully skipped) / 2243 tests (17 skipped, 2226 passing)** — net
++3 new tests, 0 broken.
+
+**financial-project scope note.** Not ported — this fix is Discord-interaction-specific mechanics
+(webhook token lifetime, `interaction.channel.send` as a plain bot message) with no web equivalent;
+the web port has no notion of an "interaction token" at all. Nothing here touches game logic,
+balance, or data shapes, so `financial-project`'s own CLAUDE.md sync rule doesn't apply.

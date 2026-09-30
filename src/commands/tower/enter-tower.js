@@ -15,6 +15,28 @@ const { awsConfigurations } = require("../../utils/constants.js");
 // so the callback can show a separate drop-announcement followUp, mirroring takeBounty.js's
 // own achievement/quest followUp precedent — companions is only written back once, at the
 // end, so a run with neither a level-up nor a drop makes no extra write at all.
+// Last-resort notification (2026-09-30, live report: "still getting random sporadic drops
+// from tower with no messaging" — even after the 2026-09-29 crash-hardening pass added
+// recovery messages for both failure points below). Root cause: Discord invalidates an
+// interaction's own webhook token roughly 15 minutes after the interaction was created —
+// a real limit that has nothing to do with this bot's own code, and Tower runs have no
+// internal time budget at all (each floor's own `awaitMessageComponent` alone waits up to
+// 30s, and a long, slow climb through many floors can realistically add up past 15 minutes).
+// Once the token is dead, EVERY `interaction.editReply`/`followUp`/`reply` call fails — including
+// the recovery message itself — so both catch blocks below used to just console.error and stop,
+// leaving the player with nothing at all. `interaction.channel.send(...)` is a plain bot
+// message, not tied to the interaction's own webhook token in any way, so it still works even
+// once the token is fully dead — this is the one channel that survives that failure mode.
+// Used ONLY as a last resort, after the interaction-based attempt has already failed, so a
+// healthy interaction never gets a redundant second message.
+async function sendFallbackChannelMessage(interaction, userId, content) {
+    try {
+        await interaction.channel.send({ content: `<@${userId}> ${content}` });
+    } catch (channelError) {
+        console.error(`Failed to send Tower fallback channel message to ${userId}:`, channelError);
+    }
+}
+
 async function processTowerCompanionRewards(userId, userDetails, floor, elitesSurvivedCount, towerCompanionHits, wardUsed) {
     let companions = userDetails.companions;
     let bastionAward = null;
@@ -241,7 +263,12 @@ module.exports = {
                     await interaction.reply({ content: recoveryMessage });
                 }
             } catch (replyError) {
+                // Last-resort fallback (2026-09-30) — see sendFallbackChannelMessage's own
+                // comment. Most commonly a dead interaction webhook token (~15 min limit) on
+                // a long, slow climb — the interaction-based reply above fails, so this is
+                // the only remaining way the player finds out anything happened at all.
                 console.error(`Failed to notify ${username} of their tower run crash:`, replyError);
+                await sendFallbackChannelMessage(interaction, userId, recoveryMessage);
             }
             return;
         }
@@ -268,6 +295,12 @@ module.exports = {
             // returned), so the player earned this regardless of whether we can immediately
             // confirm it to them. Logged, not re-thrown; the rest of the tail still runs.
             console.error(`Failed to send Tower results embed to ${username} (${userId}) at floor ${floor}:`, resultsEmbedError);
+            // Last-resort fallback (2026-09-30) — most commonly a dead interaction webhook
+            // token on a long, slow climb (see sendFallbackChannelMessage's own comment) —
+            // the player still deserves to know their run finished and what it earned, even
+            // as a plain text summary rather than the real embed.
+            await sendFallbackChannelMessage(interaction, userId,
+                `your tower run finished at floor ${floor}! Rewards: ${rewards[tC.PAYOUT.POTATOES].toLocaleString()} potatoes, ${rewards[tC.PAYOUT.WORK_MULTIPLIER].toFixed(2)} work multiplier, ${rewards[tC.PAYOUT.PASSIVE_INCOME].toLocaleString()} passive income, ${rewards[tC.PAYOUT.BANK_CAPACITY].toLocaleString()} bank capacity. (Sent as plain text — Discord wouldn't let me show the usual results screen.)`);
         }
 
         // Everything from here down is post-run BOOKKEEPING on top of a climb that already
@@ -329,13 +362,20 @@ module.exports = {
             }
         } catch (tailError) {
             console.error(`Tower post-run bookkeeping failed for ${username} (${userId}) at floor ${floor}:`, tailError);
+            const bookkeepingMessage = `your tower run at floor ${floor} finished, but something went wrong saving part of it afterward (leaderboard entry or companion bookkeeping). If your rewards or companions look off, let an admin know — timestamp: ${new Date().toISOString()}.`;
             try {
                 await interaction.followUp({
-                    content: `${userDisplayName}, your tower run at floor ${floor} finished, but something went wrong saving part of it afterward (leaderboard entry or companion bookkeeping). If your rewards or companions look off, let an admin know — timestamp: ${new Date().toISOString()}.`,
+                    content: `${userDisplayName}, ${bookkeepingMessage}`,
                     ephemeral: true,
                 });
             } catch (notifyError) {
+                // Last-resort fallback (2026-09-30) — see sendFallbackChannelMessage's own
+                // comment (most commonly a dead interaction webhook token on a long, slow
+                // climb). Not ephemeral once it falls back to a plain channel message — that
+                // property only exists for interaction replies, there's no private-to-one-user
+                // equivalent for a normal channel send.
                 console.error(`Failed to notify ${username} of the Tower post-run bookkeeping failure:`, notifyError);
+                await sendFallbackChannelMessage(interaction, userId, bookkeepingMessage);
             }
         }
     }
