@@ -627,6 +627,26 @@ async function runStartFestival(client, interaction) {
 // events channel, so players see an identical announcement either way — deliberately NOT
 // also wired into the Big Events channel, matching how a NATURAL end isn't either (only
 // festival START got that treatment this session).
+// Global bot-wide kill switch (2026-09-30, direct instruction: "Give me an admin discord
+// command to disable the bot for everyone besides admin as well") — mirrors the exact
+// TOWER_DISABLED + admin-bypass pattern already shipped for `/enter-tower`, generalized to
+// the WHOLE bot via handleCommands.js's own single dispatch chokepoint (every command
+// funnels through it — see that file's own comment on the check this adds). Persisted in the
+// same shared stats-table doc pattern every other admin-configured global toggle already
+// uses (set-activity-channel's webhook URL, set-command-channels' allowlist), so it survives
+// a bot restart and needs no code deploy to flip either way — this whole feature IS that
+// "admin discord command," not a static code flag like TOWER_DISABLED was.
+async function runMaintenanceMode(client, interaction) {
+    await interaction.deferReply({ ephemeral: true });
+
+    const enabled = interaction.options.get('enabled')?.value;
+    await dynamoHandler.updateStatFields('bot_maintenance_mode', { enabled });
+
+    interaction.editReply(enabled
+        ? "Maintenance mode is now **ON** — every command is blocked for everyone except developers (`awsConfigurations.devs`) until this is turned back off."
+        : 'Maintenance mode is now **OFF** — the bot is back to normal for everyone.');
+}
+
 async function runEndFestival(client, interaction) {
     await interaction.deferReply({ ephemeral: true });
 
@@ -927,6 +947,19 @@ module.exports = {
                 }
             ],
         },
+        {
+            name: 'maintenance-mode',
+            description: 'Block every command for everyone except developers — an emergency-wide kill switch',
+            type: ApplicationCommandOptionType.Subcommand,
+            options: [
+                {
+                    name: 'enabled',
+                    description: 'true to block the whole bot for non-developers, false to turn it back off',
+                    required: true,
+                    type: ApplicationCommandOptionType.Boolean,
+                }
+            ],
+        },
     ],
     callback: async (client, interaction) => {
         const subcommand = interaction.options.getSubcommand();
@@ -967,6 +1000,9 @@ module.exports = {
             case 'grant-title':
                 await runGrantTitle(client, interaction);
                 break;
+            case 'maintenance-mode':
+                await runMaintenanceMode(client, interaction);
+                break;
         }
     },
     // Exported individually for direct unit testing, same "export the inner logic, not just
@@ -983,4 +1019,5 @@ module.exports = {
     endFestivalCallback: runEndFestival,
     revokeImmuneToVenomCallback: runRevokeImmuneToVenom,
     grantTitleCallback: runGrantTitle,
+    maintenanceModeCallback: runMaintenanceMode,
 }

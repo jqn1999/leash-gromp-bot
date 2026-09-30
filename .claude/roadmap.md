@@ -19163,3 +19163,44 @@ crash-hardening pass) with full code-level detail per fix.
 real stack trace (still none available) — they're every concrete gap the deep-dive actually found,
 closed on their own merits regardless. A real stack trace from a future crash (even via the admin
 bypass) is still the fastest way to confirm which one it actually was.
+
+## New `/admin maintenance-mode` subcommand: global bot-wide kill switch
+
+**Asked.** "Give me an admin discord command to disable the bot for everyone besides admin as
+well." Same TOWER_DISABLED + admin-bypass shape already shipped for `/enter-tower`, generalized to
+the whole bot and turned into a live, DB-backed toggle rather than a static code flag — this IS the
+"admin discord command" version of that same idea, not a stopgap needing a later follow-up.
+
+**Changed.** New `maintenance-mode` subcommand added to `/admin` (`admin.js`) — a boolean `enabled`
+option, writes `{ enabled }` to a new `bot_maintenance_mode` stats-table doc via the existing
+`updateStatFields`, same pattern `/admin set-activity-channel`'s webhook URL and
+`/set-command-channels`' allowlist already use for admin-configured global state (survives a
+restart, no code deploy needed to flip). Added as a **subcommand** of the existing consolidated
+`/admin` command rather than a new top-level command — this repo already hit Discord's 100-command
+cap once (see the 2026-09-20 incident entry `/admin` itself exists to prevent recurring), so a new
+standalone command wasn't worth the risk for something this rare.
+
+The actual gate lives in `handleCommands.js`'s single dispatch chokepoint — every command already
+funnels through here, so one check (`awsConfigurations.devs` bypass, else read
+`bot_maintenance_mode` and reply with a maintenance message if `enabled`) blocks literally
+everything for non-devs, including `devOnly` commands (moot for them, but conceptually this is the
+outermost gate, checked before `devOnly`/`permissionsRequired`/the per-guild channel allowlist).
+Ordered first specifically so a dev can always run `/admin maintenance-mode` again to turn it back
+off even while it's active — devs bypass via the exact same `awsConfigurations.devs` list every
+other gate in this file already exempts them through.
+
+**Tests.** `handleCommands.test.js` gained a new `maintenance mode` describe block (blocks a non-dev
+with the maintenance message, a dev bypasses with zero doc lookup for that key at all, a non-dev
+runs normally when it's off) — and the two pre-existing "channel restriction" tests that asserted
+`getStatDatabase` was *never* called in certain paths were corrected to check the SPECIFIC
+`command_channels_*` doc instead, since maintenance-mode's own doc is now legitimately checked ahead
+of those paths every time. `admin.test.js` gained a `/admin maintenance-mode` describe block (on
+writes `enabled:true`, off writes `enabled:false`, each confirms the right confirmation message).
+Full suite: **122 suites (1 fully skipped) / 2240 tests (17 skipped, 2223 passing)** — net +5 tests,
+0 broken.
+
+**Not done.** No `financial-project` port — this is bot-only operational tooling (which Discord
+commands can run, not a game formula/balance/data-shape the web version also implements), so
+`CLAUDE.md`'s cross-repo sync rule doesn't apply here. `financial-project` got its own, independent
+site-wide kill switch the same session (see that repo's own notes) — the two are parallel features
+for their own platforms, not a port of each other, though built on the same admin-id-bypass idea.
