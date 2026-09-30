@@ -19465,3 +19465,42 @@ broken.
 **Cross-repo note.** Not ported to `financial-project` — same reasoning as the messaging fix
 above: a Discord-interaction-specific recovery mechanism with no web equivalent, touching no game
 logic, balance, or data shape `/gromp` implements.
+
+## Tower checkpointing follow-up: confirmed floor-1 restart behavior, locked in leaderboard scoping with tests
+
+**Asked**, same day as the checkpointing feature above, two things:
+1. "If there is a snapshot, if they crash and enter tower again do they start from where they
+   crashed or from floor 1" — answered directly: floor 1. The checkpoint only banks the REWARD
+   already earned through the last completed floor; it does not preserve run/floor state, so a new
+   `/enter-tower` is a genuinely fresh climb. This was always the design ((1) from the prior entry,
+   not (2)'s true resume), now stated explicitly in `tower.md` rather than left implicit.
+2. "Checkpoint credited crash should not count towards highestTowerFloor or daily leaderboard, it
+   should only consider it when a user decides to leave tower (non-crash) or die in tower but get
+   saved via bastion, and save their entry to leaderboard" — this was ALREADY exactly how the
+   checkpointing feature shipped (the crash catch block never calls `updateIfNewRecord`/
+   `recordTowerLeaderboardEntry`; those only live in the tail-bookkeeping block that only runs
+   after `startRun()` returns without throwing), so no code change was needed. What WAS missing:
+   explicit test coverage proving the ward-saved-death case specifically, since a Bastion save
+   keeps `died` false and thereby already reaches the leaderboard path — this was previously true
+   "by construction" but unverified by any test.
+
+**Changed** (`src/commands/tower/__tests__/enter-tower.test.js`): 3 additions to the admin-bypass
+describe block —
+- Added `expect(dynamoHandler.updateIfNewRecord).not.toHaveBeenCalled()` and
+  `expect(dynamoHandler.recordTowerLeaderboardEntry).not.toHaveBeenCalled()` directly to the
+  existing checkpoint-crash-credit test.
+- New test: an Elite death saved by Bastion's ward (`died: false, wardUsed: true` in the mocked
+  `startRun()` return tuple) asserts BOTH `updateIfNewRecord` and `recordTowerLeaderboardEntry`
+  fire, same as a voluntary leave.
+- New test: a real, unwarded Elite death (`died: true`) asserts `updateIfNewRecord` fires but
+  `recordTowerLeaderboardEntry` does not — pre-existing behavior, included for completeness since
+  it's the third leg of the same eligibility story, unrelated to checkpointing itself.
+
+**Docs.** `tower.md`'s checkpointing section gained an explicit "starts from floor 1, not a resume"
+callout right after its own intro paragraph, and its leaderboard-scoping paragraph was rewritten
+from "flagged as an open question" to "confirmed correct as shipped, direct instruction, 2 new
+tests" — the underlying code was already right; only the doc's own framing and the test coverage
+were missing.
+
+**Tests.** Full suite: **122 suites (1 fully skipped) / 2251 tests (17 skipped, 2234 passing)** —
+net +2 new tests (plus 2 new assertions on an existing test), 0 broken.

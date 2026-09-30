@@ -500,6 +500,14 @@ describe('admin bypass while TOWER_DISABLED is true', () => {
         expect(dynamoHandler.updateUserDatabase).toHaveBeenCalledWith(awsConfigurations.devs[0], 'canEnterTower', true);
         expect(dynamoHandler.updateUserDatabase).toHaveBeenCalledWith(awsConfigurations.devs[0], 'towerRunCheckpoint', null);
 
+        // Direct instruction: a checkpoint-credited crash must NOT count toward the personal-
+        // best floor record or daily leaderboard eligibility — only a run that actually
+        // concludes (a voluntary leave, or an Elite death saved by Bastion's ward, which ends
+        // the run exactly like a voluntary leave — see towerFactory.js's own comment) reaches
+        // the tail bookkeeping block that calls these. The crash catch block never does.
+        expect(dynamoHandler.updateIfNewRecord).not.toHaveBeenCalled();
+        expect(dynamoHandler.recordTowerLeaderboardEntry).not.toHaveBeenCalled();
+
         const [{ content }] = interaction.editReply.mock.calls[interaction.editReply.mock.calls.length - 1];
         expect(content).toContain('floor 10');
         expect(content).toContain('already banked');
@@ -520,5 +528,44 @@ describe('admin bypass while TOWER_DISABLED is true', () => {
         expect(dynamoHandler.updateUserDatabase).toHaveBeenCalledWith(awsConfigurations.devs[0], 'canEnterTower', true);
         const [{ content }] = interaction.editReply.mock.calls[interaction.editReply.mock.calls.length - 1];
         expect(content).toContain('Nothing from that attempt was banked');
+    });
+
+    // Leaderboard/personal-best eligibility (direct instruction, following up on the
+    // checkpointing feature above): a checkpoint-credited CRASH must never count, but the two
+    // ways a run can genuinely CONCLUDE should be unaffected by that exclusion — a voluntary
+    // leave, and an Elite death saved by Bastion's ward (towerFactory.js keeps `died` false in
+    // that case specifically so it resolves exactly like a voluntary leave — see execElite's
+    // own comment). Both reach the SAME tail-bookkeeping block (`died` false either way), so
+    // one test covers both without needing to fake which specific path produced it.
+    test("an Elite death saved by Bastion's ward (died stays false) counts toward highestTowerFloor and the daily leaderboard, same as a voluntary leave", async () => {
+        dynamoHandler.findUser.mockResolvedValue(baseUser({ userId: awsConfigurations.devs[0], workMultiplierAmount: tC.ENTRY_GATE_MULTI, rebirthCount: 0 }));
+        towerFactory.mockImplementation(() => ({
+            // [rewards, floor, died, elitesSurvivedCount, towerCompanionHits, wardUsed] — died
+            // is false (the ward saved it), wardUsed is true.
+            startRun: jest.fn().mockResolvedValue([[5000, 0, 0, 0], 10, false, 1, 0, true]),
+        }));
+        const interaction = adminInteraction();
+
+        await callback({}, interaction);
+
+        expect(dynamoHandler.updateIfNewRecord).toHaveBeenCalledWith(awsConfigurations.devs[0], 'highestTowerFloor', 10);
+        expect(dynamoHandler.recordTowerLeaderboardEntry).toHaveBeenCalledWith(expect.objectContaining({
+            userId: awsConfigurations.devs[0],
+            floor: 10,
+        }));
+        expect(dynamoHandler.updateUserDatabase).toHaveBeenCalledWith(awsConfigurations.devs[0], 'towerWardUsedToday', true);
+    });
+
+    test('a real (unwarded) Elite death counts toward highestTowerFloor but NOT the daily leaderboard — unchanged, unrelated to checkpointing', async () => {
+        dynamoHandler.findUser.mockResolvedValue(baseUser({ userId: awsConfigurations.devs[0], workMultiplierAmount: tC.ENTRY_GATE_MULTI, rebirthCount: 0 }));
+        towerFactory.mockImplementation(() => ({
+            startRun: jest.fn().mockResolvedValue([[5000, 0, 0, 0], 10, true, 0, 0, false]), // died: true
+        }));
+        const interaction = adminInteraction();
+
+        await callback({}, interaction);
+
+        expect(dynamoHandler.updateIfNewRecord).toHaveBeenCalledWith(awsConfigurations.devs[0], 'highestTowerFloor', 10);
+        expect(dynamoHandler.recordTowerLeaderboardEntry).not.toHaveBeenCalled();
     });
 });

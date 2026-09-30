@@ -3070,6 +3070,13 @@ button-driven flow, not just numbers, and introduces a real double-credit risk a
 "don't restore `canEnterTower` after a run that legitimately finished" invariant. (1) was recommended
 and is what got built.
 
+**Important, asked directly and worth stating plainly: a NEW `/enter-tower` after a checkpoint-
+credited crash starts a BRAND NEW run from floor 1, NOT a resume of the crashed climb.** The
+checkpoint only banks the REWARD already earned through the last completed floor — it does not
+preserve or continue the climb itself (no floor position, no risk-policy choice, no elite-fight
+history carries over). That's design (1) above, not design (2) — true "pick back up at floor 47"
+resume was the bigger, not-yet-built option.
+
 **Changed** (`src/utils/towerFactory.js`):
 - Constructor gained a 7th, optional `onFloorComplete` callback argument. `towerFactory` stays a pure
   run simulator with no DB knowledge of its own (matching its existing "enter-tower.js persists,
@@ -3122,14 +3129,30 @@ and is what got built.
   whatever the checkpoint held, so there's no reason to let it linger until the next run's own
   start-of-run clear.
 
-**Deliberately NOT extended to `highestTowerFloor` or the daily leaderboard.** A checkpoint-credited
+**Confirmed NOT extended to `highestTowerFloor` or the daily leaderboard (direct instruction,
+same-day follow-up: "Checkpoint credited crash should not count towards highestTowerFloor or daily
+leaderboard, it should only consider it when a user decides to leave tower (non-crash) or die in
+tower but get saved via bastion, and save their entry to leaderboard").** A checkpoint-credited
 crash run does NOT count toward the personal-best floor record or `/tower-leaderboard` eligibility —
-only the PAYOUT rewards and companion leveling/drops listed above are credited. The daily
-leaderboard's own rule ("only a survived — i.e.
-voluntarily left, not lost to an Elite — run counts") doesn't cleanly cover "the run neither survived
-nor died, it just crashed," and a personal-best credit for a floor the player didn't actually see the
-result screen for felt like a separate design call the instruction didn't ask for. Flagged here rather
-than silently decided either way — worth revisiting if it comes up.
+only the PAYOUT rewards and companion leveling/drops (see above) are credited on a crash. This was
+originally flagged as an open scoping question when the checkpointing feature shipped; it's now
+confirmed correct as originally built, no code change needed:
+- The crash catch block NEVER calls `dynamoHandler.updateIfNewRecord`/`recordTowerLeaderboardEntry`
+  — those only live in the separate tail-bookkeeping block that only runs after `startRun()`
+  RETURNS (doesn't throw), i.e. after a run genuinely concludes.
+- A run genuinely concludes two ways, both landing in that same tail block, both unaffected by the
+  checkpoint exclusion above: a voluntary leave (`died: false`), and an Elite death saved by
+  Bastion's ward — `execElite`'s own code keeps `this.died` false specifically when the ward
+  absorbs a loss, "the run ends exactly like a voluntary Leave" (that method's own comment), so it
+  was already indistinguishable from a real leave by the time it reaches the tail block. A REAL
+  (unwarded) Elite death still counts toward `highestTowerFloor` (that record ignores `died`
+  entirely) but not the leaderboard — pre-existing behavior, unrelated to checkpointing either way.
+- Confirmed with 2 new tests rather than left as an unverified claim: one drives a ward-saved
+  death (`died: false, wardUsed: true`) through the full callback and asserts BOTH
+  `updateIfNewRecord` and `recordTowerLeaderboardEntry` fire; one drives a real unwarded death
+  (`died: true`) and asserts `updateIfNewRecord` fires but `recordTowerLeaderboardEntry` does not.
+  A third assertion was added directly to the existing checkpoint-crash-credit test, confirming
+  neither function is ever called from that path.
 
 **What this does and doesn't fix.** Still not the root cause — whatever throws inside `startRun()` is
 still unconfirmed (same open investigation as the two entries above). This only shrinks the BLAST
@@ -3152,8 +3175,9 @@ stale-checkpoint-cleared-at-start-and-after-success case, the crash-with-a-check
 case (asserting `updateUserFields` is called with the checkpoint's own numbers and the recovery
 message names the credited floor), and the crash-with-no-checkpoint case (confirming byte-for-byte
 unchanged pre-checkpoint behavior — no `updateUserFields` call, the original "nothing was banked"
-wording). Full suite: **122 suites (1 fully skipped) / 2249 tests (17 skipped, 2232 passing)** — net
-+6 new tests, 0 broken.
+wording). Plus the 2 leaderboard/personal-best confirmation tests and 1 added assertion described
+in the eligibility section above. Full suite: **122 suites (1 fully skipped) / 2251 tests (17
+skipped, 2234 passing)** — net +8 new tests, 0 broken.
 
 **financial-project scope note.** Not ported — same reasoning as the messaging fix above: this is a
 Discord-interaction-specific recovery mechanism (per-floor checkpointing keyed to a Discord
