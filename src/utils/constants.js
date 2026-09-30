@@ -13,7 +13,12 @@ const Work = {
     // Lowered 15 -> 10, 2026-09-05, direct instruction, alongside cooldownFactory.js's
     // DEFAULT_SKIP_CHANCE_CAP 90% -> 60% — both still purely safety valves at these odds,
     // just tighter ones now that the combined chance itself is capped lower.
-    MAX_COOLDOWN_SKIP_CHAIN_LENGTH: 10,
+    // Lowered again 10 -> 5, 2026-09-30, direct instruction ("Lower max work skips to 5
+    // instead of 10") — now matches MAX_BOUNTY_RAID_COOLDOWN_SKIP_CHAIN_LENGTH's own 5 below,
+    // kept as its own separate constant rather than merged into one, since /work and Bounty/
+    // Heist/Guild Raid have been asked to change independently of each other so far and
+    // still have no structural reason to be forced to move together.
+    MAX_COOLDOWN_SKIP_CHAIN_LENGTH: 5,
     // Bounty/Heist(/rob-npc)/Guild Raid's own separate chain-length safety valve, lowered
     // 10 -> 5, 2026-09-29 direct instruction ("make the maximum amount of times bounty/
     // rob-npc/guild raids can skip 5 times instead of 10") — deliberately its OWN constant
@@ -2825,19 +2830,20 @@ const SpudKeep = {
     // and compounded identically. This is also the value getCompoundingBuffValue reads as
     // "value at cycle 0" (a fresh capture's own day-1 buff, before any hold-streak
     // compounding) — see *_PER_HOLD_CYCLE/*_MAX_VALUE below for the compounding itself.
-    // Cut 8% -> 4% (2026-09-30, direct instruction — see PASSIVE_BUFF_PER_HOLD_CYCLE's own
-    // comment for the full "10 steps instead of 5" derivation this is one half of).
+    // Briefly cut 8% -> 4% with a 10-step cadence (2026-09-30), then reverted back to 8%/5
+    // steps the same day (direct instruction: "make spud keep a 5 step increment again") —
+    // see PASSIVE_BUFF_PER_HOLD_CYCLE's own comment for the full history.
     PASSIVE_BUFF_TYPE: "passiveIncome",
-    PASSIVE_BUFF_VALUE: 0.04,
+    PASSIVE_BUFF_VALUE: 0.08,
 
     // Part 2 of the bundle reward — a flat cooldown shave applied at every /work,
     // guild raidTimer, Bounty, and Heist cooldown-write site, gated by the same
     // spudKeepFactory.isSpudKeepBuffLiveForUser predicate as the passive half, just off
     // a second sibling doc (spud_keep_cooldown_buff) so the predicate's own
     // {buffType, value, expiresAt, holderType, holderId} shape never needs to become an
-    // array. Cut 8% -> 4% alongside PASSIVE_BUFF_VALUE above, same 2026-09-30 instruction.
+    // array. Reverted 4% -> 8% alongside PASSIVE_BUFF_VALUE above, same revert.
     COOLDOWN_BUFF_TYPE: "cooldownReduction",
-    COOLDOWN_BUFF_VALUE: 0.04,
+    COOLDOWN_BUFF_VALUE: 0.08,
 
     // Consecutive-day compounding (2026-08-31, direct instruction: "if players hold the
     // spud keep multiple days in a row, the buff portion compounds ... 8% ... scale it up
@@ -2846,26 +2852,18 @@ const SpudKeep = {
     // consecutiveHoldCycles counter (0 on a fresh capture, +1 per successful defense) the
     // Attacker's Bonus below also reads.
     //
-    // Widened 5 steps -> 10, same 8% base rate cut in half to 4%/step (2026-09-30, direct
-    // instruction: "change spud keep to be a 10 step increment instead of 5 granting 4%
-    // skip/passive chance for each consecutive hold") — PASSIVE_BUFF_VALUE/COOLDOWN_BUFF_VALUE
-    // above (the "value at cycle 0" base) were cut 8% -> 4% to match this same per-cycle step,
-    // so at cycles 0/1/2/.../9 that's exactly 4%/8%/12%/.../40%, i.e. day 1 (fresh capture)
-    // through day 10+ (9 successful defenses) of a held Keep. MAX_VALUE (40%) is unchanged —
-    // 10 steps of 4% lands on the exact same ceiling the old 5 steps of 8% did, just reached
-    // twice as gradually.
-    //
-    // No longer sharing ATTACKER_BONUS_STREAK_CAP's own cap value the way the old comment
-    // here claimed ("both tracks share one cap constant since they're deliberately
-    // symmetric") — that symmetry was true only because both happened to be 4 before this
-    // change; the Attacker's Bonus escalation below was NOT asked to widen to 10 steps too,
-    // so the two are independent constants going forward, coincidentally sharing a shape
-    // rather than being kept in lockstep on principle.
-    PASSIVE_BUFF_PER_HOLD_CYCLE: 0.04,
+    // Widened 5 steps -> 10 with an 4%/step rate (2026-09-30, direct instruction: "change
+    // spud keep to be a 10 step increment instead of 5 granting 4% skip/passive chance for
+    // each consecutive hold"), then reverted back to the original 5 steps / 8% the SAME day
+    // (direct instruction: "make spud keep a 5 step increment again") — PASSIVE_BUFF_VALUE/
+    // COOLDOWN_BUFF_VALUE above went back to 8% to match. At cycles 0/1/2/3/4+ that's again
+    // exactly 8%/16%/24%/32%/40%, i.e. day 1 (fresh capture) through day 5+ (4 successful
+    // defenses) of a held Keep. MAX_VALUE (40%) was never touched across either change.
+    PASSIVE_BUFF_PER_HOLD_CYCLE: 0.08,
     PASSIVE_BUFF_MAX_VALUE: 0.40,
-    COOLDOWN_BUFF_PER_HOLD_CYCLE: 0.04,
+    COOLDOWN_BUFF_PER_HOLD_CYCLE: 0.08,
     COOLDOWN_BUFF_MAX_VALUE: 0.40,
-    HOLD_BUFF_STREAK_CAP: 9,
+    HOLD_BUFF_STREAK_CAP: 4,
 
     // The accruing pot (Reward Part 2) — while ANY holder is live, this fraction of
     // every one of this game's ~7 house-account tax events is redirected to
@@ -2889,22 +2887,23 @@ const SpudKeep = {
     //
     // Escalation steepened massively (2026-09-30, direct instruction: "I want spud keep to
     // be more difficult to hold. i want the attacker bonus to go to +1000% instead of just
-    // 66% at max") — same shape (flat base + per-cycle escalation over the same 4 further
-    // cycles, still resetting to 0 the instant the (holderType, holderId) pair changes),
-    // just re-solved so the ceiling lands on the new target exactly: ATTACKER_BONUS_BASE
-    // (6%) is untouched — not part of what was asked to change — so
-    // ATTACKER_BONUS_PER_HOLD_CYCLE solves (1000% - 6%) / 4 = 248.5% per additional
-    // consecutive-hold cycle. At streak 0/1/2/3/4+ that's now +6%/254.5%/503%/751.5%/1000%
-    // total challenger bonus — a holder who successfully defends even a handful of times in
-    // a row now faces an overwhelming, near-guaranteed loss of the Keep the next cycle,
-    // whereas before the ceiling (66%) was a real but survivable disadvantage. Deliberately
-    // NOT widened to 10 steps the way HOLD_BUFF_STREAK_CAP above was — only asked to raise
-    // the ceiling, not the cadence — so ATTACKER_BONUS_STREAK_CAP (4) and
-    // HOLD_BUFF_STREAK_CAP (9) are now independent constants that happen to differ, not the
-    // "share one cap, deliberately symmetric" pair they used to be (see HOLD_BUFF_STREAK_CAP's
-    // own comment).
+    // 66% at max") to ATTACKER_BONUS_PER_HOLD_CYCLE 2.485 (ceiling +1000% at streak 4+), then
+    // dialed back the SAME day (direct instruction: "make the attacker bonus go up to 500%
+    // instead for 1-5 consecutive") — same shape throughout (flat base + per-cycle escalation
+    // over the same 4 further cycles spanning day 1 through day 5+ of an unbroken hold, i.e.
+    // "1-5 consecutive" holds, still resetting to 0 the instant the (holderType, holderId)
+    // pair changes). ATTACKER_BONUS_BASE (6%) and ATTACKER_BONUS_STREAK_CAP (4, i.e. the same
+    // 1-5-consecutive-day cadence throughout every version of this constant) are both
+    // untouched — only the ceiling itself was asked to move, so
+    // ATTACKER_BONUS_PER_HOLD_CYCLE re-solves to (500% - 6%) / 4 = 123.5% per additional
+    // consecutive-hold cycle. At streak 0/1/2/3/4+ that's now +6%/129.5%/253%/376.5%/500%
+    // total challenger bonus — still a steep, real disadvantage for an unbroken hold streak
+    // (vs. the original +66% ceiling), just not the near-guaranteed-loss +1000% version.
+    // ATTACKER_BONUS_STREAK_CAP (4) and HOLD_BUFF_STREAK_CAP (4, reverted back to matching
+    // above) coincidentally line up again, though they remain independent constants rather
+    // than a deliberately-shared one — see HOLD_BUFF_STREAK_CAP's own comment.
     ATTACKER_BONUS_BASE: 0.06,
-    ATTACKER_BONUS_PER_HOLD_CYCLE: 2.485,
+    ATTACKER_BONUS_PER_HOLD_CYCLE: 1.235,
     ATTACKER_BONUS_STREAK_CAP: 4
 }
 
