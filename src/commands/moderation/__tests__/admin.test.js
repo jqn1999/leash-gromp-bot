@@ -254,6 +254,7 @@ describe('/admin reset-tower', () => {
             dynamoHandler.removeTowerLeaderboardEntry.mockResolvedValue({
                 userId: 'target-1', username: 'targetplayer', floor: 47, elitesKilled: 3,
                 potatoes: 50000, workMultiplier: 0.2, passiveIncome: 20000, bankCapacity: 30000,
+                tempWorkMultiplier: 4.5,
             });
 
             await resetTowerCallback({}, interaction);
@@ -274,7 +275,7 @@ describe('/admin reset-tower', () => {
                     [tC.PAYOUT.WORK_MULTIPLIER]: 0.2,
                     [tC.PAYOUT.PASSIVE_INCOME]: 20000,
                     [tC.PAYOUT.BANK_CAPACITY]: 30000,
-                    [tC.MODIFIER.WORK_MULTIPLIER]: 0,
+                    [tC.MODIFIER.WORK_MULTIPLIER]: 4.5,
                     [tC.PAYOUT.ELITE_KILL]: [],
                 },
                 elitesSurvivedCount: 3,
@@ -308,6 +309,29 @@ describe('/admin reset-tower', () => {
 
             expect(dynamoHandler.updateUserFields).toHaveBeenCalled();
             expect(dynamoHandler.updateUserDatabase).toHaveBeenCalledWith('target-1', 'towerRunCheckpoint', expect.objectContaining({ floor: 5 }));
+        });
+
+        // A leaderboard entry recorded before enter-tower.js started writing
+        // tempWorkMultiplier (2026-09-30) has no such field at all, not a genuine 0 — same
+        // "missing means never written" reasoning every other backfilled field in this
+        // codebase follows.
+        test('a leaderboard entry from before tempWorkMultiplier was recorded defaults the temp work modifier to 0, not undefined', async () => {
+            const interaction = fakeInteraction('target-1', false, true);
+            interaction.guild.members.fetch.mockResolvedValue(memberFixture());
+            dynamoHandler.findUser.mockResolvedValue({
+                userId: 'target-1', username: 'targetplayer', canEnterTower: false,
+                sweetPotatoBuffs: { workMultiplierAmount: 0, passiveAmount: 0, bankCapacity: 0 },
+            });
+            dynamoHandler.removeTowerLeaderboardEntry.mockResolvedValue({
+                userId: 'target-1', username: 'targetplayer', floor: 10, elitesKilled: 1,
+                potatoes: 500, workMultiplier: 0.1, passiveIncome: 0, bankCapacity: 0,
+            });
+
+            await resetTowerCallback({}, interaction);
+
+            expect(dynamoHandler.updateUserDatabase).toHaveBeenCalledWith('target-1', 'towerRunCheckpoint', expect.objectContaining({
+                run: expect.objectContaining({ [tC.MODIFIER.WORK_MULTIPLIER]: 0 }),
+            }));
         });
 
         test('the seeded checkpoint replaces (not adds to) an existing pending checkpoint, and the reply describes the new one, not a discard', async () => {

@@ -198,7 +198,7 @@ async function runResetTower(client, interaction) {
 
     let checkpointMessage = '';
     if (resumeCheckpoint) {
-        checkpointMessage = ` Seeded a resumable checkpoint at floor ${resumeCheckpoint.floor} — their next /enter-tower will CONTINUE from floor ${resumeCheckpoint.floor + 1} instead of starting over, and the reverted reward above will be re-credited in full once they actually leave or die on the continued run. Could NOT be recovered from the leaderboard entry alone (defaulted conservatively): companion-hit count (0), Bastion ward usage (treated as already-used, so a genuinely unused ward is lost rather than risking a double-save), risk policy (SAFE), and REWARD-variety history (empty, so an already-seen REWARD type could repeat). Elite difficulty was reconstructed correctly from the floor number itself.`;
+        checkpointMessage = ` Seeded a resumable checkpoint at floor ${resumeCheckpoint.floor} — their next /enter-tower will CONTINUE from floor ${resumeCheckpoint.floor + 1} instead of starting over, and the reverted reward above will be re-credited in full once they actually leave or die on the continued run. Could NOT be recovered from the leaderboard entry alone (defaulted conservatively): companion-hit count (0), Bastion ward usage (treated as already-used, so a genuinely unused ward is lost rather than risking a double-save), risk policy (SAFE), and REWARD-variety history (empty, so an already-seen REWARD type could repeat). Elite difficulty and their temporary (this-run-only) work modifier were both reconstructed correctly from the leaderboard entry.`;
     } else if (hadPendingCheckpoint) {
         checkpointMessage = ` They had an in-progress, resumable run through floor ${targetUserDetails.towerRunCheckpoint.floor} — this discards it, they'll start a brand new run from floor 1.`;
     }
@@ -213,7 +213,11 @@ async function runResetTower(client, interaction) {
 // Reconstructs a towerRunCheckpoint from a tower_leaderboard entry — the best-effort recovery
 // path for a run that was prematurely (and, for the stale-click/timeout bug specifically,
 // incorrectly) concluded before a player actually chose to leave. Only what the leaderboard
-// entry itself records survives: floor, elitesKilled, and the four PAYOUT reward figures.
+// entry itself records survives: floor, elitesKilled, the four PAYOUT reward figures, and (as
+// of 2026-09-30, direct instruction) the run's own TEMPORARY work modifier — distinct from
+// workMultiplier above (the PERMANENT reward banked at run end), this one only ever affected
+// floor success chance during the climb, and enter-tower.js now records it on every leaderboard
+// entry specifically so this reconstruction doesn't have to default it to 0 anymore.
 // Elite difficulty is the one field that CAN be derived exactly rather than defaulted — it
 // escalates by TOWER_ELITE_DIFFICULTY_RATIO once per forced Elite floor reached (every 10
 // floors, unconditionally, win/lose/decline all count — see towerFactory.js's own startRun()
@@ -227,7 +231,7 @@ function buildResumeCheckpointFromLeaderboardEntry(entry) {
             [tC.PAYOUT.WORK_MULTIPLIER]: entry.workMultiplier || 0,
             [tC.PAYOUT.PASSIVE_INCOME]: entry.passiveIncome || 0,
             [tC.PAYOUT.BANK_CAPACITY]: entry.bankCapacity || 0,
-            [tC.MODIFIER.WORK_MULTIPLIER]: 0,
+            [tC.MODIFIER.WORK_MULTIPLIER]: entry.tempWorkMultiplier || 0,
             [tC.PAYOUT.ELITE_KILL]: [],
         },
         elitesSurvivedCount: entry.elitesKilled || 0,

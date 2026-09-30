@@ -2293,7 +2293,7 @@ describe('createUserEmbed page 3 — Work Encounter Counts', () => {
         };
         // workCount left at baseUserDetails' default (0) — every BASE_WORK_PROBABILITY-
         // scaled expected count is then 0 too, so every nonzero actual count here reads as
-        // "above expected" (🔺). The indicator's own above/below/equal logic is exercised
+        // "above expected" (🔹). The indicator's own above/below/equal logic is exercised
         // precisely in the dedicated test below instead; this test's job is just the label
         // text/order/Metal-split content, unaffected by the indicator feature.
         const embed = await embedFactory.createUserEmbed('user-1', 'Player', 'hash', baseUserDetails({ workScenarioCounts }), 2);
@@ -2301,18 +2301,18 @@ describe('createUserEmbed page 3 — Work Encounter Counts', () => {
         expect(embed.data.description).toContain('Page 3 / 3');
         const field = embed.data.fields.find(f => f.name === 'Work Encounter Counts:');
         expect(field.value).toBe(
-            'Golden Potato: 1 🔺\n'
-            + 'Golden Yam: 1 🔺\n'
-            + 'Poison Potato: 8 🔺\n'
-            + 'Large Potato: 5 🔺\n'
-            + 'Metal Potato — Success: 2 🔺\n'
-            + 'Metal Potato — Failure: 9 🔺\n'
-            + 'Sweet Potato: 6 🔺\n'
-            + 'Wandering Companion: 10 🔺\n'
-            + 'Taro Trader: 7 🔺\n'
-            + 'Ancient Potato: 3 🔺\n'
-            + 'Mimic Potato: 4 🔺\n'
-            + 'Regular Work: 40 🔺'
+            'Golden Potato: 1 🔹\n'
+            + 'Golden Yam: 1 🔹\n'
+            + 'Poison Potato: 8 🔹\n'
+            + 'Large Potato: 5 🔹\n'
+            + 'Metal Potato — Success: 2 🔹\n'
+            + 'Metal Potato — Failure: 9 🔹\n'
+            + 'Sweet Potato: 6 🔹\n'
+            + 'Wandering Companion: 10 🔹\n'
+            + 'Taro Trader: 7 🔹\n'
+            + 'Ancient Potato: 3 🔹\n'
+            + 'Mimic Potato: 4 🔹\n'
+            + 'Regular Work: 40 🔹'
         );
     });
 
@@ -2325,7 +2325,10 @@ describe('createUserEmbed page 3 — Work Encounter Counts', () => {
     // 20, ancient expected 0.5 -> rounds to 1, mimic expected 10, regular expected 872.5 ->
     // rounds to 873) — each scenario's actual count below is deliberately set above, at, or
     // below that rounded expected value to exercise all three indicator states.
-    test('shows 🔺 for an above-expected count, 🔻 for below-expected, and no indicator when a count matches its expected value', async () => {
+    // Diamonds (same-day follow-up, direct instruction: ":small_orange_diamond: for lower
+    // than expected and :small_blue_diamond: for higher than expected") replaced the
+    // original up/down triangles — same logic, just 🔹/🔸 instead of 🔺/🔻.
+    test('shows 🔹 for an above-expected count, 🔸 for below-expected, and no indicator when a count matches its expected value', async () => {
         const workScenarioCounts = {
             golden: 2,        // expected 1 -> above
             goldenYam: 1,     // expected 1 -> equal
@@ -2344,18 +2347,18 @@ describe('createUserEmbed page 3 — Work Encounter Counts', () => {
 
         const field = embed.data.fields.find(f => f.name === 'Work Encounter Counts:');
         expect(field.value).toBe(
-            'Golden Potato: 2 🔺\n'
+            'Golden Potato: 2 🔹\n'
             + 'Golden Yam: 1\n'
-            + 'Poison Potato: 5 🔻\n'
+            + 'Poison Potato: 5 🔸\n'
             + 'Large Potato: 40\n'
-            + 'Metal Potato — Success: 3 🔺\n'
-            + 'Metal Potato — Failure: 2 🔻\n'
+            + 'Metal Potato — Success: 3 🔹\n'
+            + 'Metal Potato — Failure: 2 🔸\n'
             + 'Sweet Potato: 20\n'
-            + 'Wandering Companion: 20 🔺\n'
-            + 'Taro Trader: 10 🔻\n'
+            + 'Wandering Companion: 20 🔹\n'
+            + 'Taro Trader: 10 🔸\n'
             + 'Ancient Potato: 1\n'
             + 'Mimic Potato: 10\n'
-            + 'Regular Work: 900 🔺'
+            + 'Regular Work: 900 🔹'
         );
     });
 

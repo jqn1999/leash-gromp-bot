@@ -166,6 +166,26 @@ test('a survived run records elitesKilled on the leaderboard entry, sourced from
     }));
 });
 
+// The run's own TEMPORARY (this-run-only) work modifier (2026-09-30, direct instruction) —
+// distinct from the PERMANENT workMultiplier reward covered by the test above. Recorded on
+// the leaderboard entry as `tempWorkMultiplier`, sourced from run[tC.MODIFIER.WORK_MULTIPLIER]
+// (index 4), specifically so /admin reset-tower's resume-from-leaderboard option (admin.js's
+// buildResumeCheckpointFromLeaderboardEntry) can restore it instead of defaulting it to 0.
+test('a survived run records tempWorkMultiplier on the leaderboard entry, sourced from run[MODIFIER.WORK_MULTIPLIER]', async () => {
+    dynamoHandler.findUser.mockResolvedValue(baseUser({ workMultiplierAmount: tC.ENTRY_GATE_MULTI, rebirthCount: 0 }));
+    towerFactory.mockImplementation(() => ({
+        // run indices: [POTATOES, WORK_MULTIPLIER, PASSIVE_INCOME, BANK_CAPACITY, MODIFIER.WORK_MULTIPLIER]
+        startRun: jest.fn().mockResolvedValue([[5000, 0, 0, 0, 6.5], 42, false, 3, 0, false]),
+    }));
+    const interaction = fakeInteraction();
+
+    await callback({}, interaction);
+
+    expect(dynamoHandler.recordTowerLeaderboardEntry).toHaveBeenCalledWith(expect.objectContaining({
+        tempWorkMultiplier: 6.5,
+    }));
+});
+
 // Root-caused from a player's base stats (raw minus sweetPotatoBuffs minus regradeAmount)
 // silently drifting off a valid shop tier over repeated Tower runs, breaking /buy's and
 // /regrade's exact-match tier lookups (2026-09-23). processRewardPayouts used to fire FOUR

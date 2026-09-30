@@ -431,7 +431,17 @@ module.exports = {
                     potatoes: rewards[tC.PAYOUT.POTATOES] || 0,
                     workMultiplier: rewards[tC.PAYOUT.WORK_MULTIPLIER] || 0,
                     passiveIncome: rewards[tC.PAYOUT.PASSIVE_INCOME] || 0,
-                    bankCapacity: rewards[tC.PAYOUT.BANK_CAPACITY] || 0
+                    bankCapacity: rewards[tC.PAYOUT.BANK_CAPACITY] || 0,
+                    // The run's TEMPORARY (this-run-only) work modifier (2026-09-30, direct
+                    // instruction) — distinct from workMultiplier above (the PERMANENT reward
+                    // banked to the player's account at run end). This one only ever affects
+                    // floor success chance DURING the climb and is normally restored for free
+                    // by true-resume's own live towerRunCheckpoint. It's recorded here purely
+                    // so /admin reset-tower's leaderboard-based reconstruction (the last-resort
+                    // path for a run with no live checkpoint left to resume from) can restore
+                    // it too, instead of silently defaulting it to 0 — see
+                    // buildResumeCheckpointFromLeaderboardEntry in admin.js.
+                    tempWorkMultiplier: rewards[tC.MODIFIER.WORK_MULTIPLIER] || 0
                 });
             }
         } catch (tailError) {

@@ -3515,14 +3515,36 @@ cumulative amount again, from floor 1 through wherever the continued run actuall
 right numbers at the end of the run," per the instruction.
 
 **What can and can't be reconstructed from a bare leaderboard entry.** A `tower_leaderboard` entry
-only ever stored `userId, username, floor, elitesKilled, potatoes, workMultiplier, passiveIncome,
-bankCapacity` — nowhere near everything a real `towerRunCheckpoint` carries. Two are recoverable:
+originally only ever stored `userId, username, floor, elitesKilled, potatoes, workMultiplier,
+passiveIncome, bankCapacity` — nowhere near everything a real `towerRunCheckpoint` carries. Three
+are recoverable:
 - `floor` and `elitesKilled` (→ `elitesSurvivedCount`) map straight across.
 - Elite difficulty is derivable EXACTLY, not guessed: `TOWER_ELITE_DIFFICULTY_INITIAL *
   TOWER_ELITE_DIFFICULTY_RATIO^N`, where `N = Math.floor(floor / 10)` — the difficulty escalates by
   that ratio once per forced Elite floor reached (every 10 floors, unconditionally — win, lose, or
   decline all count, see `startRun()`'s own loop), so exactly `N` forced Elites have necessarily
   already been fought by the floor a leaderboard entry records.
+
+**`tempWorkMultiplier` added to the leaderboard entry (same-day follow-up, direct instruction: "can
+you have tower also store the temporary work multi the user picks up along the run and save that to
+the leaderboard/user tower saving entry?... i want to be able to reset users and have the work
+multi/passive/bank/potatoes they gained get removed which is working but i also want to restore
+their temporary work multi they gained during the run so they can start back exactly how they were
+during the tower when it crashes").** `run[MODIFIER.WORK_MULTIPLIER]` — the TEMPORARY, this-run-only
+work modifier that only ever affects floor success chance during the climb (distinct from
+`PAYOUT.WORK_MULTIPLIER`/`workMultiplier` above, the PERMANENT reward banked to the player's real
+account at run end) — was already fully preserved for free by true-resume's own live
+`towerRunCheckpoint` (`checkpoint()` spreads the whole `this.run` object wholesale, `MODIFIER.
+WORK_MULTIPLIER` included, no special-casing needed there). The gap was specifically THIS
+leaderboard-reconstruction path: it silently defaulted `[MODIFIER.WORK_MULTIPLIER]` to `0`, since
+the leaderboard entry itself never recorded it at all, meaning a player resumed via
+`resume-from-leaderboard` came back weaker than they actually were mid-climb — not "exactly how
+they were," the whole point of this recovery path. `enter-tower.js` now writes
+`tempWorkMultiplier: rewards[tC.MODIFIER.WORK_MULTIPLIER] || 0` alongside the four PAYOUT figures on
+every leaderboard entry, and `buildResumeCheckpointFromLeaderboardEntry` reads `entry.
+tempWorkMultiplier || 0` instead of the old hardcoded `0` — a leaderboard entry from before this
+change simply has no such field, so `|| 0` degrades to the exact old (safe, if imperfect) behavior
+rather than throwing on `undefined`.
 
 The rest are NOT recoverable and default conservatively (all called out explicitly in the admin's
 own reply, not silently guessed):
