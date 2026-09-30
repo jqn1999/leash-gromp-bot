@@ -1,6 +1,7 @@
 const { getUserInteractionDetails, requireUserDetails, requireUserGuild } = require("../../utils/helperCommands");
 const dynamoHandler = require("../../utils/dynamoHandler");
 const companionFactory = require("../../utils/companionFactory");
+const guildBuffFactory = require("../../utils/guildBuffFactory");
 const { getLiveRaidRoster, getEffectiveRaidPower, getUnlockedRaidModes } = require("../../utils/raidFactory");
 const { getWorldBuffWorkMultiPercent } = require("../../utils/workFactory");
 const { buildRaidPreview, getRaidLevelAndRewardMultiplier } = require("./startRaid");
@@ -51,10 +52,11 @@ module.exports = {
         const { guildLevel, raidRewardMultiplier } = getRaidLevelAndRewardMultiplier(guild);
 
         const raidMemberDetails = await Promise.all(raidList.map(element => dynamoHandler.findUser(element.id, element.username)));
-        // Same three ingredients runStartRaidFlow's own totalMultiplier is built from —
-        // rank-weighted team power + headcount bonus, Firefly's best-in-roster boost, and
-        // the live World Boss workMulti buff — so this preview can't understate (or
-        // overstate) the odds a real raid attempt would actually roll against.
+        // Same ingredients runStartRaidFlow's own totalMultiplier is built from —
+        // rank-weighted team power + headcount bonus, Firefly's best-in-roster boost, the
+        // live World Boss workMulti buff, and (2026-09-30) the guild's own workMulti buff
+        // selection — so this preview can't understate (or overstate) the odds a real raid
+        // attempt would actually roll against.
         let totalMultiplier = getEffectiveRaidPower(raidMemberDetails);
         const raidCompanionBoost = Math.max(0, ...raidMemberDetails.map(m => m ? companionFactory.getActivePerkValue(m, "guildRaidMultiplierPercent") : 0));
         if (raidCompanionBoost > 0) {
@@ -63,6 +65,10 @@ module.exports = {
         const worldBuffPercent = await getWorldBuffWorkMultiPercent();
         if (worldBuffPercent > 0) {
             totalMultiplier *= (1 + worldBuffPercent);
+        }
+        const guildWorkMultiPercent = guild.guildBuff === "workMulti" ? guildBuffFactory.getGuildBuffValue("workMulti", guildLevel) : 0;
+        if (guildWorkMultiPercent > 0) {
+            totalMultiplier *= (1 + guildWorkMultiPercent);
         }
 
         const unlockedModes = getUnlockedRaidModes(guildLevel);

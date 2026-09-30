@@ -4,6 +4,7 @@ const dynamoHandler = require("../../utils/dynamoHandler");
 const { Raid } = require("../../utils/constants")
 const { getLiveRaidRoster, getMemberRaidPower, getEffectiveRaidPowerBreakdown, getRaidLevelInfo, getUnlockedRaidModes } = require("../../utils/raidFactory");
 const { getWorldBuffWorkMultiPercent } = require("../../utils/workFactory");
+const guildBuffFactory = require("../../utils/guildBuffFactory");
 const { EmbedFactory } = require("../../utils/embedFactory");
 const { runStartRaidFlow } = require("./startRaid");
 const embedFactory = new EmbedFactory();
@@ -92,7 +93,16 @@ module.exports = {
         // above stays unscaled (it's explaining what makes up the BASE team power, same
         // as how Firefly's own guildRaidMultiplierPercent boost is handled).
         const worldBuffPercent = await getWorldBuffWorkMultiPercent();
-        const totalMultiplier = powerBreakdown.effectivePower * (1 + worldBuffPercent);
+        // The guild's OWN workMulti buff (2026-09-30, direct instruction: "have both buffs
+        // affect things like raids/bounties but NOT spud keep or tower") — same treatment
+        // as World Boss's buff just above (a guild/server-wide setting, unlike Firefly's
+        // individual companion perk, which stays excluded from this display on purpose).
+        // Named distinctly from the `guildLevel` re-fetched further below (after the Start
+        // Raid button click) — that one deliberately re-reads a fresh guild doc since time
+        // may have passed; this one only needs to be fresh enough for the CURRENT preview.
+        const { level: previewGuildLevel } = getRaidLevelInfo(guild.raidCount);
+        const guildWorkMultiPercent = guild.guildBuff === "workMulti" ? guildBuffFactory.getGuildBuffValue("workMulti", previewGuildLevel) : 0;
+        const totalMultiplier = powerBreakdown.effectivePower * (1 + worldBuffPercent) * (1 + guildWorkMultiPercent);
 
         const embed = await embedFactory.createRaidMemberListEmbed(guild, raidMemberList, totalMultiplier, timeUntilRaidAvailableInSeconds, powerBreakdown, guild.raidSplitMode, guild.raidPayoutMode);
 

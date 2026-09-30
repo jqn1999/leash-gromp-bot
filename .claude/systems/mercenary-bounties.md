@@ -196,7 +196,7 @@ should only ever climb.
 
 | Category | Effect | Consuming code path |
 |---|---|---|
-| `workMulti` | Flat `%` add to effective work multiplier, `/work`-only (never Bounty/Heist reward math) | `workFactory.getMercenaryWorkMulti`, summed alongside `getGuildWorkMulti`/`getCompanionWorkMulti`/`getWorldBuffWorkMulti` in every `handle*Potato` scenario's `effectiveMultiplier` |
+| `workMulti` | Flat `%` add to effective work multiplier for `/work`; also boosts Bounty's own success chance (2026-09-30, see below) — never Bounty/Heist reward math, and never Spud Keep or Tower | `workFactory.getMercenaryWorkMulti`, summed alongside `getGuildWorkMulti`/`getCompanionWorkMulti`/`getWorldBuffWorkMulti` in every `handle*Potato` scenario's `effectiveMultiplier`; also `mercenaryFactory.resolveBountyAttempt`'s own `effectiveBountyPower` (see below) |
 | `workTimer` | `/work` cooldown-skip-chance source | `dynamoHandler.getWorkCooldownSkipSources` — a 5th source alongside companion/world-buff/guild-buff/Spud Keep, feeding the same `cooldownFactory.combineSkipChance` roll `calculateWorkTimerValue` already makes |
 | `robChance` | Flat add to real `/rob`'s success chance, **and** (2026-09-09, direct user instruction overriding the design below) additively to `/rob-npc`'s (Heist) success chance too | `rob.js`, both computation sites (preview + re-rolled resolution), same shape as the existing guild `robChance` check; **also** `mercenaryFactory.resolveNpcRob`'s `npcRobChanceBonus`, the same additive bucket Yukon's `robChanceFlat` perk already uses |
 | `bountyTimer` | Bounty's own (`/take-bounty`, 3600s) cooldown-skip-chance source — the Mercenary-track counterpart to Guild Buff's `raidTimer` | `mercenaryFactory.getMercenaryCooldownSkipSources` — a 3rd source alongside `mercenaryRank`/`spudKeep`, feeding the same combined roll `takeBounty.js` already makes |
@@ -465,7 +465,7 @@ total reward, not 85% of a per-member share).
 ### Success chance
 
 ```
-effectiveBountyPower = raidFactory.getEffectiveRaidPower([userDetails])
+effectiveBountyPower = raidFactory.getEffectiveRaidPower([userDetails]) * (1 + worldBuffPercent) * (1 + mercWorkMultiPercent)
 tierEntry            = mode === 'baby' ? Bounty.TIERS[0] : raidFactory.rollWeightedTier(Bounty.TIERS, 1, effectiveBountyPower)
 successChance        = min(effectiveBountyPower / tierEntry.difficulty, Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE)
 ```
@@ -477,7 +477,22 @@ power is `workMultiplierAmount * (1 + liveRebirthPercent + companionWorkMultipli
 (see `raids-and-world-events.md`'s "Effective raid power" — `getMemberRaidPower` folds in
 the equipped companion's `workMultiplierPercent` perk as of 2026-08-24), unaffected by
 Firefly-style `guildRaidMultiplierPercent` (applied separately in `startRaid.js`, not
-inside `getEffectiveRaidPower` itself, and irrelevant to solo Bounty anyway). All 12 tiers
+inside `getEffectiveRaidPower` itself, and irrelevant to solo Bounty anyway).
+
+`worldBuffPercent` (World Boss's own live `workMulti` buff, 2026-09-04) and
+`mercWorkMultiPercent` (the mercenary's own `workMulti` Mercenary Buff selection, 2026-09-30,
+direct instruction: "have both buffs affect things like raids/bounties but NOT spud keep or
+tower") are both fetched once and multiplied in separately, right here at
+`resolveBountyAttempt`'s own call site — never baked into `getEffectiveRaidPower` itself.
+`mercWorkMultiPercent` is `userDetails.mercenaryBuff === "workMulti" ? mercenaryBuffFactory.getMercenaryBuffValue("workMulti", rank) : 0`
+— the raw percent lookup, NOT `workFactory.getMercenaryWorkMulti`'s absolute-add-on shape,
+which is the wrong shape for multiplying into a power figure. This mirrors the identical
+pattern already used for World Boss's buff, for the identical reason: Tower's entry gate and
+Spud Keep both call into `getEffectiveRaidPower`/`getEffectiveRaidPowerBreakdown` directly, and
+must stay unaffected by either buff (see `raidFactory.test.js`'s own regression coverage on
+this). Bounty's reward is a fixed tier base × range roll × rank multiplier (see "Reward" above),
+never a function of `effectiveBountyPower`, so this buff — like World Boss's — can only ever
+move success chance, never reward size. All 12 tiers
 still share `Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE` (`.95` as of 2026-09-11, raised from `.9`
 directly alongside Guild Raid's own regular-mode cap — see raids-and-world-events.md) as their
 success-chance cap — a

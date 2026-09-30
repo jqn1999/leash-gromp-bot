@@ -234,10 +234,28 @@ the scaled value, `getGuildBuffLabel(buffType, level)` builds the human-readable
 | `robChance` | +6% | +10% | +20% | [rob.js](../../src/commands/user/rob.js) |
 | `raidTimer` | -6% | -11% | -25% | `start-raid`'s post-raid cooldown write (additive with the level-based reduction below — see [Guild level](#guild-level)) |
 | `workTimer` | -6% | -11% | -25% | `dynamoHandler.calculateWorkTimerValue` |
-| `workMulti` | +6% | +10% | +15% (cap) | `/work` (`getGuildWorkMulti` in `workFactory.js`, and again in `embedFactory.js` for `/profile`'s display) |
+| `workMulti` | +6% | +10% | +15% (cap) | `/work` (`getGuildWorkMulti` in `workFactory.js`, and again in `embedFactory.js` for `/profile`'s display); also Guild Raid's own success chance (see below) |
 
 `workMulti` deliberately uses a plain linear curve (+1%/level) capped at 15%, tamer than the other
 three's accelerating shape, so it can't outscale them.
+
+**`workMulti` also boosts Guild Raid success chance (2026-09-30, direct instruction: "have both
+buffs affect things like raids/bounties but NOT spud keep or tower")** — previously `workMulti` only
+ever fed `/work`'s own reward formula via `getGuildWorkMulti` (an absolute add-on amount,
+`userMultiplier * percent`); it never touched raid power at all. Now, whenever a guild's own
+`guild.guildBuff === "workMulti"`, `getGuildBuffValue("workMulti", guildLevel)` (the raw percent, NOT
+`getGuildWorkMulti`'s absolute-amount shape) is read and multiplied into `totalMultiplier` at
+`startRaid.js`'s own roll — same "fetched once, multiplied in separately" pattern the pre-existing
+World Boss `workMulti` buff already used there, rather than baked into the shared
+`raidFactory.getEffectiveRaidPowerBreakdown` function itself. That's a deliberate choice, not an
+oversight: Tower's entry gate (`enter-tower.js`) and Spud Keep (`spudKeepFactory.js`) both call into
+that same shared power-calculation code, and neither should be affected by this buff — baking it in
+there would have leaked it into both (see `raidFactory.test.js`'s own regression test on this).
+Because Guild Raid's reward is table-based (`Raid.T#_RAID_REWARD * randomMultiplier * raidRewardMultiplier`,
+never a function of `totalMultiplier`), this buff can only ever move raid success chance, never reward
+size — architecturally forced, not a choice. `/raid-odds` and `/current-raid` (both preview/display
+commands with their own duplicated power math, each carrying its own "must never drift from the real
+roll" comment) were updated the same way, to stay in sync.
 
 **`raidTimer`'s value is now a skip CHANCE, not a flat reduction** (2026-09-05 cooldown-skip
 overhaul — see [Guild level](#guild-level)'s "Raid cooldown reduction" section below for the full

@@ -1231,6 +1231,18 @@ async function runStartRaidFlow(interaction, raidSelection) {
         totalMultiplier *= (1 + worldBuffPercent);
     }
 
+    // The guild's OWN workMulti buff (2026-09-30, direct instruction: "have both buffs
+    // affect things like raids/bounties but NOT spud keep or tower") — same "fetched once,
+    // multiplied in separately" shape as World Boss's buff just above, for the identical
+    // reason: getEffectiveRaidPower is reused as-is by Tower's entry gate and Spud Keep's own
+    // power calc, both of which must stay unaffected. Previously workMulti only ever fed
+    // /work's own reward formulas (workFactory.getGuildWorkMulti) — this is the first place
+    // it touches raid power too.
+    const guildWorkMultiPercent = guild.guildBuff === "workMulti" ? guildBuffFactory.getGuildBuffValue("workMulti", guildLevel) : 0;
+    if (guildWorkMultiPercent > 0) {
+        totalMultiplier *= (1 + guildWorkMultiPercent);
+    }
+
     // Per-member RAW power (deliberately NOT the rank-decayed teamPower above —
     // contribution share is meant to reflect each person's own raw strength, undiluted by
     // the team-combination weighting) — only consulted when the guild has opted into
@@ -1553,6 +1565,18 @@ async function resolveRaid(interaction, raidSelection, isChainedReply, chainDept
     const worldBuffPercent = await getWorldBuffWorkMultiPercent();
     if (worldBuffPercent > 0) {
         totalMultiplier *= (1 + worldBuffPercent);
+    }
+
+    // The guild's OWN workMulti buff (2026-09-30, direct instruction: "have both buffs
+    // affect things like raids/bounties but NOT spud keep or tower") — same "fetched once,
+    // multiplied in separately" shape as World Boss's buff just above, for the identical
+    // reason: getEffectiveRaidPower is reused as-is by Tower's entry gate and Spud Keep's own
+    // power calc, both of which must stay unaffected. Previously workMulti only ever fed
+    // /work's own reward formulas (workFactory.getGuildWorkMulti) — this is the first place
+    // it touches raid power too.
+    const guildWorkMultiPercent = guild.guildBuff === "workMulti" ? guildBuffFactory.getGuildBuffValue("workMulti", guildLevel) : 0;
+    if (guildWorkMultiPercent > 0) {
+        totalMultiplier *= (1 + guildWorkMultiPercent);
     }
 
     // Per-member RAW power (deliberately NOT the rank-decayed teamPower above —

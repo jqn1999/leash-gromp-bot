@@ -153,4 +153,30 @@ describe('/raid-odds', () => {
         expect(regularField.value).toMatch(/✅/);
         expect(regularField.value).toMatch(/❌/);
     });
+
+    // The guild's OWN workMulti buff (2026-09-30, direct instruction: "have both buffs
+    // affect things like raids/bounties but NOT spud keep or tower") — this preview reads
+    // the exact same guildWorkMultiPercent math startRaid.js's real roll now applies, so it
+    // must move in the same direction here too.
+    describe('guild workMulti buff', () => {
+        test('raises success chance for a roster not already at the success cap', async () => {
+            dynamoHandler.findUser.mockImplementation(async (id) => (id === 'leader' ? userFixture('leader', 5) : id === 'm2' ? userFixture('m2', 5) : undefined));
+            const regularChance = async (guildBuff) => {
+                dynamoHandler.findGuildById.mockResolvedValue(guildFixture({ guildBuff }));
+                const interaction = fakeInteraction();
+                await callback({}, interaction);
+                const fields = interaction.editReply.mock.calls[0][0].embeds[0].data.fields;
+                const regularField = fields.find(f => f.name.includes('Regular'));
+                // Metal King is a flat 1% chance, unaffected by power — read Tier 2's own
+                // success chance instead, which actually scales with the buffed roster.
+                const tier2Line = regularField.value.match(/Tier 2:[^✅]*/)[0];
+                return parseFloat(tier2Line.match(/(\d+(?:\.\d+)?)% success/)[1]);
+            };
+
+            const withoutBuff = await regularChance(undefined);
+            const withBuff = await regularChance('workMulti');
+
+            expect(withBuff).toBeGreaterThan(withoutBuff);
+        });
+    });
 });
