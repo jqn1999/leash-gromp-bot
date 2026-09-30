@@ -2891,3 +2891,108 @@ needs a live Discord client, same as this file's other cron jobs). Full suite ru
 **122 suites / 2224 tests, all passing**, unaffected either way. The now-unused
 `TowerLeaderboardFactory` import/instantiation in `backgroundEvents.js` were removed rather than left
 as dead code — re-adding both plus the call site is the entire revert when this is re-enabled.
+
+## Full `/enter-tower` kill switch + admin bypass, same day (2026-09-29, direct instruction)
+
+The leaderboard-payout disable above didn't touch players crashing DURING a run — direct
+instruction to take the whole command offline immediately ("Disable tower first and push that to
+main then investigate"), followed same-day by "real quick, also disable tower entry and push to
+main as well" once it was clear the payout disable alone wasn't enough.
+
+`enter-tower.js` gained a module-level `TOWER_DISABLED = true` flag, checked immediately after
+`deferReply()` — before any DB read or `towerFactory` construction — replying with a plain
+"temporarily disabled" message and returning. A runtime flag was used instead of `deleted: true`
+(which fully deregisters a command from Discord) specifically to avoid the command-registration-cap
+fragility `01registerCommands.js`'s own comments already document; re-enabling is a one-line flip
+back to `false`. `/tower-settings` and `/leaderboard tower-leaderboard` don't go through this file at
+all and are unaffected.
+
+**Admin bypass, same-day follow-up: "Allow admins to enter tower."** `TOWER_DISABLED` is now checked
+as `TOWER_DISABLED && !awsConfigurations.devs.includes(userId)` — reusing the exact same dev/admin id
+list `handleCommands.js`'s own `devOnly` gate already checks elsewhere, not a separate list. Lets the
+team keep reproducing the crash live against the real command while it stays closed to everyone
+else. `getUserInteractionDetails(interaction)` (cheap, synchronous, no DB call) was moved ahead of
+the disabled check so `userId` is available to test against before deciding whether to short-circuit.
+
+**Tests.** Every existing test in `enter-tower.test.js`/`enterTowerBastion.test.js` exercises real
+gameplay through `callback()` and would otherwise just observe the disabled-path reply — wrapped in
+`describe.skip(...)` (not deleted/rewritten, since all of it stays correct for when
+`TOWER_DISABLED` flips back off) with a comment pointing back here. New coverage added instead: one
+test confirming the disabled-path reply itself (maintenance message, zero DB reads/writes,
+`towerFactory` never constructed), and a new `describe('admin bypass while TOWER_DISABLED is true')`
+block (NOT skipped — it exercises the live bypass path) covering the bypass itself plus the two
+crash-hardening fixes below, both exercised through the real callback via the admin identity.
+
+## Crash-hardening pass: guards/catches added at every place the investigation surfaced (2026-09-29, direct instruction: "apply all possible fixes and guards and catches you can find places for")
+
+Following the deep-dive investigation (content-data audit, choice-resolution tracing, companion-
+helper tracing — see the section above and `roadmap.md`'s matching entry for the full ranked list of
+candidates), every concrete gap found was hardened. None of these were confirmed as *the* crash with
+a real stack trace (still not available) — each is a genuine gap regardless, closed on its own merits
+rather than waiting for confirmation:
+
+1. **`towerFactory.js`: every floor-transition screen's substantive `editReply()` call now goes
+   through a new `safeEditReply(interaction, payload)` helper** (8 call sites: `chooseRiskPolicy`,
+   `createFloorEmbed`, `createNextEmbed`, `createEliteEmbed`, `createEliteEncounter`,
+   `createFastForwardSummaryEmbed`, `createDeathEmbed`, `createWardedRetreatEmbed`) — retries once
+   after a 500ms delay on failure before giving up. This is the single most floor-agnostic candidate
+   the investigation found: it's the one thing that runs on literally every floor of every run, and
+   this exact failure class (`DiscordAPIError[10062]` from Discord's own REST rate-limit queue under
+   load) was already root-caused once before in this file, on 2026-09-11 — but that fix only covered
+   the 9 purely-cosmetic `confirmation.update()` acks, never the substantive `editReply()` calls that
+   actually show the run's content. A persistent (non-transient) failure still propagates up to
+   `startRun()`'s own caller exactly as before, preserving the existing 2026-09-11 auto-recovery
+   behavior as the final safety net. The 5 already-guarded `.catch(() => {})` "clear buttons on
+   timeout" cleanup calls were left untouched — they're a different, already-correct pattern (a
+   best-effort cosmetic clear, not a substantive screen).
+2. **`enter-tower.js`: the post-`startRun()` tail (results embed, `processRewardPayouts`,
+   `updateIfNewRecord`, `recordTowerLeaderboardEntry`) is now wrapped in its own try/catch**,
+   separate from the existing `startRun()` try/catch above it. This was the most severe of the
+   candidates found: a throw here used to be a genuine uncaught crash with no recovery message and no
+   `canEnterTower` restoration. The new catch deliberately does NOT restore `canEnterTower` the way
+   the `startRun()` catch does — by this point the climb legitimately finished and the reward was
+   very likely already credited by `processRewardPayouts`, so re-opening today's entry would risk a
+   second free run/payout on top of one that already landed. Instead it logs the error and sends a
+   best-effort followUp telling the player their run at floor N finished but something went wrong
+   saving part of it, with a timestamp to hand an admin. The results-embed followUp immediately above
+   this block got its own separate, narrower try/catch too: a failure showing that confirmation must
+   not stop the reward from still being credited afterward, so it logs and falls through rather than
+   aborting.
+3. **`dynamoHandler.js`: `recordTowerLeaderboardEntry`/`getTowerLeaderboard`/
+   `removeTowerLeaderboardEntry` all switched from `(tower && tower.entries) || []` to
+   `Array.isArray(tower?.entries) ? tower.entries : []`** — the old check only defended against
+   `entries` being missing/falsy; a present-but-non-array value (any form of stored-data corruption)
+   used to pass straight through and crash the next real array operation (`.push`/`.find`) with a
+   TypeError. Cheap, and this field is never read/written any other way, so there's no legitimate
+   non-array shape being excluded.
+4. **`companionFactory.js`: `applyCompanionAward`'s `companions.owned`/`ownedCount`/
+   `mythicOwnedCount` reads now default via `?? []`/`|| 0`** instead of assuming they're always
+   present. Every real account gets `companions` normalized by `dynamoHandler.findUser` before this
+   is ever called in practice, so this was a defense-in-depth guard rather than a confirmed live bug
+   — `applyCompanionAward` is a shared helper (Tower's Bastion drop, companion market purchases,
+   listing cancels), not Tower-specific, so hardening it benefits every caller.
+
+**What was investigated and NOT changed, because the audit found nothing wrong.** Every entry in
+`towerConstants.js` (`COMBATS`/`ENCOUNTERS`/`TRANSACTIONS`/`REWARDS`/`ELITES`) was read end-to-end
+against every assumption `AUTO_PICK_TABLE`/`pickChoiceIndexDefault`/`pickHighestValueIndex` make
+about their shape — no missing `outcome`/`value`/`result` fields, no choice-count mismatch that could
+produce an out-of-bounds index. This weakens (doesn't eliminate) the "specific bad content entry"
+hypothesis relative to the Discord-API-transience hypothesis fix #1 above targets.
+
+**Tests.** New coverage added at every fix site rather than only where it was cheapest: `towerFactory.
+test.js` gained a `describe('safeEditReply')` block (standalone-helper retry-then-succeed,
+persistent-failure-still-propagates, and an end-to-end `chooseRiskPolicy` recovery test proving the
+real call site was actually rewired). `enter-tower.test.js`'s new (non-skipped) admin-bypass describe
+block gained two more tests: a `recordTowerLeaderboardEntry` throw that confirms `canEnterTower` is
+NOT restored and the player is notified instead of the interaction dying uncaught, and a failed
+results-embed followUp that confirms the reward still gets credited afterward. `dynamoHandler.
+test.js` gained 3 tests (a corrupted-`entries` case for each of the three functions touched).
+`companionFactory.test.js` gained 1 test (a not-fully-normalized `companions` object passed into
+`applyCompanionAward`). Full suite: **122 suites (1 reporting fully skipped) / 2235 tests (17
+skipped, 2218 passing)** — net +10 new tests, 0 broken.
+
+**Investigation status: still open.** None of these four fixes were confirmed as *the* crash with a
+real stack trace — they're every concrete gap the static-analysis deep-dive actually found, closed on
+their own merits. If another crash report comes in once the command is back (even just from the
+admin bypass), a real stack trace is still the fastest way to confirm which one it actually was,
+rather than continuing to guess.

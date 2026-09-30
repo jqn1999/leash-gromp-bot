@@ -15,7 +15,7 @@ const dynamoHandler = require('../../../utils/dynamoHandler');
 const { towerFactory } = require('../../../utils/towerFactory');
 const { callback } = require('../enter-tower');
 const tC = require('../../../utils/towerConstants');
-const { Rebirth } = require('../../../utils/constants');
+const { Rebirth, awsConfigurations } = require('../../../utils/constants');
 
 function fakeInteraction() {
     return {
@@ -297,4 +297,75 @@ test('TOWER_DISABLED replies with a maintenance message and never reads or write
     expect(interaction.editReply).toHaveBeenCalledWith(expect.stringMatching(/temporarily disabled/i));
     expect(dynamoHandler.findUser).not.toHaveBeenCalled();
     expect(towerFactory).not.toHaveBeenCalled();
+});
+
+// Admin bypass (2026-09-29, direct instruction: "Allow admins to enter tower") — lets the
+// team keep testing/reproducing the crash live while TOWER_DISABLED stays true for everyone
+// else. Reuses the real awsConfigurations.devs list (constants.js isn't mocked in this file),
+// not a hardcoded id, so this stays correct if that list ever changes.
+describe('admin bypass while TOWER_DISABLED is true', () => {
+    function adminInteraction() {
+        const interaction = fakeInteraction();
+        interaction.user = { id: awsConfigurations.devs[0], username: 'Admin', displayName: 'Admin' };
+        return interaction;
+    }
+
+    test("a caller whose id is in awsConfigurations.devs bypasses the disabled message and runs the command normally", async () => {
+        dynamoHandler.findUser.mockResolvedValue(baseUser({ userId: awsConfigurations.devs[0], workMultiplierAmount: tC.ENTRY_GATE_MULTI, rebirthCount: 0 }));
+        const interaction = adminInteraction();
+
+        await callback({}, interaction);
+
+        expect(interaction.editReply).not.toHaveBeenCalledWith(expect.stringMatching(/temporarily disabled/i));
+        expect(towerFactory).toHaveBeenCalled();
+    });
+
+    // safeEditReply retry (2026-09-29, crash-hardening pass — towerFactory.js's own
+    // safeEditReply, exercised here through the full callback since towerFactory itself is
+    // mocked out in this file — see towerFactory.test.js for direct coverage of the retry
+    // helper against the real class). A transient failure on the FIRST results-embed followUp
+    // must not stop the reward from still being credited afterward.
+    test('a failed results-embed followUp does not stop the reward from being credited afterward', async () => {
+        dynamoHandler.findUser.mockResolvedValue(baseUser({ userId: awsConfigurations.devs[0], workMultiplierAmount: tC.ENTRY_GATE_MULTI, rebirthCount: 0 }));
+        towerFactory.mockImplementation(() => ({
+            startRun: jest.fn().mockResolvedValue([[5000, 0, 0, 0], 10, false, 0, 0, false]),
+        }));
+        const interaction = adminInteraction();
+        interaction.followUp = jest.fn()
+            .mockRejectedValueOnce(new Error('transient'))
+            .mockResolvedValue();
+
+        await callback({}, interaction);
+
+        expect(dynamoHandler.updateUserFields).toHaveBeenCalledTimes(1);
+        const [, , addFields] = dynamoHandler.updateUserFields.mock.calls[0];
+        expect(addFields).toEqual({ potatoes: 5000, totalEarnings: 5000 });
+    });
+
+    // Post-run bookkeeping try/catch (2026-09-29, crash-hardening pass — see tower.md): a
+    // throw AFTER the climb already finished for real (recordTowerLeaderboardEntry here, but
+    // the same catch covers processRewardPayouts/updateIfNewRecord too) must NOT restore
+    // canEnterTower — the entry was legitimately consumed and the reward was very likely
+    // already credited by processRewardPayouts before this later step failed, so re-opening
+    // today's entry would risk a second free run on top of one that already paid out.
+    // Last test in this file to set a throwing mockImplementation on a shared dynamoHandler
+    // mock — jest.clearAllMocks() (this file's own beforeEach) clears call history but not a
+    // previously-set mockImplementation, so ordering it last avoids bleeding into any test
+    // after it.
+    test('a throw in recordTowerLeaderboardEntry after a successful survived run does not restore canEnterTower, and notifies the player instead of crashing uncaught', async () => {
+        dynamoHandler.findUser.mockResolvedValue(baseUser({ userId: awsConfigurations.devs[0], workMultiplierAmount: tC.ENTRY_GATE_MULTI, rebirthCount: 0 }));
+        towerFactory.mockImplementation(() => ({
+            startRun: jest.fn().mockResolvedValue([[5000, 0, 0, 0], 10, false, 0, 0, false]),
+        }));
+        dynamoHandler.recordTowerLeaderboardEntry.mockImplementation(() => {
+            throw new Error('boom');
+        });
+        const interaction = adminInteraction();
+
+        await expect(callback({}, interaction)).resolves.not.toThrow();
+
+        expect(dynamoHandler.updateUserDatabase).not.toHaveBeenCalledWith(awsConfigurations.devs[0], 'canEnterTower', true);
+        const failureCall = interaction.followUp.mock.calls.find(([opts]) => opts.content?.includes('something went wrong'));
+        expect(failureCall).toBeTruthy();
+    });
 });

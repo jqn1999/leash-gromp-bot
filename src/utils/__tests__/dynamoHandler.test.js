@@ -1633,6 +1633,31 @@ describe('getSortedMercenariesByBountyWins', () => {
     });
 });
 
+// Array.isArray guard (2026-09-29, crash-hardening pass — see tower.md) — recordTowerLeaderboardEntry/
+// getTowerLeaderboard/removeTowerLeaderboardEntry all read the same tower_leaderboard.entries
+// field the same read-modify-write way; a corrupted (present but non-array) `entries` value used
+// to slip past the old `(tower && tower.entries) || []` check and crash the next real array
+// operation (`.push`/`.find`) with a TypeError. These lock in the fallback-to-[] behavior.
+describe('tower_leaderboard entries — corrupted (non-array) shape falls back to [] instead of throwing', () => {
+    test('recordTowerLeaderboardEntry falls back to a fresh array and still appends the new entry', async () => {
+        docClient.query.mockReturnValue(resolved({ Items: [{ trackingId: 'tower_leaderboard', entries: 'not-an-array' }] }));
+        docClient.update.mockReturnValue(resolved({}));
+
+        await expect(dynamoHandler.recordTowerLeaderboardEntry({ userId: 'u1', username: 'New', floor: 5 })).resolves.not.toThrow();
+
+        const [params] = docClient.update.mock.calls[0];
+        expect(params.ExpressionAttributeValues[':s0']).toEqual([{ userId: 'u1', username: 'New', floor: 5 }]);
+    });
+
+    test('getTowerLeaderboard returns [] instead of the corrupted value', async () => {
+        docClient.query.mockReturnValue(resolved({ Items: [{ trackingId: 'tower_leaderboard', entries: { not: 'an array' } }] }));
+
+        const entries = await dynamoHandler.getTowerLeaderboard();
+
+        expect(entries).toEqual([]);
+    });
+});
+
 // /admin reset-tower's "full wipe" option (2026-09-24) — removes exactly one player's own
 // entry from today's tower_leaderboard batch, leaving every other entry untouched.
 describe('removeTowerLeaderboardEntry', () => {
@@ -1664,6 +1689,15 @@ describe('removeTowerLeaderboardEntry', () => {
 
     test('returns null without writing when the leaderboard doc does not exist yet (fresh day, no runs yet)', async () => {
         docClient.query.mockReturnValue(resolved({ Items: [] }));
+
+        const removed = await dynamoHandler.removeTowerLeaderboardEntry('u2');
+
+        expect(removed).toBeNull();
+        expect(docClient.update).not.toHaveBeenCalled();
+    });
+
+    test('returns null without throwing when entries is a corrupted (non-array) value', async () => {
+        docClient.query.mockReturnValue(resolved({ Items: [{ trackingId: 'tower_leaderboard', entries: 'not-an-array' }] }));
 
         const removed = await dynamoHandler.removeTowerLeaderboardEntry('u2');
 

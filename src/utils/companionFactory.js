@@ -318,11 +318,17 @@ function applyCompanionAward(userDetails, companion, workCount = 0) {
         // `scavenging`. Since updateUserFields does a full SET on the `companions` field
         // (not a deep merge), that meant finding a companion while a different one was out
         // scavenging wiped the scavenge out from under the player.
+        // `?? []`/`|| 0` guards (2026-09-29, crash-hardening pass — see tower.md) — every real
+        // account gets `companions` normalized by dynamoHandler.findUser before this is ever
+        // called, but this is a shared helper (Tower's Bastion drop, market purchases, listing
+        // cancels), and a spread/arithmetic op on a missing `owned`/`ownedCount`/
+        // `mythicOwnedCount` would throw outright rather than degrade — cheap defense-in-depth
+        // against any caller that ever reaches this with a not-fully-normalized `companions`.
         companions: {
             ...companions,
-            owned: [...companions.owned, { instanceId, id: companion.id, workCount }],
-            ownedCount: companions.ownedCount + (isNew ? 1 : 0),
-            mythicOwnedCount: companions.mythicOwnedCount + (isNew && companion.rarity === CompanionRarity.MYTHIC ? 1 : 0)
+            owned: [...(companions.owned ?? []), { instanceId, id: companion.id, workCount }],
+            ownedCount: (companions.ownedCount || 0) + (isNew ? 1 : 0),
+            mythicOwnedCount: (companions.mythicOwnedCount || 0) + (isNew && companion.rarity === CompanionRarity.MYTHIC ? 1 : 0)
         }
     };
 }

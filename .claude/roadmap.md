@@ -19101,3 +19101,65 @@ their shape, since the reported symptom — fails randomly and sporadically, on 
 consistent pattern — best fits a bug in one or more specific CONTENT entries that only manifests when
 that particular entry happens to get randomly rolled, rather than a floor-number-dependent or
 purely-timing-dependent bug.
+
+## Tower: admin bypass added, deep-dive crash investigation, every concrete gap found hardened
+
+**Asked.** After the full kill switch shipped: "do a deep dive into all possible ways it can be
+failing. It fails randomly and sporadically on any floor and other such things it doesn't seem
+consistent." Then, once the deep-dive surfaced concrete candidates: "apply all possible fixes and
+guards and catches you can find places for. Allow admins to enter tower."
+
+**Investigated.** Read every entry in `towerConstants.js` (COMBATS/ENCOUNTERS/TRANSACTIONS/REWARDS/
+ELITES) end-to-end against every assumption `AUTO_PICK_TABLE`/`pickChoiceIndexDefault`/
+`pickHighestValueIndex` make about their shape — found nothing wrong (no missing fields, no
+choice-count mismatches), which weakens the "specific bad content entry" hypothesis. Traced the
+post-run companion-award/leveling helpers — found them already well-guarded by
+`dynamoHandler.findUser`'s own companion-normalization pass. Concluded the strongest fit for "random,
+sporadic, any floor" is the 8 unguarded `interaction.editReply()` calls in `towerFactory.js` — the
+only candidate that runs on literally every floor of every run, and the same failure class
+(`DiscordAPIError[10062]`, Discord's own REST rate-limit queue under load) this file already
+root-caused once before (2026-09-11) for a different, purely-cosmetic call site. Full ranked writeup
+in `systems/tower.md`.
+
+**Changed — four fixes, applied everywhere the investigation found a real gap:**
+
+1. `towerFactory.js`: new `safeEditReply(interaction, payload)` helper (retries once after 500ms on
+   failure) now wraps all 8 substantive `editReply()` calls (`chooseRiskPolicy`, `createFloorEmbed`,
+   `createNextEmbed`, `createEliteEmbed`, `createEliteEncounter`, `createFastForwardSummaryEmbed`,
+   `createDeathEmbed`, `createWardedRetreatEmbed`). A persistent failure still propagates to
+   `enter-tower.js`'s existing 2026-09-11 auto-recovery catch, unchanged.
+2. `enter-tower.js`: the post-`startRun()` tail (results embed, reward crediting, personal-best
+   record, leaderboard entry) now has its own try/catch, separate from the `startRun()` one. Unlike
+   that one, this does NOT restore `canEnterTower` on failure — by this point the reward was very
+   likely already credited, so reopening the entry would risk a double payout. Logs and tells the
+   player their run finished but a secondary step failed, with a timestamp for an admin. The
+   results-embed followUp got its own narrower try/catch too, so a failure showing it doesn't stop
+   the reward from still being credited after.
+3. `dynamoHandler.js`: `recordTowerLeaderboardEntry`/`getTowerLeaderboard`/
+   `removeTowerLeaderboardEntry` switched from `(tower && tower.entries) || []` to
+   `Array.isArray(tower?.entries) ? tower.entries : []` — the old check let a present-but-corrupted
+   non-array value through to crash the next `.push`/`.find`.
+4. `companionFactory.js`: `applyCompanionAward`'s `owned`/`ownedCount`/`mythicOwnedCount` reads now
+   default via `?? []`/`|| 0` — defense-in-depth for a shared helper (Tower's Bastion drop, market
+   purchases, listing cancels), not a confirmed live bug.
+
+**Admin bypass.** `TOWER_DISABLED` is now `TOWER_DISABLED && !awsConfigurations.devs.includes(userId)`
+— reuses the same dev/admin id list `handleCommands.js`'s own `devOnly` gate already checks, so the
+team can keep reproducing the crash live against the real command while everyone else stays locked
+out.
+
+**Tests.** New coverage at every fix site: `towerFactory.test.js` gained a `safeEditReply` describe
+block (retry-then-succeed, persistent-failure-propagates, end-to-end `chooseRiskPolicy` recovery).
+`enter-tower.test.js` gained a non-skipped `admin bypass` describe block (bypass itself, the tail
+try/catch's no-double-payout guarantee, the results-embed failure not blocking the reward).
+`dynamoHandler.test.js` gained 3 corrupted-entries tests. `companionFactory.test.js` gained 1
+not-fully-normalized-companions test. Full suite: **122 suites (1 fully skipped) / 2235 tests (17
+skipped, 2218 passing)** — net +10 tests, 0 broken.
+
+**Docs.** `systems/tower.md` gained two new dated sections (admin bypass + the four-fix
+crash-hardening pass) with full code-level detail per fix.
+
+**Investigation status: still open.** None of the four fixes were confirmed as *the* crash with a
+real stack trace (still none available) — they're every concrete gap the deep-dive actually found,
+closed on their own merits regardless. A real stack trace from a future crash (even via the admin
+bypass) is still the fastest way to confirm which one it actually was.

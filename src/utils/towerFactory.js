@@ -11,6 +11,28 @@ function toNumber(value) {
     return Number.isFinite(num) ? num : 0;
 }
 
+// Crash-hardening (2026-09-29, live player crash reports investigation — see tower.md) — every
+// floor-transition screen in this file shows itself via a bare `this.interaction.editReply(...)`
+// with no guard at all, unlike the 9 purely-cosmetic `confirmation.update()` acks this same file
+// already hardened with `.catch(() => {})` back on 2026-09-11 (root-caused there as a real,
+// transient DiscordAPIError[10062] from Discord's own REST rate-limit queue under load — see
+// that date's comment on chooseRiskPolicy). editReply is what actually SHOWS the run's content,
+// so swallowing its failure outright isn't an option the way it was for a cosmetic ack — but a
+// SINGLE transient blip shouldn't have to cost the player their entire run either, when one retry
+// after a short delay would very likely succeed. This wraps every one of those 8 call sites: on
+// failure, waits briefly and tries exactly once more; a second failure still propagates up to
+// startRun()'s own caller (enter-tower.js's try/catch), preserving the existing auto-recovery
+// behavior as the final safety net for a genuinely persistent failure.
+async function safeEditReply(interaction, payload) {
+    try {
+        return await interaction.editReply(payload);
+    } catch (err) {
+        console.error('Tower editReply failed, retrying once after a short delay:', err);
+        await new Promise(resolve => setTimeout(resolve, 500));
+        return interaction.editReply(payload);
+    }
+}
+
 class towerFactory{
 
     constructor(_interaction, _username, multi, autoContinue = false, rewardBonus = 0, hasWard = false) {
@@ -102,7 +124,7 @@ class towerFactory{
             .setFooter({text: `Tater Tower: ${this.username}`});
 
         const row = new ActionRowBuilder().addComponents(tC.SAFE_POLICY, tC.GREEDY_POLICY)
-        const reply = await this.interaction.editReply({
+        const reply = await safeEditReply(this.interaction, {
             embeds: [embed],
             components: [row],
         });
@@ -580,7 +602,7 @@ class towerFactory{
         // is 5 buttons, exactly Discord's per-row cap.
         const rowComponents = [...buttons, tC.FAST_FORWARD, ...(this.autoContinue ? [tC.LEAVE] : [])]
         const row = new ActionRowBuilder().addComponents(rowComponents)
-        const reply = await this.interaction.editReply({
+        const reply = await safeEditReply(this.interaction, {
             embeds: [embed],
             components: [row],
         });
@@ -652,7 +674,7 @@ class towerFactory{
             );
 
         const row = new ActionRowBuilder().addComponents(tC.CONT, tC.LEAVE)
-        const reply = await this.interaction.editReply({
+        const reply = await safeEditReply(this.interaction, {
             embeds: [embed],
             components: [row],
         });
@@ -692,7 +714,7 @@ class towerFactory{
             .setFooter({text: `Tater Tower: ${this.username}`});
 
         const row = new ActionRowBuilder().addComponents(tC.FIGHT, tC.LEAVE)
-        const reply = await this.interaction.editReply({
+        const reply = await safeEditReply(this.interaction, {
             embeds: [embed],
             components: [row],
         });
@@ -729,7 +751,7 @@ class towerFactory{
             .setFooter({text: `Tater Tower: ${this.username}`});
 
         const row = new ActionRowBuilder().addComponents(tC.CONT)
-        const reply = await this.interaction.editReply({
+        const reply = await safeEditReply(this.interaction, {
             embeds: [embed],
             components: [row],
         });
@@ -777,7 +799,7 @@ class towerFactory{
                 { name: "Temp Work Modifier (this run only):", value: `${summary.modifier.toFixed(2)}x`, inline: false },
             );
 
-        await this.interaction.editReply({
+        await safeEditReply(this.interaction, {
             embeds: [embed],
             components: [],
         });
@@ -796,7 +818,7 @@ class towerFactory{
             .setThumbnail("https://cdn.discordapp.com/attachments/1146091052781011026/1207183304286277685/skull.png?ex=65deb810&is=65cc4310&hm=51a9b329d50a101665716d8fb73b35b95a172b3de732e4f7f9e69f31d5c41980&")
             .setFooter({text: `Tater Tower: ${this.username}`});
 
-        await this.interaction.editReply({
+        await safeEditReply(this.interaction, {
             embeds: [embed],
             components: [],
         });
@@ -821,7 +843,7 @@ class towerFactory{
             .setTimestamp(Date.now())
             .setFooter({text: `Tater Tower: ${this.username}`});
 
-        await this.interaction.editReply({
+        await safeEditReply(this.interaction, {
             embeds: [embed],
             components: [],
         });
@@ -1025,5 +1047,6 @@ module.exports = {
     pickElite,
     pickChoiceIndex,
     investment,
-    scalingFactor
+    scalingFactor,
+    safeEditReply
 }

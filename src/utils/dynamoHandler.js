@@ -2067,16 +2067,22 @@ const resetTowerWard = async function () {
 // "tower_leaderboard" doc, one entry per survived run today (see towerFactory.js for how
 // "survived" vs "died" is determined). Read/appended by enter-tower.js as runs finish,
 // ranked/paid out/cleared by towerLeaderboardFactory.js at the daily reset.
+// Array.isArray guard (2026-09-29, crash-hardening pass — see tower.md) rather than the old
+// `(tower && tower.entries) || []`, which only defended against `entries` being missing/falsy —
+// if it were ever present but some OTHER truthy non-array shape (any form of stored-data
+// corruption), the old check would pass it straight through and `entries.push(entry)` below
+// would throw a real TypeError. Cheap, defensive, and this field is never read/written any other
+// way, so there's no legitimate non-array shape to accommodate.
 const recordTowerLeaderboardEntry = async function (entry) {
     const tower = await getStatDatabase("tower_leaderboard");
-    const entries = (tower && tower.entries) || [];
+    const entries = Array.isArray(tower?.entries) ? tower.entries : [];
     entries.push(entry);
     await updateStatFields("tower_leaderboard", { entries });
 }
 
 const getTowerLeaderboard = async function () {
     const tower = await getStatDatabase("tower_leaderboard");
-    return (tower && tower.entries) || [];
+    return Array.isArray(tower?.entries) ? tower.entries : [];
 }
 
 const clearTowerLeaderboard = async function () {
@@ -2095,7 +2101,7 @@ const clearTowerLeaderboard = async function () {
 // message with exact reverted amounts), or null if they had none to remove.
 const removeTowerLeaderboardEntry = async function (userId) {
     const tower = await getStatDatabase("tower_leaderboard");
-    const entries = (tower && tower.entries) || [];
+    const entries = Array.isArray(tower?.entries) ? tower.entries : [];
     const entry = entries.find(e => e.userId === userId) || null;
     if (!entry) return null;
     await updateStatFields("tower_leaderboard", { entries: entries.filter(e => e !== entry) });
