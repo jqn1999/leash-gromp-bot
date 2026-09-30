@@ -2063,6 +2063,19 @@ const resetTowerWard = async function () {
     return bulkUpdateAllUsers('towerWardUsedToday', false, 'resetTowerWard');
 }
 
+// True-resume checkpointing (2026-09-30, direct instruction — see enter-tower.js's own
+// resumeFrom comment) — a crashed, unconcluded run's `towerRunCheckpoint` is now deliberately
+// left in place (not cleared) so a later `/enter-tower` call can resume it. That only stays
+// correct within the SAME day's entry — without this bulk clear, a player who never bothers to
+// resume would carry a stale checkpoint across the 8pm ET reset into a brand new day's entry,
+// and their next `/enter-tower` would incorrectly resume yesterday's abandoned run instead of
+// starting fresh. Fired on the exact same cron tick as resetAllTowerEntries/resetTowerWard
+// above (see backgroundEvents.js) so a fresh canEnterTower is never paired with a stale
+// checkpoint, even for a moment.
+const resetTowerRunCheckpoints = async function () {
+    return bulkUpdateAllUsers('towerRunCheckpoint', null, 'resetTowerRunCheckpoints');
+}
+
 // Daily Tater Tower leaderboard — a small array living in the stats table's
 // "tower_leaderboard" doc, one entry per survived run today (see towerFactory.js for how
 // "survived" vs "died" is determined). Read/appended by enter-tower.js as runs finish,
@@ -2343,6 +2356,7 @@ module.exports = {
     removeStarches,
     resetAllTowerEntries,
     resetTowerWard,
+    resetTowerRunCheckpoints,
 
     recordTowerLeaderboardEntry,
     getTowerLeaderboard,

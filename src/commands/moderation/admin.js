@@ -163,9 +163,19 @@ async function runResetTower(client, interaction) {
     const alreadyCouldEnter = targetUserDetails.canEnterTower === true;
     await dynamoHandler.updateUserDatabase(targetUserId, "canEnterTower", true);
 
+    // True-resume checkpointing (2026-09-30) — a crash on its own now leaves canEnterTower
+    // true AND the run resumable via its checkpoint (see enter-tower.js's own resumeFrom
+    // comment), so this admin command is no longer needed for that specific case. It stays
+    // useful as an explicit "discard whatever's pending and start clean" override — clearing
+    // the checkpoint here too so the player's NEXT /enter-tower is a genuinely fresh run, not
+    // an accidental resume of whatever this command was meant to reset them away from.
+    const hadPendingCheckpoint = !!targetUserDetails.towerRunCheckpoint;
+    await dynamoHandler.updateUserDatabase(targetUserId, "towerRunCheckpoint", null);
+
     interaction.editReply((alreadyCouldEnter
         ? `${targetUserDisplayName} could already run /enter-tower — nothing was stuck, but their entry is confirmed available.`
         : `${targetUserDisplayName}'s Tower entry has been reset — they can run /enter-tower again right away.`)
+        + (hadPendingCheckpoint ? ` They had an in-progress, resumable run through floor ${targetUserDetails.towerRunCheckpoint.floor} — this discards it, they'll start a brand new run from floor 1.` : '')
         + wipeMessage);
 }
 
@@ -647,6 +657,51 @@ async function runMaintenanceMode(client, interaction) {
         : 'Maintenance mode is now **OFF** — the bot is back to normal for everyone.');
 }
 
+// Tower entry live toggle (2026-09-30, direct instruction: "make an admin toggle for me to
+// allow enter tower or not") — replaces enter-tower.js's own hardcoded `TOWER_DISABLED = true`
+// constant (shipped 2026-09-29 as an emergency kill switch during the crash investigation, only
+// ever flippable by editing code and redeploying) with the same DB-backed, no-deploy-needed
+// toggle pattern `bot_maintenance_mode` already established. `enabled` here means "tower entry
+// is ALLOWED" (positive framing, matching the instruction's own "allow enter tower" wording) —
+// the OPPOSITE polarity from maintenance-mode's "enabled = blocked", chosen deliberately so this
+// reads naturally on its own rather than needing a double-negative to reason about. A missing
+// doc (nobody has ever run this command) resolves to `enabled: false` (blocked) in
+// enter-tower.js's own read — the exact same default TOWER_DISABLED's hardcoded `true` value
+// already had, so removing that constant doesn't silently re-open Tower to everyone the moment
+// this ships. awsConfigurations.devs still always bypasses this, same as TOWER_DISABLED did.
+async function runTowerAccess(client, interaction) {
+    await interaction.deferReply({ ephemeral: true });
+
+    const enabled = interaction.options.get('enabled')?.value;
+    await dynamoHandler.updateStatFields('tower_access', { enabled });
+
+    interaction.editReply(enabled
+        ? 'Tower entry is now **ALLOWED** — `/enter-tower` is open to everyone.'
+        : 'Tower entry is now **BLOCKED** — `/enter-tower` is closed to everyone except developers (`awsConfigurations.devs`) until this is turned back on.');
+}
+
+// Tower leaderboard daily payout/announcement live toggle (2026-09-30, direct instruction:
+// "add admin toggle for turning the tower leaderboard daily placement daily credit on or
+// off") — same pattern again, replacing backgroundEvents.js's own hardcoded "call
+// clearTowerLeaderboard() instead of payoutWinners()" mitigation (shipped 2026-09-29 alongside
+// TOWER_DISABLED, same crash investigation) with a no-deploy toggle. `enabled: true` means the
+// nightly 8pm ET cron calls `towerLeaderboardFactory.payoutWinners()` (grants the stat/potato
+// bonus to today's top finishers AND posts the results announcement) before clearing the
+// leaderboard; `enabled: false` (or the doc missing — same "preserve today's hardcoded-off
+// default" reasoning as tower_access above) just clears it with no payout/announcement, the
+// exact current behavior. The in-progress `/leaderboard tower-leaderboard` standings view is
+// unaffected either way — it reads live entries directly, never through payoutWinners.
+async function runTowerLeaderboardPayout(client, interaction) {
+    await interaction.deferReply({ ephemeral: true });
+
+    const enabled = interaction.options.get('enabled')?.value;
+    await dynamoHandler.updateStatFields('tower_leaderboard_payout', { enabled });
+
+    interaction.editReply(enabled
+        ? "Tower leaderboard daily payout is now **ON** — tonight's 8pm ET reset will pay out and announce today's top finishers before clearing the board."
+        : 'Tower leaderboard daily payout is now **OFF** — the board still resets nightly, but nobody is paid or announced until this is turned back on.');
+}
+
 async function runEndFestival(client, interaction) {
     await interaction.deferReply({ ephemeral: true });
 
@@ -960,6 +1015,32 @@ module.exports = {
                 }
             ],
         },
+        {
+            name: 'tower-access',
+            description: 'Allow or block /enter-tower for everyone except developers',
+            type: ApplicationCommandOptionType.Subcommand,
+            options: [
+                {
+                    name: 'enabled',
+                    description: 'true to allow everyone to use /enter-tower, false to block it (developers always bypass)',
+                    required: true,
+                    type: ApplicationCommandOptionType.Boolean,
+                }
+            ],
+        },
+        {
+            name: 'tower-leaderboard-payout',
+            description: "Turn the Tater Tower daily leaderboard's stat/potato payout and results announcement on or off",
+            type: ApplicationCommandOptionType.Subcommand,
+            options: [
+                {
+                    name: 'enabled',
+                    description: "true to pay out and announce tonight's top finishers, false to just clear the board with no payout",
+                    required: true,
+                    type: ApplicationCommandOptionType.Boolean,
+                }
+            ],
+        },
     ],
     callback: async (client, interaction) => {
         const subcommand = interaction.options.getSubcommand();
@@ -1003,6 +1084,12 @@ module.exports = {
             case 'maintenance-mode':
                 await runMaintenanceMode(client, interaction);
                 break;
+            case 'tower-access':
+                await runTowerAccess(client, interaction);
+                break;
+            case 'tower-leaderboard-payout':
+                await runTowerLeaderboardPayout(client, interaction);
+                break;
         }
     },
     // Exported individually for direct unit testing, same "export the inner logic, not just
@@ -1020,4 +1107,6 @@ module.exports = {
     revokeImmuneToVenomCallback: runRevokeImmuneToVenom,
     grantTitleCallback: runGrantTitle,
     maintenanceModeCallback: runMaintenanceMode,
+    towerAccessCallback: runTowerAccess,
+    towerLeaderboardPayoutCallback: runTowerLeaderboardPayout,
 }

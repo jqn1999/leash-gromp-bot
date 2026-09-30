@@ -57,14 +57,24 @@ beforeEach(() => {
     // jest's automock would otherwise return undefined unconfigured, making every test look
     // like a failed write. Individual tests override this to simulate an actual failure.
     dynamoHandler.updateUserFields.mockResolvedValue({ Attributes: {} });
+    // Explicit default (2026-09-30) — jest.clearAllMocks() above clears call history but NOT a
+    // previously-set mockResolvedValue, so without this, a test further down the file that sets
+    // getStatDatabase to resolve `{ enabled: true }` (the tower_access live-toggle read) would
+    // silently leak that resolved value into every test that runs after it. undefined here
+    // matches tower_access's own real-world default (nobody has run /admin tower-access yet).
+    dynamoHandler.getStatDatabase.mockResolvedValue(undefined);
 });
 
-// Kill switch (2026-09-29) — TOWER_DISABLED in enter-tower.js short-circuits the callback
-// before any of the logic these tests exercise ever runs. Confirmed separately below; every
-// test in this describe block still documents real, correct behavior for when the flag flips
-// back to false, so they're skipped (not deleted/rewritten) rather than left to fail against
-// the disabled path. Un-skip this block in the same commit that flips TOWER_DISABLED back off.
-describe.skip('normal gameplay (skipped while TOWER_DISABLED is true — see tower.md)', () => {
+// Kill switch (2026-09-29, made a live admin toggle 2026-09-30 — see tower.md) — the
+// `tower_access` stats doc short-circuits the callback before any of the logic these tests
+// exercise ever runs, whenever it's disabled/unset (the default until an admin explicitly
+// turns it on via `/admin tower-access`). Confirmed separately below; every test in this
+// describe block still documents real, correct behavior for when access is allowed, so
+// they're skipped (not deleted/rewritten) rather than left to fail against the disabled
+// path. Un-skip this block once `tower_access.enabled` is expected to default to true, or add
+// an explicit `dynamoHandler.getStatDatabase.mockResolvedValue({ enabled: true })` at the top
+// of each test if that default is never meant to flip.
+describe.skip('normal gameplay (skipped while tower_access is disabled/unset by default — see tower.md)', () => {
 test('a player below ENTRY_GATE_MULTI on raw workMultiplierAmount alone is barred', () => {
     // rebirthCount 0 => 0% live rebirth bonus, so effective power === raw power here.
     dynamoHandler.findUser.mockResolvedValue(baseUser({ workMultiplierAmount: tC.ENTRY_GATE_MULTI - 1, rebirthCount: 0 }));
@@ -294,7 +304,10 @@ describe('processRewardPayouts stat crediting (batched write)', () => {
 });
 }); // end describe.skip('normal gameplay ...')
 
-test('TOWER_DISABLED replies with a maintenance message and never reads or writes anything', async () => {
+test('tower_access disabled/missing replies with a maintenance message and never reads or writes anything', async () => {
+    // Relies on this file's own beforeEach default (getStatDatabase resolves undefined) —
+    // deliberately exercising the "nobody has ever run /admin tower-access" case, which must
+    // default to blocked, not allowed.
     const interaction = fakeInteraction();
 
     await callback({}, interaction);
@@ -304,11 +317,34 @@ test('TOWER_DISABLED replies with a maintenance message and never reads or write
     expect(towerFactory).not.toHaveBeenCalled();
 });
 
+test('tower_access explicitly disabled (enabled: false) replies with the same maintenance message', async () => {
+    dynamoHandler.getStatDatabase.mockResolvedValue({ enabled: false });
+    const interaction = fakeInteraction();
+
+    await callback({}, interaction);
+
+    expect(interaction.editReply).toHaveBeenCalledWith(expect.stringMatching(/temporarily disabled/i));
+    expect(towerFactory).not.toHaveBeenCalled();
+});
+
+test('tower_access enabled: true lets a non-developer through', async () => {
+    dynamoHandler.getStatDatabase.mockResolvedValue({ enabled: true });
+    dynamoHandler.findUser.mockResolvedValue(baseUser({ workMultiplierAmount: tC.ENTRY_GATE_MULTI, rebirthCount: 0 }));
+    const interaction = fakeInteraction();
+
+    await callback({}, interaction);
+
+    expect(interaction.editReply).not.toHaveBeenCalledWith(expect.stringMatching(/temporarily disabled/i));
+    expect(towerFactory).toHaveBeenCalled();
+});
+
 // Admin bypass (2026-09-29, direct instruction: "Allow admins to enter tower") — lets the
-// team keep testing/reproducing the crash live while TOWER_DISABLED stays true for everyone
-// else. Reuses the real awsConfigurations.devs list (constants.js isn't mocked in this file),
-// not a hardcoded id, so this stays correct if that list ever changes.
-describe('admin bypass while TOWER_DISABLED is true', () => {
+// team keep testing/reproducing the crash live while `tower_access` stays disabled/unset for
+// everyone else (now a live toggle — `/admin tower-access`, 2026-09-30 — rather than the
+// original hardcoded TOWER_DISABLED constant this section's own name still references).
+// Reuses the real awsConfigurations.devs list (constants.js isn't mocked in this file), not a
+// hardcoded id, so this stays correct if that list ever changes.
+describe('admin bypass while tower_access is disabled/unset', () => {
     function adminInteraction() {
         const interaction = fakeInteraction();
         interaction.user = { id: awsConfigurations.devs[0], username: 'Admin', displayName: 'Admin' };
@@ -439,5 +475,188 @@ describe('admin bypass while TOWER_DISABLED is true', () => {
         const [opts] = bookkeepingCall;
         expect(opts.content).toContain(`<@${awsConfigurations.devs[0]}>`);
         expect(opts).not.toHaveProperty('ephemeral');
+    });
+
+    // True-resume checkpointing (2026-09-30, direct instruction: "I want a crashed run to do
+    // exactly that. Crash, and the user can continue after a crashed run from their existing DB
+    // record for the day if it hasnt resulted in a leave from tower, death from elite, or death
+    // by elite but save by bastion" — supersedes the earlier same-day "implement #1" pass, which
+    // credited whatever was banked immediately on a crash and made the player restart from floor
+    // 1). towerFactory itself is mocked out in this file, so these tests simulate a real climb's
+    // checkpoint calls by invoking the onFloorComplete callback enter-tower.js passes as the
+    // mocked constructor's 7th argument, exactly as the real towerFactory.checkpoint() would.
+    test('a crash after at least one floor checkpointed credits NOTHING yet, leaves the checkpoint in place, and tells the player to resume', async () => {
+        dynamoHandler.findUser.mockResolvedValue(baseUser({ userId: awsConfigurations.devs[0], workMultiplierAmount: tC.ENTRY_GATE_MULTI, rebirthCount: 0 }));
+        towerFactory.mockImplementation((interaction, username, multi, autoContinue, rewardBonus, hasWard, onFloorComplete) => ({
+            floor: 12,
+            startRun: jest.fn(async () => {
+                await onFloorComplete({
+                    floor: 10,
+                    run: {
+                        [tC.PAYOUT.POTATOES]: 5000,
+                        [tC.PAYOUT.WORK_MULTIPLIER]: 0.2,
+                        [tC.PAYOUT.PASSIVE_INCOME]: 0,
+                        [tC.PAYOUT.BANK_CAPACITY]: 0,
+                        [tC.PAYOUT.ELITE_KILL]: [],
+                    },
+                    elitesSurvivedCount: 1,
+                    towerCompanionHits: 0,
+                    wardUsed: false,
+                    policy: 'safe',
+                    difficulty: 4,
+                    usedRewards: [],
+                });
+                throw new Error('boom');
+            }),
+        }));
+        const interaction = adminInteraction();
+
+        await expect(callback({}, interaction)).resolves.not.toThrow();
+
+        // Nothing credited, no leaderboard/personal-best touch — the run hasn't concluded.
+        expect(dynamoHandler.updateUserFields).not.toHaveBeenCalled();
+        expect(dynamoHandler.updateIfNewRecord).not.toHaveBeenCalled();
+        expect(dynamoHandler.recordTowerLeaderboardEntry).not.toHaveBeenCalled();
+
+        // Entry restored so /enter-tower is callable again, but the checkpoint itself is NEVER
+        // cleared from the crash path — that's the whole resume mechanism.
+        expect(dynamoHandler.updateUserDatabase).toHaveBeenCalledWith(awsConfigurations.devs[0], 'canEnterTower', true);
+        expect(dynamoHandler.updateUserDatabase).not.toHaveBeenCalledWith(awsConfigurations.devs[0], 'towerRunCheckpoint', null);
+
+        const [{ content }] = interaction.editReply.mock.calls[interaction.editReply.mock.calls.length - 1];
+        expect(content).toContain('floor 10');
+        expect(content).toContain('safely saved');
+        expect(content).toMatch(/enter-tower again to pick up/i);
+    });
+
+    test('a crash before any floor checkpoints tells the player nothing was saved yet, matching the pre-resume behavior', async () => {
+        dynamoHandler.findUser.mockResolvedValue(baseUser({ userId: awsConfigurations.devs[0], workMultiplierAmount: tC.ENTRY_GATE_MULTI, rebirthCount: 0 }));
+        towerFactory.mockImplementation(() => ({
+            floor: 1,
+            startRun: jest.fn().mockRejectedValue(new Error('boom')),
+        }));
+        const interaction = adminInteraction();
+
+        await expect(callback({}, interaction)).resolves.not.toThrow();
+
+        expect(dynamoHandler.updateUserFields).not.toHaveBeenCalled();
+        expect(dynamoHandler.updateUserDatabase).toHaveBeenCalledWith(awsConfigurations.devs[0], 'canEnterTower', true);
+        const [{ content }] = interaction.editReply.mock.calls[interaction.editReply.mock.calls.length - 1];
+        expect(content).toContain('Nothing from that attempt was saved yet');
+    });
+
+    test('a pending checkpoint from a previous crash is passed to towerFactory as resumeFrom, and cleared only once the resumed run actually concludes', async () => {
+        const pendingCheckpoint = {
+            floor: 10,
+            run: {
+                [tC.PAYOUT.POTATOES]: 5000,
+                [tC.PAYOUT.WORK_MULTIPLIER]: 0.2,
+                [tC.PAYOUT.PASSIVE_INCOME]: 0,
+                [tC.PAYOUT.BANK_CAPACITY]: 0,
+                [tC.PAYOUT.ELITE_KILL]: [],
+            },
+            elitesSurvivedCount: 1,
+            towerCompanionHits: 0,
+            wardUsed: false,
+            policy: 'safe',
+            difficulty: 4,
+            usedRewards: [],
+        };
+        dynamoHandler.findUser.mockResolvedValue(baseUser({
+            userId: awsConfigurations.devs[0], workMultiplierAmount: tC.ENTRY_GATE_MULTI, rebirthCount: 0,
+            towerRunCheckpoint: pendingCheckpoint,
+        }));
+        towerFactory.mockImplementation(() => ({
+            // Simulates the resumed run continuing to floor 15 and then a voluntary leave —
+            // the mocked startRun() return is what a real towerFactory would compute by
+            // combining the resumeFrom state with everything resolved after resuming, so the
+            // final numbers here (potatoes 8000, work multiplier 0.5) stand in for that combined
+            // total rather than re-deriving it from pendingCheckpoint's own numbers.
+            startRun: jest.fn().mockResolvedValue([[8000, 0.5, 0, 0], 15, false, 2, 0, false]),
+        }));
+        const interaction = adminInteraction();
+
+        await callback({}, interaction);
+
+        // towerFactory's 8th constructor argument is the resume checkpoint.
+        expect(towerFactory).toHaveBeenCalledWith(
+            interaction, 'Admin', tC.ENTRY_GATE_MULTI, false, 0, false, expect.any(Function), pendingCheckpoint
+        );
+
+        // The run concluded for real this time — credited normally, leaderboard/personal-best
+        // updated, and the checkpoint (now fully superseded) cleared.
+        expect(dynamoHandler.updateUserFields).toHaveBeenCalledTimes(1);
+        const [, , addFields] = dynamoHandler.updateUserFields.mock.calls[0];
+        expect(addFields).toEqual({ potatoes: 8000, totalEarnings: 8000 });
+        expect(dynamoHandler.updateIfNewRecord).toHaveBeenCalledWith(awsConfigurations.devs[0], 'highestTowerFloor', 15);
+        expect(dynamoHandler.recordTowerLeaderboardEntry).toHaveBeenCalledWith(expect.objectContaining({ floor: 15 }));
+        expect(dynamoHandler.updateUserDatabase).toHaveBeenCalledWith(awsConfigurations.devs[0], 'towerRunCheckpoint', null);
+    });
+
+    test('a resume attempt that crashes again before checkpointing any NEW floor still reports the pre-existing checkpoint, not "nothing saved"', async () => {
+        const pendingCheckpoint = {
+            floor: 10,
+            run: {
+                [tC.PAYOUT.POTATOES]: 5000, [tC.PAYOUT.WORK_MULTIPLIER]: 0, [tC.PAYOUT.PASSIVE_INCOME]: 0, [tC.PAYOUT.BANK_CAPACITY]: 0, [tC.PAYOUT.ELITE_KILL]: [],
+            },
+            elitesSurvivedCount: 1, towerCompanionHits: 0, wardUsed: false, policy: 'safe', difficulty: 4, usedRewards: [],
+        };
+        dynamoHandler.findUser.mockResolvedValue(baseUser({
+            userId: awsConfigurations.devs[0], workMultiplierAmount: tC.ENTRY_GATE_MULTI, rebirthCount: 0,
+            towerRunCheckpoint: pendingCheckpoint,
+        }));
+        towerFactory.mockImplementation(() => ({
+            floor: 11,
+            // Crashes immediately — no onFloorComplete call this attempt at all.
+            startRun: jest.fn().mockRejectedValue(new Error('boom again')),
+        }));
+        const interaction = adminInteraction();
+
+        await expect(callback({}, interaction)).resolves.not.toThrow();
+
+        expect(dynamoHandler.updateUserFields).not.toHaveBeenCalled();
+        expect(dynamoHandler.updateUserDatabase).not.toHaveBeenCalledWith(awsConfigurations.devs[0], 'towerRunCheckpoint', null);
+        const [{ content }] = interaction.editReply.mock.calls[interaction.editReply.mock.calls.length - 1];
+        expect(content).toContain('floor 10');
+        expect(content).toContain('safely saved');
+    });
+
+    // Leaderboard/personal-best eligibility (direct instruction, following up on the
+    // checkpointing feature above): a checkpoint-credited CRASH must never count, but the two
+    // ways a run can genuinely CONCLUDE should be unaffected by that exclusion — a voluntary
+    // leave, and an Elite death saved by Bastion's ward (towerFactory.js keeps `died` false in
+    // that case specifically so it resolves exactly like a voluntary leave — see execElite's
+    // own comment). Both reach the SAME tail-bookkeeping block (`died` false either way), so
+    // one test covers both without needing to fake which specific path produced it.
+    test("an Elite death saved by Bastion's ward (died stays false) counts toward highestTowerFloor and the daily leaderboard, same as a voluntary leave", async () => {
+        dynamoHandler.findUser.mockResolvedValue(baseUser({ userId: awsConfigurations.devs[0], workMultiplierAmount: tC.ENTRY_GATE_MULTI, rebirthCount: 0 }));
+        towerFactory.mockImplementation(() => ({
+            // [rewards, floor, died, elitesSurvivedCount, towerCompanionHits, wardUsed] — died
+            // is false (the ward saved it), wardUsed is true.
+            startRun: jest.fn().mockResolvedValue([[5000, 0, 0, 0], 10, false, 1, 0, true]),
+        }));
+        const interaction = adminInteraction();
+
+        await callback({}, interaction);
+
+        expect(dynamoHandler.updateIfNewRecord).toHaveBeenCalledWith(awsConfigurations.devs[0], 'highestTowerFloor', 10);
+        expect(dynamoHandler.recordTowerLeaderboardEntry).toHaveBeenCalledWith(expect.objectContaining({
+            userId: awsConfigurations.devs[0],
+            floor: 10,
+        }));
+        expect(dynamoHandler.updateUserDatabase).toHaveBeenCalledWith(awsConfigurations.devs[0], 'towerWardUsedToday', true);
+    });
+
+    test('a real (unwarded) Elite death counts toward highestTowerFloor but NOT the daily leaderboard — unchanged, unrelated to checkpointing', async () => {
+        dynamoHandler.findUser.mockResolvedValue(baseUser({ userId: awsConfigurations.devs[0], workMultiplierAmount: tC.ENTRY_GATE_MULTI, rebirthCount: 0 }));
+        towerFactory.mockImplementation(() => ({
+            startRun: jest.fn().mockResolvedValue([[5000, 0, 0, 0], 10, true, 0, 0, false]), // died: true
+        }));
+        const interaction = adminInteraction();
+
+        await callback({}, interaction);
+
+        expect(dynamoHandler.updateIfNewRecord).toHaveBeenCalledWith(awsConfigurations.devs[0], 'highestTowerFloor', 10);
+        expect(dynamoHandler.recordTowerLeaderboardEntry).not.toHaveBeenCalled();
     });
 });

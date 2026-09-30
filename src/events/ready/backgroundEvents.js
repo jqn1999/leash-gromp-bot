@@ -11,6 +11,7 @@ const { GuildContractFactory } = require("../../utils/guildContractFactory.js");
 const { EmbedFactory } = require("../../utils/embedFactory.js");
 const spudKeepFactory = require("../../utils/spudKeepFactory.js");
 const festivalFactory = require("../../utils/festivalFactory.js");
+const { TowerLeaderboardFactory } = require("../../utils/towerLeaderboardFactory.js");
 
 // Eastern-timezone-aware "MM-DD" (Intl, DST-safe) — used only by the birthday cron below
 // to judge "is it actually this person's birthday" in the same timezone that job's own
@@ -25,6 +26,7 @@ let eF = new EventFactory()
 let questFactory = new QuestFactory()
 let guildContractFactory = new GuildContractFactory()
 let embedFactory = new EmbedFactory()
+let towerLeaderboardFactory = new TowerLeaderboardFactory()
 
 let statuses = [
     {
@@ -74,24 +76,41 @@ module.exports = async (client) => {
         // rest of the day's cron down with it, and a real failure now logs which specific
         // step broke instead of vanishing.
 
-        // Tower leaderboard STAT/POTATO PAYOUT + daily results announcement TEMPORARILY
-        // DISABLED (2026-09-29, direct instruction — live player reports of the Tower
-        // command crashing, traced to this same leaderboard machinery; see
-        // towerLeaderboardFactory.js's own comment above payoutWinners for the concrete
-        // suspects still open). `towerLeaderboardFactory.payoutWinners()` is what both
-        // grants the stat/potato bonus AND builds the announcement payload, so simply not
-        // calling it here removes both at once without touching that function or its own
-        // test suite (still fully intact, ready to re-enable once the crash is root-caused
-        // and fixed — just swap the `clearTowerLeaderboard()` call below back for
-        // `payoutWinners()` + the announcement block it used to feed). The in-progress
-        // /leaderboard tower-leaderboard STANDINGS view is untouched by this — it reads
-        // today's entries directly via getTowerLeaderboard/sortTowerLeaderboardEntries, never
-        // through payoutWinners, so players can still see and race for rank even though
-        // nobody is being paid for it right now. The leaderboard is still cleared every
-        // night (same as payoutWinners always did at the end of its own run) so it doesn't
-        // grow unbounded across days.
+        // Tower leaderboard STAT/POTATO PAYOUT + daily results announcement — live-toggled,
+        // not hardcoded (2026-09-30, direct instruction: "add admin toggle for turning the
+        // tower leaderboard daily placement daily credit on or off"). Was unconditionally
+        // disabled (2026-09-29, live player reports of the Tower command crashing, traced to
+        // this same leaderboard machinery — see towerLeaderboardFactory.js's own comment above
+        // payoutWinners for the concrete suspects) by simply calling `clearTowerLeaderboard()`
+        // instead of `payoutWinners()`, which needed a code edit + redeploy to ever flip back.
+        // Now read live from the `tower_leaderboard_payout` stats doc, toggled via
+        // `/admin tower-leaderboard-payout enabled:<bool>` (admin.js) — same no-deploy pattern
+        // `tower_access`/`bot_maintenance_mode` already established. A missing doc (nobody has
+        // touched this yet) resolves to disabled, preserving the exact current default. The
+        // in-progress `/leaderboard tower-leaderboard` STANDINGS view is unaffected either way —
+        // it reads today's entries directly via getTowerLeaderboard/sortTowerLeaderboardEntries,
+        // never through payoutWinners, so players can still see and race for rank regardless of
+        // whether anyone's actually being paid for it right now.
         try {
-            await dynamoHandler.clearTowerLeaderboard()
+            const towerLeaderboardPayout = await dynamoHandler.getStatDatabase('tower_leaderboard_payout')
+            if (towerLeaderboardPayout?.enabled === true) {
+                const towerWinners = await towerLeaderboardFactory.payoutWinners()
+                if (towerWinners.length > 0) {
+                    client.channels.fetch('1188525931346792498')
+                        .then(async channel => {
+                            const resultsEmbed = embedFactory.createTowerLeaderboardResultsEmbed(towerWinners)
+                            channel.send({ embeds: [resultsEmbed] })
+                        })
+                        .catch(err => {
+                            console.log(err)
+                        });
+                }
+            } else {
+                // payoutWinners() itself already clears the leaderboard at the end of its own
+                // run (see towerLeaderboardFactory.js) — this direct call is only needed on the
+                // disabled branch, so it doesn't grow unbounded across days either way.
+                await dynamoHandler.clearTowerLeaderboard()
+            }
 
             // Reset all user tower entries at 8pm EST/EDT (see this job's own schedule comment)
             await dynamoHandler.resetAllTowerEntries()
@@ -99,8 +118,13 @@ module.exports = async (client) => {
             // canEnterTower above, so a used ward is available again the next time a player
             // can enter the tower at all.
             await dynamoHandler.resetTowerWard()
+            // True-resume checkpointing (2026-09-30) — same daily cadence again: a crashed,
+            // never-resumed run's checkpoint must not survive into the fresh entry this same
+            // reset just granted, or a player's next /enter-tower would incorrectly resume a
+            // run from a day that's already over instead of starting today's fresh climb.
+            await dynamoHandler.resetTowerRunCheckpoints()
         } catch (err) {
-            console.log('daily cron: Tower reset step failed:', err)
+            console.log('daily cron: Tower payout/reset step failed:', err)
         }
 
         // Rotate the daily quest set (always) and the weekly set (Sundays only) — see

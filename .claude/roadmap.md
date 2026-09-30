@@ -19385,3 +19385,239 @@ cited a literal number.
 **Cross-repo note.** Not yet ported to `financial-project` — checking that repo next, since all
 three constants are the same game-logic/balance numbers `/gromp` also implements (the same ones
 the previous rebalance entry above was ported for).
+
+## Tower per-floor checkpointing: crashes now credit progress already banked
+
+**Asked**, after the last Tower entry's messaging fix: "Is this just fixing messaging? not the
+actual root cause of the issue right? Is there anyway to save on each floor of a user's run and
+if it was to fail they can start back their tower up with another enter tower or mabe a new
+resume tower rather than having to always have an admin reset their run and start over" — answered
+directly (no, not the root cause — still open) and recommended a scoped option (checkpoint
+rewards after each floor, credit on crash, still restart fresh — NOT full mid-climb resume, a much
+bigger lift with a real double-credit risk against the existing "don't restore `canEnterTower`
+after a legitimately-finished run" invariant). Confirmed with a follow-up instruction: "implement
+#1."
+
+**Root finding that shaped the design**: `towerFactory.js` had ZERO DB writes anywhere in the file
+before this change — the whole climb lived in one in-memory `while(cont)` loop, nothing persisted
+until `startRun()` returned. That's WHY a crash lost the entire run, not just the last floor —
+there was nothing to recover from.
+
+**Changed** (`src/utils/towerFactory.js`):
+- Constructor gained an optional 7th argument, `onFloorComplete` — an injected async callback,
+  keeping this class a pure run simulator with no DB knowledge of its own (its existing "enter-
+  tower.js persists, towerFactory computes" division of labor, unchanged as a principle).
+- New `checkpoint()` method snapshots `{ floor, run, elitesSurvivedCount, towerCompanionHits,
+  wardUsed }` (independent copies, including `ELITE_KILL`'s own array, so a later mutation can't
+  retroactively change an already-reported floor's snapshot) and awaits `onFloorComplete` with it.
+  A failed checkpoint write is logged and swallowed — never aborts the run, worst case just falls
+  back to the pre-checkpoint behavior.
+- `startRun()`'s outer floor loop calls `checkpoint()` once per resolved floor (the old `continue;`
+  after the Elite branch became an `else`, purely to share one trailing checkpoint call).
+- `fastForwardToNextElite()`'s OWN inner loop also got a `checkpoint()` call — without it, an
+  entire Fast-Forwarded batch (which makes zero Discord round-trips and never returns to the outer
+  loop mid-batch) would checkpoint only once at the very end, losing every floor inside a crashed
+  batch instead of just the floors after the last one that actually finished.
+
+**Changed** (`src/commands/tower/enter-tower.js`):
+- A new `towerRunCheckpoint` field on the user's own DynamoDB record (no new table) is cleared to
+  `null` BEFORE each run starts, so a stale leftover from a previous crash (e.g. the whole process
+  dying before its own catch block ever ran) can never be mistaken for the new run's progress.
+- A `checkpointTowerRun` callback both persists each snapshot to that field AND keeps the latest
+  one in an in-memory closure variable (`latestCheckpoint`) — used directly for in-process crash
+  recovery, since a caught JS exception never corrupts outer-scope state, making the in-memory copy
+  exactly as correct as a DB re-read without the extra round trip.
+- The `startRun()` crash catch block now checks `latestCheckpoint`: if set, it calls the SAME
+  `processRewardPayouts` a normal completed run uses (with the checkpoint's own `run`/`floor`,
+  `died: false`), crediting the potatoes/work-multiplier/passive-income/bank-capacity (plus
+  companion leveling/Bastion drops) already banked through the last floor that genuinely finished.
+  `canEnterTower` is still restored either way; `towerRunCheckpoint` clears once credited. `null`
+  (crash before floor 1 finished) is byte-for-byte the pre-checkpoint behavior. The recovery
+  message branches accordingly — names the credited floor and numbers, or the original "nothing
+  was banked" wording.
+- `towerRunCheckpoint` also clears right after a NORMAL successful `startRun()` return, since
+  `tower_out`'s own final state supersedes it.
+
+**Deliberately scoped out**: a checkpoint-credited crash run does NOT count toward
+`highestTowerFloor` or `/tower-leaderboard` eligibility — only the reward/companion crediting
+above. Neither of those systems' own "did this run actually conclude" rules cleanly cover a run
+that crashed (neither survived-and-left nor died-to-an-Elite), and extending personal-best/
+leaderboard credit to an aborted run felt like a separate call the instruction didn't ask for —
+flagged in `tower.md` rather than silently decided.
+
+**What this does and doesn't fix.** Still not the root cause — whatever throws inside `startRun()`
+remains unconfirmed. This only shrinks the blast radius of a crash from "the whole run's progress,
+every time" to "whatever happened after the last floor that actually finished." True mid-climb
+resume (the bigger design option not chosen) would close that remaining gap, at real added
+complexity — not built here, but not precluded either, since the checkpoint snapshot already
+carries most of what a future resume feature would need.
+
+**Tests.** `towerFactory.test.js` gained a new 3-test `describe('per-floor checkpointing
+(onFloorComplete)')` block: a real end-to-end 3-floor run confirming one checkpoint call per floor
+with an independent-copy snapshot, a rejecting-callback-doesn't-abort-the-run test, and a no-
+callback-supplied back-compat test. `enter-tower.test.js`'s admin-bypass block gained 3 more:
+stale-checkpoint-cleared-at-start-and-after-success, crash-with-a-checkpoint partial credit
+(asserting the exact `updateUserFields` numbers and that the recovery message names the credited
+floor), and crash-with-no-checkpoint (confirming unchanged pre-checkpoint behavior). Full suite:
+**122 suites (1 fully skipped) / 2249 tests (17 skipped, 2232 passing)** — net +6 new tests, 0
+broken.
+
+**Cross-repo note.** Not ported to `financial-project` — same reasoning as the messaging fix
+above: a Discord-interaction-specific recovery mechanism with no web equivalent, touching no game
+logic, balance, or data shape `/gromp` implements.
+
+## Tower checkpointing follow-up: confirmed floor-1 restart behavior, locked in leaderboard scoping with tests
+
+**Asked**, same day as the checkpointing feature above, two things:
+1. "If there is a snapshot, if they crash and enter tower again do they start from where they
+   crashed or from floor 1" — answered directly: floor 1. The checkpoint only banks the REWARD
+   already earned through the last completed floor; it does not preserve run/floor state, so a new
+   `/enter-tower` is a genuinely fresh climb. This was always the design ((1) from the prior entry,
+   not (2)'s true resume), now stated explicitly in `tower.md` rather than left implicit.
+2. "Checkpoint credited crash should not count towards highestTowerFloor or daily leaderboard, it
+   should only consider it when a user decides to leave tower (non-crash) or die in tower but get
+   saved via bastion, and save their entry to leaderboard" — this was ALREADY exactly how the
+   checkpointing feature shipped (the crash catch block never calls `updateIfNewRecord`/
+   `recordTowerLeaderboardEntry`; those only live in the tail-bookkeeping block that only runs
+   after `startRun()` returns without throwing), so no code change was needed. What WAS missing:
+   explicit test coverage proving the ward-saved-death case specifically, since a Bastion save
+   keeps `died` false and thereby already reaches the leaderboard path — this was previously true
+   "by construction" but unverified by any test.
+
+**Changed** (`src/commands/tower/__tests__/enter-tower.test.js`): 3 additions to the admin-bypass
+describe block —
+- Added `expect(dynamoHandler.updateIfNewRecord).not.toHaveBeenCalled()` and
+  `expect(dynamoHandler.recordTowerLeaderboardEntry).not.toHaveBeenCalled()` directly to the
+  existing checkpoint-crash-credit test.
+- New test: an Elite death saved by Bastion's ward (`died: false, wardUsed: true` in the mocked
+  `startRun()` return tuple) asserts BOTH `updateIfNewRecord` and `recordTowerLeaderboardEntry`
+  fire, same as a voluntary leave.
+- New test: a real, unwarded Elite death (`died: true`) asserts `updateIfNewRecord` fires but
+  `recordTowerLeaderboardEntry` does not — pre-existing behavior, included for completeness since
+  it's the third leg of the same eligibility story, unrelated to checkpointing itself.
+
+**Docs.** `tower.md`'s checkpointing section gained an explicit "starts from floor 1, not a resume"
+callout right after its own intro paragraph, and its leaderboard-scoping paragraph was rewritten
+from "flagged as an open question" to "confirmed correct as shipped, direct instruction, 2 new
+tests" — the underlying code was already right; only the doc's own framing and the test coverage
+were missing.
+
+**Tests.** Full suite: **122 suites (1 fully skipped) / 2251 tests (17 skipped, 2234 passing)** —
+net +2 new tests (plus 2 new assertions on an existing test), 0 broken.
+
+## Tower: true resume — a crashed run continues instead of restarting
+
+**Asked**, same day as everything above: "I want a crashed run to do exactly that. Crash, and the
+user can continue after a crashed run from their existing DB record for the day if it hasnt
+resulted in a leave from tower, death from elite, or death by elite but save by bastion" — this is
+design option (2) from the original "implement #1" scoping conversation (full mid-climb resume),
+now explicitly chosen over the "credit-and-restart-at-floor-1" design that had shipped hours
+earlier the same day.
+
+**The core shift.** A crash no longer credits anything immediately or clears the checkpoint — it
+just restores `canEnterTower` and leaves `towerRunCheckpoint` exactly where the last successful
+floor left it. The next `/enter-tower` call reads that checkpoint and resumes the SAME run (same
+floor, accumulated rewards, risk policy, Elite difficulty position, used-REWARDS set, ward-spent
+state) instead of starting over. Rewards/`highestTowerFloor`/the leaderboard are now credited in
+exactly one place: the existing tail-bookkeeping block that only runs once `startRun()` returns
+without throwing — i.e. once the run genuinely concludes via one of the instruction's own three
+named exceptions (voluntary leave, real Elite death, or an Elite death saved by Bastion's ward,
+which already resolves identically to a voluntary leave). A crash on its own was deliberately left
+out of that list, so nothing about the leaderboard scoping locked in by the previous entry needed
+to change — it was already gated on genuine conclusion.
+
+**Changed** (`src/utils/towerFactory.js`): constructor gained an 8th `resumeFrom` argument
+restoring `floor`/`run`/`elitesSurvivedCount`/`towerCompanionHits`/`wardUsed`/`policy`/
+`difficulty`/`usedRewards` from a checkpoint snapshot (independent copies, `Set` round-tripped
+through a plain array). `multi`/`scalingFactor`/`hasWard`/`rewardBonus` stay live-recomputed every
+call, resume or not. `wardUsed` (not the freshly-recomputed `hasWard`) is what actually blocks a
+double-ward-save across a resume, since `towerWardUsedToday` in the DB isn't written until the run
+concludes. `checkpoint()` extended to snapshot the 3 new fields. `startRun()` skips
+`chooseRiskPolicy()` on resume and no longer hardcodes the next floor as COMBAT (only true for a
+genuine floor 1) — a resumed run's next floor gets a real `getFloor()` roll. A short "▶️ Your tower
+run continues!" note prefaces the next NORMAL floor's embed on resume (reusing the same field
+`autoContinue` already prefaces text through); doesn't fire if that floor happens to be a forced
+Elite — an accepted narrow gap.
+
+**Changed** (`src/commands/tower/enter-tower.js`): `resumeFrom` read straight off the already-
+fetched `userDetails.towerRunCheckpoint`. `latestCheckpoint` now seeded with `resumeFrom` (not
+`null`) so a resume-that-crashes-again-immediately still reports the pre-existing checkpoint's
+floor. The crash catch block no longer calls `processRewardPayouts` or clears the checkpoint at
+all — only restores `canEnterTower` and reports what's saved. `towerRunCheckpoint` clears in
+exactly one place: right after a genuinely successful (non-throwing) `startRun()` return.
+
+**New staleness guard**: an abandoned, never-resumed checkpoint could otherwise survive into a
+future day once the nightly cron flips `canEnterTower` back to `true`. Added
+`dynamoHandler.resetTowerRunCheckpoints()` (new `bulkUpdateAllUsers` call, same shape as the
+existing `resetAllTowerEntries`/`resetTowerWard`), fired on the same 8pm ET tick in
+`backgroundEvents.js`.
+
+**`/admin-reset-tower`'s role changed**: a crash no longer strands anyone on its own (this
+command's original purpose), so it's now an explicit "discard whatever's pending" override —
+clears `towerRunCheckpoint` too, and names the discarded floor in its reply if one existed.
+
+**Tests.** `enter-tower.test.js`: rewrote the crash-credits-a-checkpoint / clears-stale-checkpoint
+tests for the new behavior (nothing credited, checkpoint untouched on crash), added a resume test
+(asserts the 8th constructor arg, and that a normal conclusion afterward credits the FULL
+cumulative reward) and a resume-crashes-again test. `towerFactory.test.js` gained a 4-test
+`describe('resuming a crashed run (resumeFrom)')` block covering full state restoration, skipped
+risk-policy prompt, floor+1 continuation with a real floor-type roll, and ward-already-spent
+staying spent. `admin.test.js` gained 2 tests for the reset command's checkpoint-discarding
+behavior. Full suite: **122 suites (1 fully skipped) / 2258 tests (17 skipped, 2241 passing)** —
+net +7 new tests (2 rewritten), 0 broken.
+
+**What this does and doesn't fix.** Still not the root cause of whatever throws inside
+`startRun()` — that investigation remains open. This closes the gap the previous design
+deliberately left unaddressed: a run can now survive any number of crashes and still be completed,
+with nothing credited until it actually concludes.
+
+**Cross-repo note.** Not ported to `financial-project` — Discord-interaction-specific recovery
+mechanics (crash/resume tied to a Discord interaction's own lifecycle) with no web equivalent,
+touching no game logic, balance, or data shape `/gromp` implements.
+
+## Tower's two crash-era hardcoded kill switches are now live admin toggles
+
+**Asked**: "make an admin toggle for me to allow enter tower or not. add admin toggle for turning
+the tower leaderboard daily placement daily credit on or off." Both `TOWER_DISABLED`
+(`enter-tower.js`'s hardcoded module-level constant) and the leaderboard-payout disable
+(`backgroundEvents.js`'s hardcoded `clearTowerLeaderboard()`-instead-of-`payoutWinners()` swap) —
+both shipped 2026-09-29 during the crash investigation — needed a code edit and redeploy to ever
+flip back. Both are now no-deploy admin commands, following `/admin maintenance-mode`'s own
+established DB-backed toggle pattern exactly.
+
+**Changed** (`src/commands/moderation/admin.js`): two new subcommands, `tower-access` and
+`tower-leaderboard-payout`, each taking a required `enabled` boolean, writing to their own stats
+doc (`tower_access`/`tower_leaderboard_payout`) via `dynamoHandler.updateStatFields`.
+
+**Changed** (`src/commands/tower/enter-tower.js`): the hardcoded `TOWER_DISABLED = true` constant
+removed entirely, replaced with a live `dynamoHandler.getStatDatabase('tower_access')` read at the
+same gate check site. `enabled` means "entry is ALLOWED" (opposite polarity from
+`bot_maintenance_mode`'s "enabled = blocked", chosen so it reads naturally on its own). A missing
+doc resolves to blocked — the same default the hardcoded `true` already had, so this ships with
+zero behavior change until an admin explicitly runs the command. `awsConfigurations.devs` still
+always bypasses it.
+
+**Changed** (`src/events/ready/backgroundEvents.js`): re-added the `TowerLeaderboardFactory`
+import/instance the 2026-09-29 disable had removed. The nightly 8pm ET cron now reads
+`tower_leaderboard_payout` live: `enabled === true` calls `payoutWinners()` and posts the results
+announcement (restoring the exact block the disable commit removed, including the same channel
+id), otherwise falls back to a direct `clearTowerLeaderboard()` call — the current safe default,
+also applied when the doc is missing.
+
+**Tests.** `admin.test.js` gained 2 new describe blocks (4 tests) mirroring `/admin
+maintenance-mode`'s own ON/OFF coverage exactly. `enter-tower.test.js` gained an explicit
+`getStatDatabase.mockResolvedValue(undefined)` default in its `beforeEach` (guards against
+`jest.clearAllMocks()` not resetting a previously-set resolved value from leaking across tests)
+plus 3 new tests for the disabled/missing, explicitly-disabled, and enabled cases; the
+`describe.skip`/admin-bypass block titles reworded from "TOWER_DISABLED" to "tower_access" for
+accuracy only, no behavior change. No test coverage added for the `backgroundEvents.js` branch
+itself — no test file exists for that cron job at all, consistent with its own pre-existing
+convention. Full suite: **122 suites (1 fully skipped) / 2264 tests (17 skipped, 2247 passing)** —
+net +6 new tests, 0 broken.
+
+**Both toggles ship OFF by default** (matching the current hardcoded-disabled state exactly) —
+turning either on is left as a judgment call for whoever runs the command, not decided here.
+
+**Cross-repo note.** Not ported to `financial-project` — both gate Discord-specific
+command/cron behavior with no web equivalent, touching no game logic, balance, or data shape
+`/gromp` implements.

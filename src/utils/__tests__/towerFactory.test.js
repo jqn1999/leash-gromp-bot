@@ -1598,3 +1598,213 @@ describe('a stale click whose customId matches nothing on the CURRENT screen def
         expect(cont).toBe(true);
     });
 });
+
+// Per-floor checkpointing (2026-09-30, direct instruction: "implement #1" — save progress on
+// each floor so a crashed run can be credited for what it already banked, instead of losing
+// everything and needing an admin reset). onFloorComplete is the 7th constructor argument;
+// towerFactory itself stays DB-agnostic (see the constructor's own comment) and just invokes
+// whatever callback enter-tower.js supplies once per resolved floor.
+describe('per-floor checkpointing (onFloorComplete)', () => {
+    function choice(customId) {
+        return { customId, update: jest.fn().mockResolvedValue() };
+    }
+
+    function fakeInteraction(responses) {
+        let i = 0;
+        const editReply = jest.fn(async () => ({
+            awaitMessageComponent: jest.fn(async () => responses[i++]),
+        }));
+        return { editReply, user: { id: 'u1' } };
+    }
+
+    let randomSpy;
+    afterEach(() => {
+        if (randomSpy) randomSpy.mockRestore();
+    });
+
+    test('fires once per resolved floor, with a snapshot matching the run state at that point', async () => {
+        randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0);
+        // Without autoTowerContinue, each floor is TWO clicks: the floor's own COMBAT choice
+        // ('Fight' — Baby Broccoli's only choice), then the resulting Continue/Leave screen —
+        // both handled inside ONE execNormalFloor call, so still exactly one checkpoint per
+        // floor, not per click (see this describe block's own comment for why).
+        const interaction = fakeInteraction([
+            choice('policy_safe'),
+            choice('Fight'), choice('continue'),  // floor 1
+            choice('Fight'), choice('continue'),  // floor 2
+            choice('Fight'), choice('leave'),     // floor 3 — end the run here
+        ]);
+        const onFloorComplete = jest.fn().mockResolvedValue();
+        const tF = new towerFactory(interaction, 'tester', tC.ENTRY_GATE_MULTI, false, 0, false, onFloorComplete);
+
+        const [run, floor] = await tF.startRun();
+
+        // One checkpoint per floor actually resolved (3), not per editReply/button click.
+        expect(onFloorComplete).toHaveBeenCalledTimes(3);
+        const lastSnapshot = onFloorComplete.mock.calls[2][0];
+        expect(lastSnapshot.floor).toBe(3);
+        expect(lastSnapshot.floor).toBe(floor);
+        expect(lastSnapshot.run[tC.PAYOUT.POTATOES]).toBe(run[tC.PAYOUT.POTATOES]);
+        expect(lastSnapshot.elitesSurvivedCount).toBe(tF.elitesSurvivedCount);
+        expect(lastSnapshot.towerCompanionHits).toBe(tF.towerCompanionHits);
+        expect(lastSnapshot.wardUsed).toBe(tF.wardUsed);
+        // Full resume shape (2026-09-30 extension) — enough to reconstruct this exact run later.
+        expect(lastSnapshot.policy).toBe(tF.policy);
+        expect(lastSnapshot.difficulty).toBe(tF.difficulty);
+        expect(lastSnapshot.usedRewards).toEqual([...tF.usedRewards]);
+
+        // Snapshots are independent copies, not live references to this.run — mutating the
+        // run further after a floor's checkpoint fired must never retroactively change what
+        // was already reported as "banked" for that floor.
+        const firstSnapshot = onFloorComplete.mock.calls[0][0];
+        expect(firstSnapshot.run).not.toBe(tF.run);
+        expect(firstSnapshot.run[tC.PAYOUT.ELITE_KILL]).not.toBe(tF.run[tC.PAYOUT.ELITE_KILL]);
+    });
+
+    test('a checkpoint callback that rejects is logged and does not abort the run', async () => {
+        randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0);
+        const interaction = fakeInteraction([
+            choice('policy_safe'),
+            choice('leave'),
+        ]);
+        const onFloorComplete = jest.fn().mockRejectedValue(new Error('checkpoint write failed'));
+        const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+        const tF = new towerFactory(interaction, 'tester', tC.ENTRY_GATE_MULTI, false, 0, false, onFloorComplete);
+
+        const [, floor, died] = await tF.startRun();
+
+        expect(died).toBe(false);
+        expect(floor).toBe(1);
+        expect(onFloorComplete).toHaveBeenCalledTimes(1);
+        expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('Tower checkpoint failed'), expect.any(Error));
+        consoleErrorSpy.mockRestore();
+    });
+
+    test('no onFloorComplete supplied is a silent no-op, not a crash (back-compat for any other caller/test)', async () => {
+        randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0);
+        const interaction = fakeInteraction([
+            choice('policy_safe'),
+            choice('leave'),
+        ]);
+        const tF = new towerFactory(interaction, 'tester', tC.ENTRY_GATE_MULTI);
+
+        await expect(tF.startRun()).resolves.toBeTruthy();
+    });
+});
+
+// True resume (2026-09-30, direct instruction: "I want a crashed run to do exactly that. Crash,
+// and the user can continue after a crashed run from their existing DB record for the day if it
+// hasnt resulted in a leave from tower, death from elite, or death by elite but save by
+// bastion") — resumeFrom is the 8th constructor argument, an exact checkpoint() snapshot from a
+// previous, unconcluded attempt. enter-tower.js supplies it; towerFactory just restores state
+// from it rather than defaulting to a fresh floor-0 start.
+describe('resuming a crashed run (resumeFrom)', () => {
+    // Matches the sibling checkpointing describe block's own pattern — restoring in afterEach
+    // (not inline at the end of each test) guarantees Math.random is un-mocked even if an
+    // assertion earlier in the test throws first. An un-restored Math.random mock leaking into
+    // unrelated later code (e.g. a quicksort implementation elsewhere expecting real randomness
+    // for pivot selection) can otherwise degrade into pathological, near-infinite recursion.
+    let randomSpy;
+    afterEach(() => {
+        if (randomSpy) randomSpy.mockRestore();
+    });
+
+    function checkpointAt(overrides = {}) {
+        return {
+            floor: 10,
+            run: {
+                [tC.PAYOUT.POTATOES]: 5000,
+                [tC.PAYOUT.WORK_MULTIPLIER]: 0.2,
+                [tC.PAYOUT.PASSIVE_INCOME]: 0,
+                [tC.PAYOUT.BANK_CAPACITY]: 0,
+                [tC.MODIFIER.WORK_MULTIPLIER]: 0,
+                [tC.PAYOUT.ELITE_KILL]: [{ floor: 20, type: tC.PAYOUT.POTATOES, amount: 1000 }],
+            },
+            elitesSurvivedCount: 1,
+            towerCompanionHits: 2,
+            wardUsed: true,
+            policy: tC.POLICY.GREEDY,
+            difficulty: tC.TOWER_ELITE_DIFFICULTY_INITIAL * tC.TOWER_ELITE_DIFFICULTY_RATIO,
+            usedRewards: ['King Kiwi'],
+            ...overrides,
+        };
+    }
+
+    test('restores floor, run, elite/ward/companion counters, policy, difficulty, and usedRewards exactly from the checkpoint', () => {
+        const checkpoint = checkpointAt();
+        const tF = new towerFactory({}, 'tester', 20, false, 0, false, null, checkpoint);
+
+        expect(tF.floor).toBe(checkpoint.floor);
+        expect(tF.run[tC.PAYOUT.POTATOES]).toBe(5000);
+        expect(tF.run[tC.PAYOUT.WORK_MULTIPLIER]).toBe(0.2);
+        expect(tF.run[tC.PAYOUT.ELITE_KILL]).toEqual(checkpoint.run[tC.PAYOUT.ELITE_KILL]);
+        expect(tF.run[tC.PAYOUT.ELITE_KILL]).not.toBe(checkpoint.run[tC.PAYOUT.ELITE_KILL]); // independent copy
+        expect(tF.elitesSurvivedCount).toBe(1);
+        expect(tF.towerCompanionHits).toBe(2);
+        expect(tF.wardUsed).toBe(true);
+        expect(tF.policy).toBe(tC.POLICY.GREEDY);
+        expect(tF.difficulty).toBe(checkpoint.difficulty);
+        expect(tF.usedRewards).toEqual(new Set(['King Kiwi']));
+    });
+
+    test('a resumed run skips chooseRiskPolicy (no extra prompt) since the policy was already chosen before the crash', async () => {
+        const checkpoint = checkpointAt({ floor: 10 });
+        const editReply = jest.fn(); // would reject/throw if ever called — chooseRiskPolicy is the only caller before the floor loop's own screens
+        const interaction = {
+            editReply: jest.fn(async () => ({
+                awaitMessageComponent: jest.fn().mockResolvedValue({ customId: 'leave', update: jest.fn().mockResolvedValue() }),
+            })),
+            user: { id: 'u1' },
+        };
+        const tF = new towerFactory(interaction, 'tester', 20, false, 0, false, null, checkpoint);
+        const chooseRiskPolicySpy = jest.spyOn(tF, 'chooseRiskPolicy');
+
+        await tF.startRun();
+
+        expect(chooseRiskPolicySpy).not.toHaveBeenCalled();
+    });
+
+    test('a resumed run continues from floor+1, not floor 1, and does not hardcode the next floor as COMBAT', async () => {
+        randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.99); // steer getFloor() away from COMBAT's own band
+        const checkpoint = checkpointAt({ floor: 10 });
+        const interaction = {
+            editReply: jest.fn(async () => ({
+                awaitMessageComponent: jest.fn().mockResolvedValue({ customId: 'leave', update: jest.fn().mockResolvedValue() }),
+            })),
+            user: { id: 'u1' },
+        };
+        const tF = new towerFactory(interaction, 'tester', 20, false, 0, false, null, checkpoint);
+
+        const [, floor] = await tF.startRun();
+
+        // Immediately leaves on the very first (resumed) floor's own choice screen.
+        expect(floor).toBe(11);
+    });
+
+    test('a ward already used before the crash cannot be spent again after resuming, even if hasWard is recomputed true', async () => {
+        // wardUsed: true in the checkpoint means the ward was already consumed THIS run, before
+        // the crash — even though enter-tower.js would recompute a fresh `hasWard` from the
+        // player's CURRENT equipped companion (towerWardUsedToday in the DB isn't set until the
+        // run concludes, so hasWard alone can't tell "already spent this run" apart from "never
+        // spent today" — see the constructor's own comment on this exact gap).
+        const checkpoint = checkpointAt({ floor: 9, wardUsed: true }); // next floor (10) is a forced Elite
+        const interaction = {
+            editReply: jest.fn(async () => ({
+                awaitMessageComponent: jest.fn().mockResolvedValue({ customId: 'fight', update: jest.fn().mockResolvedValue() }),
+            })),
+            user: { id: 'u1' },
+        };
+        const tF = new towerFactory(interaction, 'tester', 1_000_000, false, 0, true /* hasWard recomputed true */, null, checkpoint);
+        // 0.999999, not 1 — exactly 1 pushes an internal `array[Math.floor(Math.random() *
+        // array.length)]` index pick (pickElite/pickElite's tier-band roll) out of bounds,
+        // returning undefined. Still comfortably above ELITE_SUCCESS_CAP (0.95), so the fight
+        // still fails outright as intended.
+        randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.999999);
+
+        const [, , died] = await tF.startRun();
+
+        // The ward can't save a second time this run — a real, unwarded death.
+        expect(died).toBe(true);
+        expect(tF.wardUsed).toBe(true);
+    });
+});
