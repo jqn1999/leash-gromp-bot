@@ -1,4 +1,4 @@
-const { getFloor, towerFactory, getEliteTier, pickElite, pickChoiceIndex, investment, scalingFactor } = require('../towerFactory');
+const { getFloor, towerFactory, getEliteTier, pickElite, pickChoiceIndex, investment, scalingFactor, safeEditReply } = require('../towerFactory');
 const tC = require('../towerConstants');
 
 // Off-by-one fix (2026-08-31) — getFloor()'s cumulative-weight comparison used to be `<=`
@@ -1493,6 +1493,51 @@ describe('confirmation.update() acks are best-effort, not fatal', () => {
         await tF.chooseRiskPolicy();
 
         expect(tF.policy).toBe(tC.POLICY.GREEDY);
+    });
+});
+
+// safeEditReply (2026-09-29, crash-hardening pass — live player crash reports investigation,
+// see tower.md's own dated section). Every floor-transition screen's substantive editReply
+// call (the one that actually SHOWS the run's content, unlike the purely-cosmetic
+// confirmation.update() acks the describe block above covers) now routes through this,
+// retrying once after a short delay before giving up — a real, previously-root-caused
+// DiscordAPIError[10062] rate-limit class of transient failure (see chooseRiskPolicy's own
+// 2026-09-11 comment) shouldn't have to cost the player their entire run when one retry would
+// likely succeed.
+describe('safeEditReply', () => {
+    test('a single transient failure is retried once and succeeds transparently', async () => {
+        const editReply = jest.fn()
+            .mockRejectedValueOnce(new Error('transient'))
+            .mockResolvedValueOnce('ok');
+
+        const result = await safeEditReply({ editReply }, { content: 'hi' });
+
+        expect(result).toBe('ok');
+        expect(editReply).toHaveBeenCalledTimes(2);
+    });
+
+    test('a persistent failure still propagates after the one retry, not silently swallowed', async () => {
+        const err = new Error('persistent');
+        const editReply = jest.fn().mockRejectedValue(err);
+
+        await expect(safeEditReply({ editReply }, { content: 'hi' })).rejects.toBe(err);
+        expect(editReply).toHaveBeenCalledTimes(2);
+    });
+
+    // End-to-end through the real class (not just the standalone helper above) — proves
+    // chooseRiskPolicy's own editReply call site actually got rewired to use it, and that a
+    // successful retry lets the run continue exactly as if the first call had never failed.
+    test('chooseRiskPolicy recovers from one transient editReply failure and still records the clicked policy', async () => {
+        const reply = { awaitMessageComponent: jest.fn().mockResolvedValue({ customId: 'policy_greedy', update: jest.fn().mockResolvedValue() }) };
+        const editReply = jest.fn()
+            .mockRejectedValueOnce(new Error('transient'))
+            .mockResolvedValueOnce(reply);
+        const tF = new towerFactory({ editReply, user: { id: 'u1' } }, 'tester', tC.ENTRY_GATE_MULTI);
+
+        await tF.chooseRiskPolicy();
+
+        expect(tF.policy).toBe(tC.POLICY.GREEDY);
+        expect(editReply).toHaveBeenCalledTimes(2);
     });
 });
 

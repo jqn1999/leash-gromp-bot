@@ -96,6 +96,26 @@ module.exports = async (client, interaction) => {
 
         if (!commandObject) return;
 
+        // Global maintenance-mode kill switch (2026-09-30, direct instruction: "Give me an
+        // admin discord command to disable the bot for everyone besides admin as well") —
+        // checked before every other gate below since it's meant to block literally
+        // everything for non-devs, including devOnly commands (moot for them anyway, but
+        // conceptually this is the outermost gate). Toggled via `/admin maintenance-mode`
+        // (admin.js) — persisted in the stats table, same as every other admin-configured
+        // global toggle, so it survives a restart and needs no code deploy either way.
+        // Bypassed for awsConfigurations.devs, the SAME id list devOnly/permissionsRequired
+        // already exempt below, so a dev can always turn this back off even while it's on.
+        if (!awsConfigurations.devs.includes(interaction.member.id)) {
+            const maintenanceMode = await dynamoHandler.getStatDatabase('bot_maintenance_mode');
+            if (maintenanceMode?.enabled) {
+                interaction.reply({
+                    content: 'The bot is currently in maintenance mode — try again shortly.',
+                    ephemeral: true,
+                });
+                return;
+            }
+        }
+
         if (commandObject.devOnly) {
             if (!awsConfigurations.devs.includes(interaction.member.id)) {
                 interaction.reply(

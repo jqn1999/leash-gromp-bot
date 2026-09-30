@@ -19101,3 +19101,106 @@ their shape, since the reported symptom — fails randomly and sporadically, on 
 consistent pattern — best fits a bug in one or more specific CONTENT entries that only manifests when
 that particular entry happens to get randomly rolled, rather than a floor-number-dependent or
 purely-timing-dependent bug.
+
+## Tower: admin bypass added, deep-dive crash investigation, every concrete gap found hardened
+
+**Asked.** After the full kill switch shipped: "do a deep dive into all possible ways it can be
+failing. It fails randomly and sporadically on any floor and other such things it doesn't seem
+consistent." Then, once the deep-dive surfaced concrete candidates: "apply all possible fixes and
+guards and catches you can find places for. Allow admins to enter tower."
+
+**Investigated.** Read every entry in `towerConstants.js` (COMBATS/ENCOUNTERS/TRANSACTIONS/REWARDS/
+ELITES) end-to-end against every assumption `AUTO_PICK_TABLE`/`pickChoiceIndexDefault`/
+`pickHighestValueIndex` make about their shape — found nothing wrong (no missing fields, no
+choice-count mismatches), which weakens the "specific bad content entry" hypothesis. Traced the
+post-run companion-award/leveling helpers — found them already well-guarded by
+`dynamoHandler.findUser`'s own companion-normalization pass. Concluded the strongest fit for "random,
+sporadic, any floor" is the 8 unguarded `interaction.editReply()` calls in `towerFactory.js` — the
+only candidate that runs on literally every floor of every run, and the same failure class
+(`DiscordAPIError[10062]`, Discord's own REST rate-limit queue under load) this file already
+root-caused once before (2026-09-11) for a different, purely-cosmetic call site. Full ranked writeup
+in `systems/tower.md`.
+
+**Changed — four fixes, applied everywhere the investigation found a real gap:**
+
+1. `towerFactory.js`: new `safeEditReply(interaction, payload)` helper (retries once after 500ms on
+   failure) now wraps all 8 substantive `editReply()` calls (`chooseRiskPolicy`, `createFloorEmbed`,
+   `createNextEmbed`, `createEliteEmbed`, `createEliteEncounter`, `createFastForwardSummaryEmbed`,
+   `createDeathEmbed`, `createWardedRetreatEmbed`). A persistent failure still propagates to
+   `enter-tower.js`'s existing 2026-09-11 auto-recovery catch, unchanged.
+2. `enter-tower.js`: the post-`startRun()` tail (results embed, reward crediting, personal-best
+   record, leaderboard entry) now has its own try/catch, separate from the `startRun()` one. Unlike
+   that one, this does NOT restore `canEnterTower` on failure — by this point the reward was very
+   likely already credited, so reopening the entry would risk a double payout. Logs and tells the
+   player their run finished but a secondary step failed, with a timestamp for an admin. The
+   results-embed followUp got its own narrower try/catch too, so a failure showing it doesn't stop
+   the reward from still being credited after.
+3. `dynamoHandler.js`: `recordTowerLeaderboardEntry`/`getTowerLeaderboard`/
+   `removeTowerLeaderboardEntry` switched from `(tower && tower.entries) || []` to
+   `Array.isArray(tower?.entries) ? tower.entries : []` — the old check let a present-but-corrupted
+   non-array value through to crash the next `.push`/`.find`.
+4. `companionFactory.js`: `applyCompanionAward`'s `owned`/`ownedCount`/`mythicOwnedCount` reads now
+   default via `?? []`/`|| 0` — defense-in-depth for a shared helper (Tower's Bastion drop, market
+   purchases, listing cancels), not a confirmed live bug.
+
+**Admin bypass.** `TOWER_DISABLED` is now `TOWER_DISABLED && !awsConfigurations.devs.includes(userId)`
+— reuses the same dev/admin id list `handleCommands.js`'s own `devOnly` gate already checks, so the
+team can keep reproducing the crash live against the real command while everyone else stays locked
+out.
+
+**Tests.** New coverage at every fix site: `towerFactory.test.js` gained a `safeEditReply` describe
+block (retry-then-succeed, persistent-failure-propagates, end-to-end `chooseRiskPolicy` recovery).
+`enter-tower.test.js` gained a non-skipped `admin bypass` describe block (bypass itself, the tail
+try/catch's no-double-payout guarantee, the results-embed failure not blocking the reward).
+`dynamoHandler.test.js` gained 3 corrupted-entries tests. `companionFactory.test.js` gained 1
+not-fully-normalized-companions test. Full suite: **122 suites (1 fully skipped) / 2235 tests (17
+skipped, 2218 passing)** — net +10 tests, 0 broken.
+
+**Docs.** `systems/tower.md` gained two new dated sections (admin bypass + the four-fix
+crash-hardening pass) with full code-level detail per fix.
+
+**Investigation status: still open.** None of the four fixes were confirmed as *the* crash with a
+real stack trace (still none available) — they're every concrete gap the deep-dive actually found,
+closed on their own merits regardless. A real stack trace from a future crash (even via the admin
+bypass) is still the fastest way to confirm which one it actually was.
+
+## New `/admin maintenance-mode` subcommand: global bot-wide kill switch
+
+**Asked.** "Give me an admin discord command to disable the bot for everyone besides admin as
+well." Same TOWER_DISABLED + admin-bypass shape already shipped for `/enter-tower`, generalized to
+the whole bot and turned into a live, DB-backed toggle rather than a static code flag — this IS the
+"admin discord command" version of that same idea, not a stopgap needing a later follow-up.
+
+**Changed.** New `maintenance-mode` subcommand added to `/admin` (`admin.js`) — a boolean `enabled`
+option, writes `{ enabled }` to a new `bot_maintenance_mode` stats-table doc via the existing
+`updateStatFields`, same pattern `/admin set-activity-channel`'s webhook URL and
+`/set-command-channels`' allowlist already use for admin-configured global state (survives a
+restart, no code deploy needed to flip). Added as a **subcommand** of the existing consolidated
+`/admin` command rather than a new top-level command — this repo already hit Discord's 100-command
+cap once (see the 2026-09-20 incident entry `/admin` itself exists to prevent recurring), so a new
+standalone command wasn't worth the risk for something this rare.
+
+The actual gate lives in `handleCommands.js`'s single dispatch chokepoint — every command already
+funnels through here, so one check (`awsConfigurations.devs` bypass, else read
+`bot_maintenance_mode` and reply with a maintenance message if `enabled`) blocks literally
+everything for non-devs, including `devOnly` commands (moot for them, but conceptually this is the
+outermost gate, checked before `devOnly`/`permissionsRequired`/the per-guild channel allowlist).
+Ordered first specifically so a dev can always run `/admin maintenance-mode` again to turn it back
+off even while it's active — devs bypass via the exact same `awsConfigurations.devs` list every
+other gate in this file already exempts them through.
+
+**Tests.** `handleCommands.test.js` gained a new `maintenance mode` describe block (blocks a non-dev
+with the maintenance message, a dev bypasses with zero doc lookup for that key at all, a non-dev
+runs normally when it's off) — and the two pre-existing "channel restriction" tests that asserted
+`getStatDatabase` was *never* called in certain paths were corrected to check the SPECIFIC
+`command_channels_*` doc instead, since maintenance-mode's own doc is now legitimately checked ahead
+of those paths every time. `admin.test.js` gained a `/admin maintenance-mode` describe block (on
+writes `enabled:true`, off writes `enabled:false`, each confirms the right confirmation message).
+Full suite: **122 suites (1 fully skipped) / 2240 tests (17 skipped, 2223 passing)** — net +5 tests,
+0 broken.
+
+**Not done.** No `financial-project` port — this is bot-only operational tooling (which Discord
+commands can run, not a game formula/balance/data-shape the web version also implements), so
+`CLAUDE.md`'s cross-repo sync rule doesn't apply here. `financial-project` got its own, independent
+site-wide kill switch the same session (see that repo's own notes) — the two are parallel features
+for their own platforms, not a port of each other, though built on the same admin-id-bypass idea.

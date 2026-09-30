@@ -6,6 +6,7 @@ const tC = require("../../utils/towerConstants.js");
 const raidFactory = require("../../utils/raidFactory");
 const companionFactory = require("../../utils/companionFactory");
 const bigEventsChannel = require("../../utils/bigEventsChannel");
+const { awsConfigurations } = require("../../utils/constants.js");
 
 // Tower Pet (2026-09-13) — leveling grant + Bastion drop rolls both happen against the SAME
 // freshly re-fetched userDetails processRewardPayouts already reads (not the stale
@@ -167,6 +168,12 @@ async function processRewardPayouts(interaction, userId, rewards, username, user
 // One-line revert: flip this back to `false` once the crash is actually root-caused and
 // fixed. `/leaderboard tower-leaderboard` and `/tower-settings` are both untouched — neither
 // goes through this file at all.
+//
+// Admin bypass (2026-09-29, same-day follow-up, direct instruction: "Allow admins to enter
+// tower") — reuses `awsConfigurations.devs`, the exact same dev/admin id list
+// `handleCommands.js`'s own `devOnly` gate checks elsewhere in this codebase, rather than
+// inventing a separate admin list. Lets the team keep testing/reproducing the crash live
+// while the command stays closed to everyone else.
 const TOWER_DISABLED = true;
 
 module.exports = {
@@ -175,12 +182,13 @@ module.exports = {
     callback: async (client, interaction) => {
         await interaction.deferReply();
 
-        if (TOWER_DISABLED) {
+        const [userId, username, userDisplayName] = getUserInteractionDetails(interaction);
+
+        if (TOWER_DISABLED && !awsConfigurations.devs.includes(userId)) {
             await interaction.editReply("🚧 The Tater Tower is temporarily disabled while we investigate a stability issue — sorry for the interruption! Check back soon.");
             return;
         }
 
-        const [userId, username, userDisplayName] = getUserInteractionDetails(interaction);
         const userDetails = await requireUserDetails(interaction, userId, username, userDisplayName);
         if (!userDetails) return;
         // Full effective power (raw stat + live rebirth/companion workMultiplierPercent
@@ -249,54 +257,86 @@ module.exports = {
 
         // embed for final results
         let embed = createResult(rewards, floor, username)
-        await interaction.followUp({
-            embeds: [embed]
-        })
-
-        const bastionAward = await processRewardPayouts(interaction, userId, rewards, username, userDisplayName, floor, died, elitesSurvivedCount, towerCompanionHits, wardUsed);
-        if (bastionAward) {
-            // Mirrors takeBounty.js's own achievement/quest followUp precedent — a separate
-            // embed after the main result, not folded into it.
+        try {
             await interaction.followUp({
-                embeds: [createBastionDropEmbed(bastionAward, userDisplayName)]
-            });
-            if (bigEventsChannel.isBigEventCompanion(bastionAward.companion)) {
-                await bigEventsChannel.postBigEvent({
-                    title: '🎉 Rare Companion!',
-                    description: `**${userDisplayName}** earned a rare companion in the Tower!`,
-                    fields: [
-                        bigEventsChannel.playerField(userDisplayName, userDetails.equippedTitle),
-                        bigEventsChannel.companionField(bastionAward.companion),
-                        bigEventsChannel.sourceField('Tower Reward'),
-                    ],
-                    color: bigEventsChannel.RARE_COMPANION_COLOR,
-                });
-            }
+                embeds: [embed]
+            })
+        } catch (resultsEmbedError) {
+            // Crash-hardening (2026-09-29 — see tower.md): a transient Discord API failure
+            // showing this confirmation must not stop the reward from being credited below —
+            // the climb itself already finished successfully by this point (startRun()
+            // returned), so the player earned this regardless of whether we can immediately
+            // confirm it to them. Logged, not re-thrown; the rest of the tail still runs.
+            console.error(`Failed to send Tower results embed to ${username} (${userId}) at floor ${floor}:`, resultsEmbedError);
         }
 
-        // "Highest floor ever reached" is a broader personal-best than the daily
-        // leaderboard's survival-only eligibility below — floor already reflects the
-        // last floor actually reached either way (towerFactory decrements it back by
-        // one on a lost Elite fight, since dying happens on the way to the next
-        // floor), so a died run still legitimately counts toward this record.
-        await dynamoHandler.updateIfNewRecord(userId, 'highestTowerFloor', floor);
+        // Everything from here down is post-run BOOKKEEPING on top of a climb that already
+        // finished for real — crediting the reward, personal-best tracking, and the daily
+        // leaderboard entry. Unlike the startRun() try/catch above, a failure here must NOT
+        // restore canEnterTower: the run legitimately happened and (by the time
+        // processRewardPayouts returns) the player's stats/potatoes were very likely already
+        // credited, so re-opening today's entry would risk a second free run/payout on top of
+        // one that already landed. Wrapped as one unit (2026-09-29, crash-hardening pass — see
+        // tower.md) since these steps are a single sequential conclusion to one run, not
+        // independent daily-cron-style steps — any exception here is logged and the player is
+        // told their climb finished and to flag it if something looks off, rather than the
+        // whole interaction dying uncaught with no explanation at all.
+        try {
+            const bastionAward = await processRewardPayouts(interaction, userId, rewards, username, userDisplayName, floor, died, elitesSurvivedCount, towerCompanionHits, wardUsed);
+            if (bastionAward) {
+                // Mirrors takeBounty.js's own achievement/quest followUp precedent — a separate
+                // embed after the main result, not folded into it.
+                await interaction.followUp({
+                    embeds: [createBastionDropEmbed(bastionAward, userDisplayName)]
+                });
+                if (bigEventsChannel.isBigEventCompanion(bastionAward.companion)) {
+                    await bigEventsChannel.postBigEvent({
+                        title: '🎉 Rare Companion!',
+                        description: `**${userDisplayName}** earned a rare companion in the Tower!`,
+                        fields: [
+                            bigEventsChannel.playerField(userDisplayName, userDetails.equippedTitle),
+                            bigEventsChannel.companionField(bastionAward.companion),
+                            bigEventsChannel.sourceField('Tower Reward'),
+                        ],
+                        color: bigEventsChannel.RARE_COMPANION_COLOR,
+                    });
+                }
+            }
 
-        // Only a survived run (voluntarily left, not lost to an Elite) counts for the
-        // daily leaderboard — see towerLeaderboardFactory.js for how it's ranked/paid out.
-        if (!died) {
-            await dynamoHandler.recordTowerLeaderboardEntry({
-                userId,
-                username,
-                floor,
-                // Ranking tiebreaker chain (2026-09-23, direct instruction): floor, then
-                // elitesKilled, then potatoes — see towerLeaderboardFactory.js's
-                // sortTowerLeaderboardEntries for where that's actually applied.
-                elitesKilled: elitesSurvivedCount,
-                potatoes: rewards[tC.PAYOUT.POTATOES] || 0,
-                workMultiplier: rewards[tC.PAYOUT.WORK_MULTIPLIER] || 0,
-                passiveIncome: rewards[tC.PAYOUT.PASSIVE_INCOME] || 0,
-                bankCapacity: rewards[tC.PAYOUT.BANK_CAPACITY] || 0
-            });
+            // "Highest floor ever reached" is a broader personal-best than the daily
+            // leaderboard's survival-only eligibility below — floor already reflects the
+            // last floor actually reached either way (towerFactory decrements it back by
+            // one on a lost Elite fight, since dying happens on the way to the next
+            // floor), so a died run still legitimately counts toward this record.
+            await dynamoHandler.updateIfNewRecord(userId, 'highestTowerFloor', floor);
+
+            // Only a survived run (voluntarily left, not lost to an Elite) counts for the
+            // daily leaderboard — see towerLeaderboardFactory.js for how it's ranked/paid out.
+            if (!died) {
+                await dynamoHandler.recordTowerLeaderboardEntry({
+                    userId,
+                    username,
+                    floor,
+                    // Ranking tiebreaker chain (2026-09-23, direct instruction): floor, then
+                    // elitesKilled, then potatoes — see towerLeaderboardFactory.js's
+                    // sortTowerLeaderboardEntries for where that's actually applied.
+                    elitesKilled: elitesSurvivedCount,
+                    potatoes: rewards[tC.PAYOUT.POTATOES] || 0,
+                    workMultiplier: rewards[tC.PAYOUT.WORK_MULTIPLIER] || 0,
+                    passiveIncome: rewards[tC.PAYOUT.PASSIVE_INCOME] || 0,
+                    bankCapacity: rewards[tC.PAYOUT.BANK_CAPACITY] || 0
+                });
+            }
+        } catch (tailError) {
+            console.error(`Tower post-run bookkeeping failed for ${username} (${userId}) at floor ${floor}:`, tailError);
+            try {
+                await interaction.followUp({
+                    content: `${userDisplayName}, your tower run at floor ${floor} finished, but something went wrong saving part of it afterward (leaderboard entry or companion bookkeeping). If your rewards or companions look off, let an admin know — timestamp: ${new Date().toISOString()}.`,
+                    ephemeral: true,
+                });
+            } catch (notifyError) {
+                console.error(`Failed to notify ${username} of the Tower post-run bookkeeping failure:`, notifyError);
+            }
         }
     }
 }

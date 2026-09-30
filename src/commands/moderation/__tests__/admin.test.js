@@ -23,7 +23,7 @@ const dynamoHandler = require('../../../utils/dynamoHandler');
 const { addChatChannelIndexEntry, removeChatChannelIndexEntry } = require('../../guilds/guildChat');
 const festivalFactory = require('../../../utils/festivalFactory');
 const bigEventsChannel = require('../../../utils/bigEventsChannel.js');
-const { resetTowerCallback, setActivityChannelCallback, setMercChatChannelCallback, startFestivalCallback, endFestivalCallback, revokeImmuneToVenomCallback, grantTitleCallback } = require('../admin');
+const { resetTowerCallback, setActivityChannelCallback, setMercChatChannelCallback, startFestivalCallback, endFestivalCallback, revokeImmuneToVenomCallback, grantTitleCallback, maintenanceModeCallback } = require('../admin');
 
 beforeEach(() => {
     jest.clearAllMocks();
@@ -660,6 +660,40 @@ describe('/admin end-festival', () => {
         await endFestivalCallback(client, interaction);
 
         expect(bigEventsChannel.postBigEvent).not.toHaveBeenCalled();
+    });
+});
+
+// ---------------------------------------------------------------------------------------
+// /admin maintenance-mode — global bot-wide kill switch (2026-09-30, direct instruction:
+// "Give me an admin discord command to disable the bot for everyone besides admin as well").
+// The actual GATING happens in handleCommands.js's own dispatch chokepoint (see that file's
+// tests) — this command only ever flips the shared doc it reads.
+// ---------------------------------------------------------------------------------------
+describe('/admin maintenance-mode', () => {
+    function fakeInteraction(enabled) {
+        return {
+            deferReply: jest.fn().mockResolvedValue(),
+            editReply: jest.fn().mockResolvedValue(),
+            options: { get: (name) => (name === 'enabled' ? { value: enabled } : undefined) },
+        };
+    }
+
+    test('turning it on writes enabled:true and confirms who is still let through', async () => {
+        const interaction = fakeInteraction(true);
+
+        await maintenanceModeCallback({}, interaction);
+
+        expect(dynamoHandler.updateStatFields).toHaveBeenCalledWith('bot_maintenance_mode', { enabled: true });
+        expect(interaction.editReply).toHaveBeenCalledWith(expect.stringMatching(/maintenance mode is now \*\*ON\*\*/i));
+    });
+
+    test('turning it off writes enabled:false', async () => {
+        const interaction = fakeInteraction(false);
+
+        await maintenanceModeCallback({}, interaction);
+
+        expect(dynamoHandler.updateStatFields).toHaveBeenCalledWith('bot_maintenance_mode', { enabled: false });
+        expect(interaction.editReply).toHaveBeenCalledWith(expect.stringMatching(/maintenance mode is now \*\*OFF\*\*/i));
     });
 });
 

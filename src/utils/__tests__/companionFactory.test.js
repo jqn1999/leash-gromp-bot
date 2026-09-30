@@ -437,6 +437,24 @@ describe('applyCompanionAward', () => {
         expect(result.companions.owned[1]).toMatchObject({ id: 'firefly', workCount: 275 });
         expect(result.companions.ownedCount).toBe(1);
     });
+
+    // Crash-hardening (2026-09-29, live Tower crash investigation — see tower.md). Every real
+    // account gets `companions` normalized by dynamoHandler.findUser before this is ever
+    // called, but this is a shared helper (Tower's Bastion drop, market purchases, listing
+    // cancels) — a not-fully-normalized `companions` (missing owned/ownedCount/
+    // mythicOwnedCount) used to throw outright on the `[...companions.owned, ...]` spread
+    // rather than degrade.
+    test('a not-fully-normalized companions object (missing owned/ownedCount/mythicOwnedCount) does not throw', () => {
+        const user = { companions: { active: null } };
+        const sprout = getCompanionById('sprout');
+
+        const result = applyCompanionAward(user, sprout);
+
+        expect(result.isNew).toBe(true);
+        expect(result.companions.owned).toHaveLength(1);
+        expect(result.companions.ownedCount).toBe(1);
+        expect(result.companions.mythicOwnedCount).toBe(0);
+    });
 });
 
 describe('companion leveling', () => {

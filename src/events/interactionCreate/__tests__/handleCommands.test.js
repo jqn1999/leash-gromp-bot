@@ -89,7 +89,9 @@ describe('handleCommands channel restriction', () => {
 
         await handleCommands(null, interaction);
 
-        expect(dynamoHandler.getStatDatabase).not.toHaveBeenCalled();
+        // Maintenance-mode's own doc (2026-09-30) is still checked ahead of this gate — only
+        // the channel-restriction's own doc is skipped by the set-command-channels bypass.
+        expect(dynamoHandler.getStatDatabase).not.toHaveBeenCalledWith('command_channels_guild-1');
         expect(command.callback).toHaveBeenCalled();
         expect(interaction.reply).not.toHaveBeenCalled();
     });
@@ -101,10 +103,62 @@ describe('handleCommands channel restriction', () => {
 
         await handleCommands(null, interaction);
 
-        expect(dynamoHandler.getStatDatabase).not.toHaveBeenCalled();
+        // Maintenance-mode's own doc (2026-09-30) is still checked ahead of this gate — a DM
+        // interaction just never reaches the channel-restriction's OWN doc lookup.
+        expect(dynamoHandler.getStatDatabase).not.toHaveBeenCalledWith(expect.stringMatching(/^command_channels_/));
         expect(command.callback).not.toHaveBeenCalled();
         expect(interaction.reply).toHaveBeenCalledWith(expect.objectContaining({
             content: 'This channel is not registered to run commands!',
         }));
+    });
+});
+
+// Global maintenance-mode kill switch (2026-09-30, direct instruction: "Give me an admin
+// discord command to disable the bot for everyone besides admin as well") — checked ahead of
+// every other gate in handleCommands.js. See admin.js's own runMaintenanceMode for the
+// command that toggles this same doc.
+describe('handleCommands maintenance mode', () => {
+    test('blocks a non-dev with a maintenance message when maintenance mode is on', async () => {
+        dynamoHandler.getStatDatabase.mockImplementation(async (trackingId) =>
+            trackingId === 'bot_maintenance_mode' ? { enabled: true } : undefined);
+        const command = fakeCommand();
+        getLocalCommands.mockReturnValue([command]);
+        const interaction = fakeInteraction();
+
+        await handleCommands(null, interaction);
+
+        expect(command.callback).not.toHaveBeenCalled();
+        expect(interaction.reply).toHaveBeenCalledWith(expect.objectContaining({
+            content: expect.stringMatching(/maintenance mode/i),
+        }));
+    });
+
+    test('a developer (awsConfigurations.devs) bypasses maintenance mode entirely — no doc lookup at all', async () => {
+        const { awsConfigurations } = require('../../../utils/constants');
+        dynamoHandler.getStatDatabase.mockImplementation(async (trackingId) =>
+            trackingId === 'bot_maintenance_mode' ? { enabled: true } : undefined);
+        const command = fakeCommand();
+        getLocalCommands.mockReturnValue([command]);
+        const interaction = fakeInteraction();
+        interaction.member.id = awsConfigurations.devs[0];
+
+        await handleCommands(null, interaction);
+
+        expect(dynamoHandler.getStatDatabase).not.toHaveBeenCalledWith('bot_maintenance_mode');
+        expect(command.callback).toHaveBeenCalled();
+        expect(interaction.reply).not.toHaveBeenCalled();
+    });
+
+    test('a non-dev runs normally when maintenance mode is off', async () => {
+        dynamoHandler.getStatDatabase.mockImplementation(async (trackingId) =>
+            trackingId === 'bot_maintenance_mode' ? { enabled: false } : undefined);
+        const command = fakeCommand();
+        getLocalCommands.mockReturnValue([command]);
+        const interaction = fakeInteraction();
+
+        await handleCommands(null, interaction);
+
+        expect(command.callback).toHaveBeenCalled();
+        expect(interaction.reply).not.toHaveBeenCalled();
     });
 });
