@@ -57,14 +57,24 @@ beforeEach(() => {
     // jest's automock would otherwise return undefined unconfigured, making every test look
     // like a failed write. Individual tests override this to simulate an actual failure.
     dynamoHandler.updateUserFields.mockResolvedValue({ Attributes: {} });
+    // Explicit default (2026-09-30) — jest.clearAllMocks() above clears call history but NOT a
+    // previously-set mockResolvedValue, so without this, a test further down the file that sets
+    // getStatDatabase to resolve `{ enabled: true }` (the tower_access live-toggle read) would
+    // silently leak that resolved value into every test that runs after it. undefined here
+    // matches tower_access's own real-world default (nobody has run /admin tower-access yet).
+    dynamoHandler.getStatDatabase.mockResolvedValue(undefined);
 });
 
-// Kill switch (2026-09-29) — TOWER_DISABLED in enter-tower.js short-circuits the callback
-// before any of the logic these tests exercise ever runs. Confirmed separately below; every
-// test in this describe block still documents real, correct behavior for when the flag flips
-// back to false, so they're skipped (not deleted/rewritten) rather than left to fail against
-// the disabled path. Un-skip this block in the same commit that flips TOWER_DISABLED back off.
-describe.skip('normal gameplay (skipped while TOWER_DISABLED is true — see tower.md)', () => {
+// Kill switch (2026-09-29, made a live admin toggle 2026-09-30 — see tower.md) — the
+// `tower_access` stats doc short-circuits the callback before any of the logic these tests
+// exercise ever runs, whenever it's disabled/unset (the default until an admin explicitly
+// turns it on via `/admin tower-access`). Confirmed separately below; every test in this
+// describe block still documents real, correct behavior for when access is allowed, so
+// they're skipped (not deleted/rewritten) rather than left to fail against the disabled
+// path. Un-skip this block once `tower_access.enabled` is expected to default to true, or add
+// an explicit `dynamoHandler.getStatDatabase.mockResolvedValue({ enabled: true })` at the top
+// of each test if that default is never meant to flip.
+describe.skip('normal gameplay (skipped while tower_access is disabled/unset by default — see tower.md)', () => {
 test('a player below ENTRY_GATE_MULTI on raw workMultiplierAmount alone is barred', () => {
     // rebirthCount 0 => 0% live rebirth bonus, so effective power === raw power here.
     dynamoHandler.findUser.mockResolvedValue(baseUser({ workMultiplierAmount: tC.ENTRY_GATE_MULTI - 1, rebirthCount: 0 }));
@@ -294,7 +304,10 @@ describe('processRewardPayouts stat crediting (batched write)', () => {
 });
 }); // end describe.skip('normal gameplay ...')
 
-test('TOWER_DISABLED replies with a maintenance message and never reads or writes anything', async () => {
+test('tower_access disabled/missing replies with a maintenance message and never reads or writes anything', async () => {
+    // Relies on this file's own beforeEach default (getStatDatabase resolves undefined) —
+    // deliberately exercising the "nobody has ever run /admin tower-access" case, which must
+    // default to blocked, not allowed.
     const interaction = fakeInteraction();
 
     await callback({}, interaction);
@@ -304,11 +317,34 @@ test('TOWER_DISABLED replies with a maintenance message and never reads or write
     expect(towerFactory).not.toHaveBeenCalled();
 });
 
+test('tower_access explicitly disabled (enabled: false) replies with the same maintenance message', async () => {
+    dynamoHandler.getStatDatabase.mockResolvedValue({ enabled: false });
+    const interaction = fakeInteraction();
+
+    await callback({}, interaction);
+
+    expect(interaction.editReply).toHaveBeenCalledWith(expect.stringMatching(/temporarily disabled/i));
+    expect(towerFactory).not.toHaveBeenCalled();
+});
+
+test('tower_access enabled: true lets a non-developer through', async () => {
+    dynamoHandler.getStatDatabase.mockResolvedValue({ enabled: true });
+    dynamoHandler.findUser.mockResolvedValue(baseUser({ workMultiplierAmount: tC.ENTRY_GATE_MULTI, rebirthCount: 0 }));
+    const interaction = fakeInteraction();
+
+    await callback({}, interaction);
+
+    expect(interaction.editReply).not.toHaveBeenCalledWith(expect.stringMatching(/temporarily disabled/i));
+    expect(towerFactory).toHaveBeenCalled();
+});
+
 // Admin bypass (2026-09-29, direct instruction: "Allow admins to enter tower") — lets the
-// team keep testing/reproducing the crash live while TOWER_DISABLED stays true for everyone
-// else. Reuses the real awsConfigurations.devs list (constants.js isn't mocked in this file),
-// not a hardcoded id, so this stays correct if that list ever changes.
-describe('admin bypass while TOWER_DISABLED is true', () => {
+// team keep testing/reproducing the crash live while `tower_access` stays disabled/unset for
+// everyone else (now a live toggle — `/admin tower-access`, 2026-09-30 — rather than the
+// original hardcoded TOWER_DISABLED constant this section's own name still references).
+// Reuses the real awsConfigurations.devs list (constants.js isn't mocked in this file), not a
+// hardcoded id, so this stays correct if that list ever changes.
+describe('admin bypass while tower_access is disabled/unset', () => {
     function adminInteraction() {
         const interaction = fakeInteraction();
         interaction.user = { id: awsConfigurations.devs[0], username: 'Admin', displayName: 'Admin' };

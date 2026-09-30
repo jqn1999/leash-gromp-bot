@@ -2820,6 +2820,12 @@ passing** (net +1 new test, 0 broken).
 
 ## Tower leaderboard payout/announcement temporarily disabled — crash investigation open (2026-09-29, direct instruction + live player reports)
 
+**Made a live admin toggle 2026-09-30** — see "Live admin toggles" further down this file. The
+hardcoded `clearTowerLeaderboard()`-only mitigation this section describes needed a code edit +
+redeploy to ever flip back; it's now `/admin tower-leaderboard-payout enabled:<bool>`, defaulting
+to the exact same disabled state described below until an admin explicitly turns it on. Everything
+else in this section (the investigation, the three concrete leads) is still accurate.
+
 **Reported.** Players hitting crashes tied to the Tower's leaderboard logic, described as recurring
 and disruptive enough to warrant disabling that machinery immediately rather than waiting on a full
 root-cause fix. Direct instruction: "For now disable tower leaderboard granting stats but leave the
@@ -2893,6 +2899,12 @@ needs a live Discord client, same as this file's other cron jobs). Full suite ru
 as dead code — re-adding both plus the call site is the entire revert when this is re-enabled.
 
 ## Full `/enter-tower` kill switch + admin bypass, same day (2026-09-29, direct instruction)
+
+**Made a live admin toggle 2026-09-30** — see "Live admin toggles" further down this file. The
+hardcoded `TOWER_DISABLED = true` module-level constant this section describes needed a code edit
++ redeploy to ever flip; it's now `/admin tower-access enabled:<bool>`, defaulting to the exact
+same blocked-for-non-devs state described below until an admin explicitly allows entry. The
+admin-bypass reasoning (`awsConfigurations.devs` always gets through) is unchanged.
 
 The leaderboard-payout disable above didn't touch players crashing DURING a run — direct
 instruction to take the whole command offline immediately ("Disable tower first and push that to
@@ -3298,3 +3310,61 @@ happen" rules exactly rather than needing a special case for crash-credited part
 **financial-project scope note.** Not ported — same reasoning as both sections above: Discord-
 interaction-specific recovery mechanics with no web equivalent, touching no game logic, balance, or
 data shape `/gromp` implements.
+
+## Live admin toggles: both crash-era hardcoded kill switches are now DB-backed commands (2026-09-30, direct instruction: "make an admin toggle for me to allow enter tower or not. add admin toggle for turning the tower leaderboard daily placement daily credit on or off")
+
+Two separate mitigations shipped 2026-09-29 during the crash investigation — `TOWER_DISABLED`
+(a hardcoded `const` in `enter-tower.js`) and the leaderboard-payout disable (a hardcoded
+`clearTowerLeaderboard()`-instead-of-`payoutWinners()` swap in `backgroundEvents.js`) — both
+needed a code edit and a redeploy to ever flip back. Both are now live, no-deploy admin toggles,
+following the exact DB-backed pattern `/admin maintenance-mode` already established
+(`dynamoHandler.updateStatFields`/`getStatDatabase` against a small stats-table doc, read fresh on
+every relevant invocation).
+
+**`/admin tower-access enabled:<bool>`** (`src/commands/moderation/admin.js`'s `runTowerAccess`) —
+writes `{ enabled }` to the `tower_access` stats doc. `enter-tower.js`'s own gate reads it fresh on
+every `/enter-tower` call: `const towerAccess = await dynamoHandler.getStatDatabase('tower_access');
+if (towerAccess?.enabled !== true && !awsConfigurations.devs.includes(userId)) { ...blocked... }`.
+`enabled` means "entry is ALLOWED" — the opposite polarity from `bot_maintenance_mode`'s own
+"enabled = blocked" — chosen so the field reads naturally on its own (matching the instruction's
+own "allow enter tower" framing) rather than needing a double-negative to reason about. A missing
+doc (nobody has ever run this command) resolves to blocked — the exact same default the old
+hardcoded `TOWER_DISABLED = true` already had, so removing that constant doesn't silently re-open
+Tower to everyone the moment this ships. `awsConfigurations.devs` still always bypasses it,
+unchanged from the hardcoded version.
+
+**`/admin tower-leaderboard-payout enabled:<bool>`** (`runTowerLeaderboardPayout`) — writes
+`{ enabled }` to the `tower_leaderboard_payout` stats doc. `backgroundEvents.js`'s nightly 8pm ET
+cron reads it fresh each night: `enabled === true` calls `towerLeaderboardFactory.payoutWinners()`
+(grants the stat/potato bonus to today's top finishers, builds and posts the results announcement
+to the same channel as before — `client.channels.fetch('1188525931346792498')` — then
+`payoutWinners()` clears the leaderboard itself at the end of its own run) exactly as it did before
+the 2026-09-29 disable; anything else (missing doc or `enabled: false`) calls
+`dynamoHandler.clearTowerLeaderboard()` directly instead, the current safe default. `/leaderboard
+tower-leaderboard`'s in-progress standings view is unaffected either way, same as before — it reads
+live entries directly, never through `payoutWinners`. `TowerLeaderboardFactory`'s import/instance
+(removed from `backgroundEvents.js` by the 2026-09-29 disable) is back.
+
+**Both toggles are entirely independent of each other and of the Tower crash-hardening/
+checkpointing/resume work above** — an admin can allow entry without re-enabling the leaderboard
+payout, or vice versa, in any combination. Neither toggle is itself evidence the underlying crash
+is fixed; turning either on is a judgment call for whoever runs the command, not something this
+change makes on its own.
+
+**Tests.** `admin.test.js` gained two new describe blocks (`/admin tower-access`, `/admin
+tower-leaderboard-payout`, 2 tests each, mirroring `/admin maintenance-mode`'s own coverage
+exactly — one confirms the ON write+message, one the OFF write+message). `enter-tower.test.js`
+gained an explicit `dynamoHandler.getStatDatabase.mockResolvedValue(undefined)` default in its own
+`beforeEach` (jest's `clearAllMocks()` doesn't reset a previously-set `mockResolvedValue`, so
+without this, a later test configuring `tower_access` to `{enabled: true}` would otherwise leak
+that into every test after it) plus 3 new tests covering the disabled/missing, explicitly-disabled,
+and enabled-lets-a-non-developer-through cases; the pre-existing `describe.skip`/admin-bypass
+block titles were reworded from "TOWER_DISABLED" to "tower_access" for accuracy, with no behavior
+change (still skipped/passing the same way). No test file exists for `backgroundEvents.js` at all
+(same as every other cron step it schedules), so the leaderboard-payout branch itself has no direct
+test — consistent with that file's existing, pre-established convention. Full suite: **122 suites
+(1 fully skipped) / 2264 tests (17 skipped, 2247 passing)** — net +6 new tests, 0 broken.
+
+**financial-project scope note.** Not ported — both toggles gate Discord-specific command/cron
+behavior (`/enter-tower`, a `node-schedule` cron job) with no web equivalent, and touch no game
+logic, balance, or data shape `/gromp` implements.

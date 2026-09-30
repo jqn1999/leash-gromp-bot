@@ -187,17 +187,23 @@ async function processRewardPayouts(interaction, userId, rewards, username, user
 // entirely and re-registering later risks the same command-count-cap fragility
 // 01registerCommands.js's own comments already document), this keeps the command visibly
 // registered and just declines every invocation with an honest, temporary-sounding message.
-// One-line revert: flip this back to `false` once the crash is actually root-caused and
-// fixed. `/leaderboard tower-leaderboard` and `/tower-settings` are both untouched — neither
-// goes through this file at all.
+// `/leaderboard tower-leaderboard` and `/tower-settings` are both untouched — neither goes
+// through this file at all.
 //
 // Admin bypass (2026-09-29, same-day follow-up, direct instruction: "Allow admins to enter
 // tower") — reuses `awsConfigurations.devs`, the exact same dev/admin id list
 // `handleCommands.js`'s own `devOnly` gate checks elsewhere in this codebase, rather than
 // inventing a separate admin list. Lets the team keep testing/reproducing the crash live
 // while the command stays closed to everyone else.
-const TOWER_DISABLED = true;
-
+//
+// Live-toggled, not hardcoded (2026-09-30, direct instruction: "make an admin toggle for me
+// to allow enter tower or not") — was a bare `const TOWER_DISABLED = true` needing a code
+// edit + redeploy to ever flip; now read live from the `tower_access` stats doc, toggled via
+// `/admin tower-access enabled:<bool>` (admin.js), same DB-backed no-deploy pattern
+// `bot_maintenance_mode` already established. `enabled` here means "entry is ALLOWED" (the
+// opposite polarity from maintenance-mode's "enabled = blocked") — a missing doc (nobody has
+// touched this yet) resolves to blocked, preserving the exact default the old hardcoded
+// `true` already had.
 module.exports = {
     name: "enter-tower",
     description: "Enter the tater tower once a day",
@@ -206,7 +212,8 @@ module.exports = {
 
         const [userId, username, userDisplayName] = getUserInteractionDetails(interaction);
 
-        if (TOWER_DISABLED && !awsConfigurations.devs.includes(userId)) {
+        const towerAccess = await dynamoHandler.getStatDatabase('tower_access');
+        if (towerAccess?.enabled !== true && !awsConfigurations.devs.includes(userId)) {
             await interaction.editReply("🚧 The Tater Tower is temporarily disabled while we investigate a stability issue — sorry for the interruption! Check back soon.");
             return;
         }

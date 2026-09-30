@@ -19574,3 +19574,50 @@ with nothing credited until it actually concludes.
 **Cross-repo note.** Not ported to `financial-project` — Discord-interaction-specific recovery
 mechanics (crash/resume tied to a Discord interaction's own lifecycle) with no web equivalent,
 touching no game logic, balance, or data shape `/gromp` implements.
+
+## Tower's two crash-era hardcoded kill switches are now live admin toggles
+
+**Asked**: "make an admin toggle for me to allow enter tower or not. add admin toggle for turning
+the tower leaderboard daily placement daily credit on or off." Both `TOWER_DISABLED`
+(`enter-tower.js`'s hardcoded module-level constant) and the leaderboard-payout disable
+(`backgroundEvents.js`'s hardcoded `clearTowerLeaderboard()`-instead-of-`payoutWinners()` swap) —
+both shipped 2026-09-29 during the crash investigation — needed a code edit and redeploy to ever
+flip back. Both are now no-deploy admin commands, following `/admin maintenance-mode`'s own
+established DB-backed toggle pattern exactly.
+
+**Changed** (`src/commands/moderation/admin.js`): two new subcommands, `tower-access` and
+`tower-leaderboard-payout`, each taking a required `enabled` boolean, writing to their own stats
+doc (`tower_access`/`tower_leaderboard_payout`) via `dynamoHandler.updateStatFields`.
+
+**Changed** (`src/commands/tower/enter-tower.js`): the hardcoded `TOWER_DISABLED = true` constant
+removed entirely, replaced with a live `dynamoHandler.getStatDatabase('tower_access')` read at the
+same gate check site. `enabled` means "entry is ALLOWED" (opposite polarity from
+`bot_maintenance_mode`'s "enabled = blocked", chosen so it reads naturally on its own). A missing
+doc resolves to blocked — the same default the hardcoded `true` already had, so this ships with
+zero behavior change until an admin explicitly runs the command. `awsConfigurations.devs` still
+always bypasses it.
+
+**Changed** (`src/events/ready/backgroundEvents.js`): re-added the `TowerLeaderboardFactory`
+import/instance the 2026-09-29 disable had removed. The nightly 8pm ET cron now reads
+`tower_leaderboard_payout` live: `enabled === true` calls `payoutWinners()` and posts the results
+announcement (restoring the exact block the disable commit removed, including the same channel
+id), otherwise falls back to a direct `clearTowerLeaderboard()` call — the current safe default,
+also applied when the doc is missing.
+
+**Tests.** `admin.test.js` gained 2 new describe blocks (4 tests) mirroring `/admin
+maintenance-mode`'s own ON/OFF coverage exactly. `enter-tower.test.js` gained an explicit
+`getStatDatabase.mockResolvedValue(undefined)` default in its `beforeEach` (guards against
+`jest.clearAllMocks()` not resetting a previously-set resolved value from leaking across tests)
+plus 3 new tests for the disabled/missing, explicitly-disabled, and enabled cases; the
+`describe.skip`/admin-bypass block titles reworded from "TOWER_DISABLED" to "tower_access" for
+accuracy only, no behavior change. No test coverage added for the `backgroundEvents.js` branch
+itself — no test file exists for that cron job at all, consistent with its own pre-existing
+convention. Full suite: **122 suites (1 fully skipped) / 2264 tests (17 skipped, 2247 passing)** —
+net +6 new tests, 0 broken.
+
+**Both toggles ship OFF by default** (matching the current hardcoded-disabled state exactly) —
+turning either on is left as a judgment call for whoever runs the command, not decided here.
+
+**Cross-repo note.** Not ported to `financial-project` — both gate Discord-specific
+command/cron behavior with no web equivalent, touching no game logic, balance, or data shape
+`/gromp` implements.

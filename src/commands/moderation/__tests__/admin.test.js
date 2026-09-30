@@ -23,7 +23,7 @@ const dynamoHandler = require('../../../utils/dynamoHandler');
 const { addChatChannelIndexEntry, removeChatChannelIndexEntry } = require('../../guilds/guildChat');
 const festivalFactory = require('../../../utils/festivalFactory');
 const bigEventsChannel = require('../../../utils/bigEventsChannel.js');
-const { resetTowerCallback, setActivityChannelCallback, setMercChatChannelCallback, startFestivalCallback, endFestivalCallback, revokeImmuneToVenomCallback, grantTitleCallback, maintenanceModeCallback } = require('../admin');
+const { resetTowerCallback, setActivityChannelCallback, setMercChatChannelCallback, startFestivalCallback, endFestivalCallback, revokeImmuneToVenomCallback, grantTitleCallback, maintenanceModeCallback, towerAccessCallback, towerLeaderboardPayoutCallback } = require('../admin');
 
 beforeEach(() => {
     jest.clearAllMocks();
@@ -724,6 +724,75 @@ describe('/admin maintenance-mode', () => {
 
         expect(dynamoHandler.updateStatFields).toHaveBeenCalledWith('bot_maintenance_mode', { enabled: false });
         expect(interaction.editReply).toHaveBeenCalledWith(expect.stringMatching(/maintenance mode is now \*\*OFF\*\*/i));
+    });
+});
+
+// ---------------------------------------------------------------------------------------
+// /admin tower-access — live /enter-tower kill switch (2026-09-30, direct instruction: "make
+// an admin toggle for me to allow enter tower or not"), replacing enter-tower.js's own
+// hardcoded TOWER_DISABLED constant. The actual GATING happens in enter-tower.js itself (see
+// that file's own tests) — this command only ever flips the shared `tower_access` doc it reads.
+// ---------------------------------------------------------------------------------------
+describe('/admin tower-access', () => {
+    function fakeInteraction(enabled) {
+        return {
+            deferReply: jest.fn().mockResolvedValue(),
+            editReply: jest.fn().mockResolvedValue(),
+            options: { get: (name) => (name === 'enabled' ? { value: enabled } : undefined) },
+        };
+    }
+
+    test('turning it on writes enabled:true and confirms entry is open', async () => {
+        const interaction = fakeInteraction(true);
+
+        await towerAccessCallback({}, interaction);
+
+        expect(dynamoHandler.updateStatFields).toHaveBeenCalledWith('tower_access', { enabled: true });
+        expect(interaction.editReply).toHaveBeenCalledWith(expect.stringMatching(/tower entry is now \*\*ALLOWED\*\*/i));
+    });
+
+    test('turning it off writes enabled:false and confirms entry is blocked', async () => {
+        const interaction = fakeInteraction(false);
+
+        await towerAccessCallback({}, interaction);
+
+        expect(dynamoHandler.updateStatFields).toHaveBeenCalledWith('tower_access', { enabled: false });
+        expect(interaction.editReply).toHaveBeenCalledWith(expect.stringMatching(/tower entry is now \*\*BLOCKED\*\*/i));
+    });
+});
+
+// ---------------------------------------------------------------------------------------
+// /admin tower-leaderboard-payout — live daily Tower leaderboard payout/announcement toggle
+// (2026-09-30, direct instruction: "add admin toggle for turning the tower leaderboard daily
+// placement daily credit on or off"), replacing backgroundEvents.js's own hardcoded
+// clearTowerLeaderboard()-only mitigation. The actual gating happens in backgroundEvents.js's
+// own nightly cron — this command only ever flips the shared `tower_leaderboard_payout` doc.
+// ---------------------------------------------------------------------------------------
+describe('/admin tower-leaderboard-payout', () => {
+    function fakeInteraction(enabled) {
+        return {
+            deferReply: jest.fn().mockResolvedValue(),
+            editReply: jest.fn().mockResolvedValue(),
+            options: { get: (name) => (name === 'enabled' ? { value: enabled } : undefined) },
+        };
+    }
+
+    test('turning it on writes enabled:true and confirms tonight will pay out', async () => {
+        const interaction = fakeInteraction(true);
+
+        await towerLeaderboardPayoutCallback({}, interaction);
+
+        expect(dynamoHandler.updateStatFields).toHaveBeenCalledWith('tower_leaderboard_payout', { enabled: true });
+        expect(interaction.editReply).toHaveBeenCalledWith(expect.stringMatching(/daily payout is now \*\*ON\*\*/i));
+    });
+
+    test('turning it off writes enabled:false and confirms nobody is paid', async () => {
+        const interaction = fakeInteraction(false);
+
+        await towerLeaderboardPayoutCallback({}, interaction);
+
+        expect(dynamoHandler.updateStatFields).toHaveBeenCalledWith('tower_leaderboard_payout', { enabled: false });
+        expect(interaction.editReply).toHaveBeenCalledWith(expect.stringMatching(/daily payout is now \*\*OFF\*\*/i));
     });
 });
 
