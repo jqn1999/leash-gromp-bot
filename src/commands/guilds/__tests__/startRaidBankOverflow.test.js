@@ -184,3 +184,58 @@ describe('/start-raid loss when the guild bank is already over capacity (interes
         expect(dynamoHandler.updateGuildDatabase).toHaveBeenCalledWith(7, 'bankStored', overCapacityBank + penalty);
     });
 });
+
+// Guild bank capacity's live member-contribution bonus (2026-09-30, direct instruction:
+// "use a % of bank for everything shop and regrade up to the infinite but not the
+// infinite") — resolveRaid's own remainingBankSpace now reads the guild's EFFECTIVE bank
+// capacity (shop-purchased base + a live bonus summed from every member's own personal bank
+// capacity), not just the raw stored guild.bankCapacity. Proven end-to-end through the real
+// /start-raid flow, not just guildShopFactory's own isolated unit tests — the same reward,
+// against the same zero-capacity guild, lands in a different place (bank vs raiders)
+// depending only on whether the roster has real personal bank capacity behind it.
+describe('/start-raid reward absorption with the guild\'s own member bank-capacity bonus', () => {
+    test('a guild with zero shop-purchased capacity and no member bonus data overflows the whole reward to raiders (baseline, unchanged)', async () => {
+        dynamoHandler.findGuildById.mockResolvedValue(guildFixture({ raidPayoutMode: 'bank', bankStored: 0, bankCapacity: 0 }));
+        const interaction = fakeInteraction();
+        const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.5);
+
+        await runStartRaidFlow(interaction, 'baby');
+
+        randomSpy.mockRestore();
+        const expectedTax = Math.floor(Raid.T1_RAID_REWARD * Raid.GUILD_RAID_TAX_PERCENT);
+        const expectedReward = Raid.T1_RAID_REWARD - expectedTax;
+        // userFixture (this file's own helper) never sets bankCapacity/regrades — the new
+        // bonus correctly reads that as "no contribution," same as before this feature
+        // existed, so the zero-capacity guild still has zero real room.
+        expect(mockHandlePotatoSplit).toHaveBeenCalledWith(expect.anything(), expectedReward);
+        expect(dynamoHandler.updateGuildDatabase).not.toHaveBeenCalledWith(7, 'bankStored', expect.anything());
+    });
+
+    test('the SAME zero-shop-capacity guild absorbs the whole reward into the bank once its members have real personal bank capacity behind them', async () => {
+        dynamoHandler.findGuildById.mockResolvedValue(guildFixture({ raidPayoutMode: 'bank', bankStored: 0, bankCapacity: 0 }));
+        const interaction = fakeInteraction();
+        // Each member's own personal bank capacity at a round 1,000,000, with the full
+        // healed shape getMainSafehouseCapacity actually reads — 5% of 2,000,000 combined
+        // (Bank.GUILD_MEMBER_BANK_CAPACITY_CONTRIBUTION_PERCENT) comfortably clears the
+        // T1 reward below.
+        const developedMember = (id) => ({
+            userId: id, username: id, guildId: 7, potatoes: 1000, totalEarnings: 0, totalLosses: 0,
+            workMultiplierAmount: id === 'leader' ? 10 : 5, rebirthCount: 0, autoJoinRaids: true,
+            bankCapacity: 1000000,
+            regrades: { bankCapacity: { regradeAmount: 0, failStack: 0 } },
+            companions: { owned: [], active: null, ownedCount: 0 },
+        });
+        dynamoHandler.findUser.mockImplementation(async (id) => (id === 'leader' ? developedMember('leader') : id === 'm2' ? developedMember('m2') : undefined));
+        const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.5);
+
+        await runStartRaidFlow(interaction, 'baby');
+
+        randomSpy.mockRestore();
+        const expectedTax = Math.floor(Raid.T1_RAID_REWARD * Raid.GUILD_RAID_TAX_PERCENT);
+        const expectedReward = Raid.T1_RAID_REWARD - expectedTax;
+        // The whole reward now fits in the bank — no raider split at all, unlike the
+        // baseline test right above with the identical reward and shop-purchased capacity.
+        expect(mockHandlePotatoSplit).not.toHaveBeenCalled();
+        expect(dynamoHandler.updateGuildDatabase).toHaveBeenCalledWith(7, 'bankStored', expectedReward);
+    });
+});

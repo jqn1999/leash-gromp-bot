@@ -14,6 +14,7 @@ const embedFactory = new EmbedFactory();
 const raidFactory = new RaidFactory();
 const spudKeepFactory = require("../../utils/spudKeepFactory");
 const bigEventsChannel = require("../../utils/bigEventsChannel");
+const guildShopFactory = require("../../utils/guildShopFactory");
 
 // Cinderroot's sacrifice flavor, looked up once at module load — its roster entry now
 // lives in Companions[] (see guildCompanionFactory.js/constants.js's Guild Companion
@@ -1452,7 +1453,17 @@ async function resolveRaid(interaction, raidSelection, isChainedReply, chainDept
     const sacrificeOffer = { interaction, starterUserId: userId, guildCompanion: guild.guildCompanion };
     let guildTotalEarnings = guild.totalEarnings;
     let guildBankStored = guild.bankStored;
-    let guildBankCapacity = guild.bankCapacity;
+    // The guild's own EFFECTIVE bank capacity (2026-09-30, direct instruction: "use a % of
+    // bank for everything shop and regrade up to the infinite but not the infinite") — the
+    // shop-purchased guild.bankCapacity PLUS a live bonus summed from every member's own
+    // personal bank capacity (see guildShopFactory.getGuildMemberBankCapacityBonus). Whole
+    // roster, not just raidList's own autoJoinRaids subset — this is the SAME fan-out
+    // raidMemberDetails below would otherwise need a second time for the joined subset, but
+    // bank capacity contribution is about who's IN the guild, not who's opted into raids, so
+    // it can't just reuse raidMemberDetails once that's fetched further down.
+    const allMemberDetails = await guildShopFactory.getAllMemberDetails(guild);
+    const memberBankCapacityBonus = guildShopFactory.getGuildMemberBankCapacityBonus(allMemberDetails);
+    let guildBankCapacity = guildShopFactory.getEffectiveGuildBankCapacity(guild, memberBankCapacityBonus);
     // Clamped at 0 (2026-09-14 fix) — see the other runStartRaidFlow's own copy of this
     // line for the full explanation: a bank already over capacity (guild interest is
     // deliberately allowed to push it past bankCapacity) has ZERO remaining space, never

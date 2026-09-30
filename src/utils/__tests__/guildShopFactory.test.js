@@ -14,8 +14,12 @@ const {
     getGuildShopTierStatus,
     formatGuildShopValue,
     attemptGuildShopBuy,
+    PERSONAL_BANK_CAPACITY_CEILING,
+    getAllMemberDetails,
+    getGuildMemberBankCapacityBonus,
+    getEffectiveGuildBankCapacity,
 } = require('../guildShopFactory');
-const { guildShops } = require('../constants');
+const { guildShops, shops, REGRADE_CAPS, Bank } = require('../constants');
 
 function guildFixture(overrides = {}) {
     return {
@@ -201,5 +205,100 @@ describe('attemptGuildShopBuy', () => {
         expect(result.ok).toBe(false);
         expect(result.message).toMatch(/guild changed/);
         expect(dynamoHandler.updateGuildFieldsWithLock).toHaveBeenCalledTimes(1);
+    });
+});
+
+// Guild bank capacity's live member-contribution bonus (2026-09-30, direct instruction:
+// "use a % of bank for everything shop and regrade up to the infinite but not the
+// infinite"). getMemberBankCapacityContribution/getMainSafehouseCapacity's own live-bonus
+// folding (companion/rebirth %) is already covered by safehouseFactory.test.js — these
+// tests focus on what's NEW here: summing across a roster, substituting a finite ceiling
+// for a maxed member instead of Infinity, and defending against a malformed/missing record.
+describe('guild bank capacity member bonus', () => {
+    function memberFixture(overrides = {}) {
+        return {
+            userId: 'm1', username: 'Member',
+            bankCapacity: 1000000,
+            regrades: { bankCapacity: { regradeAmount: 0, failStack: 0 } },
+            companions: { owned: [], active: null, ownedCount: 0 },
+            rebirthCount: 0,
+            ...overrides,
+        };
+    }
+
+    describe('PERSONAL_BANK_CAPACITY_CEILING', () => {
+        test('equals the personal bank shop\'s own max tier plus the full regrade cap, derived live rather than a second hardcoded number', () => {
+            const bankShop = shops.find(s => s.shopId === 'bankShop');
+            const maxTier = bankShop.items[bankShop.items.length - 1];
+            expect(PERSONAL_BANK_CAPACITY_CEILING).toBe(maxTier.amount + REGRADE_CAPS.bankCapacity);
+        });
+    });
+
+    describe('getGuildMemberBankCapacityBonus', () => {
+        test('sums each member\'s own live bank capacity at the configured percent', () => {
+            const members = [memberFixture({ bankCapacity: 1000000 }), memberFixture({ bankCapacity: 2000000 })];
+            const bonus = getGuildMemberBankCapacityBonus(members);
+            expect(bonus).toBe(Math.round(3000000 * Bank.GUILD_MEMBER_BANK_CAPACITY_CONTRIBUTION_PERCENT));
+        });
+
+        // The whole point of the direct instruction ("up to the infinite but not the
+        // infinite") — a member whose bank-capacity regrade is fully maxed returns
+        // Infinity from getMainSafehouseCapacity; this must substitute the finite ceiling
+        // instead, never propagate Infinity/NaN into the guild's own bonus.
+        test('a member with a fully maxed bank-capacity regrade contributes the finite ceiling, not Infinity', () => {
+            const maxedMember = memberFixture({ regrades: { bankCapacity: { regradeAmount: REGRADE_CAPS.bankCapacity, failStack: 0 } } });
+            const bonus = getGuildMemberBankCapacityBonus([maxedMember]);
+            expect(bonus).toBe(Math.round(PERSONAL_BANK_CAPACITY_CEILING * Bank.GUILD_MEMBER_BANK_CAPACITY_CONTRIBUTION_PERCENT));
+            expect(Number.isFinite(bonus)).toBe(true);
+        });
+
+        test('a null/missing member record contributes 0 rather than throwing or poisoning the sum', () => {
+            const members = [memberFixture({ bankCapacity: 1000000 }), null, undefined];
+            const bonus = getGuildMemberBankCapacityBonus(members);
+            expect(bonus).toBe(Math.round(1000000 * Bank.GUILD_MEMBER_BANK_CAPACITY_CONTRIBUTION_PERCENT));
+        });
+
+        // getMainSafehouseCapacity reads straight into `regrades.bankCapacity.regradeAmount`
+        // with no guard of its own — a record missing that nested shape entirely (a test
+        // fixture elsewhere in this codebase that never anticipated this new call path, or a
+        // genuinely corrupted record) must still resolve to 0, not throw.
+        test('a record missing the regrades.bankCapacity shape entirely contributes 0 rather than throwing', () => {
+            const bareMember = { userId: 'm1', username: 'Member', bankCapacity: 1000000 };
+            expect(() => getGuildMemberBankCapacityBonus([bareMember])).not.toThrow();
+            expect(getGuildMemberBankCapacityBonus([bareMember])).toBe(0);
+        });
+
+        test('an empty roster contributes a 0 bonus', () => {
+            expect(getGuildMemberBankCapacityBonus([])).toBe(0);
+        });
+    });
+
+    describe('getEffectiveGuildBankCapacity', () => {
+        test('adds the member bonus on top of the guild\'s own shop-purchased bankCapacity', () => {
+            const guild = guildFixture({ bankCapacity: 2500000000 });
+            expect(getEffectiveGuildBankCapacity(guild, 125000000)).toBe(2625000000);
+        });
+
+        test('a zero bonus leaves the guild\'s own bankCapacity unchanged', () => {
+            const guild = guildFixture({ bankCapacity: 2500000000 });
+            expect(getEffectiveGuildBankCapacity(guild, 0)).toBe(2500000000);
+        });
+    });
+
+    describe('getAllMemberDetails', () => {
+        test('fetches findUser for every member in guild.memberList, in order — the whole roster, not just autoJoinRaids members', async () => {
+            const guild = guildFixture({
+                memberList: [{ id: 'a', username: 'Alice' }, { id: 'b', username: 'Bob' }],
+            });
+            const aliceDetails = memberFixture({ userId: 'a', username: 'Alice' });
+            const bobDetails = memberFixture({ userId: 'b', username: 'Bob' });
+            dynamoHandler.findUser.mockImplementation(async (id) => (id === 'a' ? aliceDetails : id === 'b' ? bobDetails : undefined));
+
+            const result = await getAllMemberDetails(guild);
+
+            expect(dynamoHandler.findUser).toHaveBeenCalledWith('a', 'Alice');
+            expect(dynamoHandler.findUser).toHaveBeenCalledWith('b', 'Bob');
+            expect(result).toEqual([aliceDetails, bobDetails]);
+        });
     });
 });

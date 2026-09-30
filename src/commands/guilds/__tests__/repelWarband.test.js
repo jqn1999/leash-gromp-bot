@@ -293,6 +293,34 @@ describe('/repel-warband win: flat stat grant to every live-roster member, potat
         expect(excess).toBe(expectedReward - 100);
     });
 
+    test('a developed member\'s own personal bank capacity bonus (2026-09-30) absorbs a reward that would otherwise spill over the guild\'s raw shop-tier capacity', async () => {
+        const guild = guildFixture({ bankStored: 0, bankCapacity: 100 }); // tiny capacity, same as the spillover test above
+        dynamoHandler.findGuildById.mockResolvedValue(guild);
+        dynamoHandler.findUser.mockImplementation(async (id) => {
+            const member = guild.memberList.find(m => m.id === id);
+            if (!member) return undefined;
+            if (id === 'm2') {
+                return userFixture(id, {
+                    bankCapacity: 1_000_000_000,
+                    regrades: { bankCapacity: { regradeAmount: 0 } },
+                });
+            }
+            return userFixture(id);
+        });
+        const interaction = fakeInteraction();
+        const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0); // hard, guaranteed win
+        try {
+            await repelWarband.callback(null, { ...interaction, user: { id: 'leader', username: 'Leader', displayName: 'Leader' } });
+        } finally {
+            randomSpy.mockRestore();
+        }
+        const expectedReward = afterGuildRaidTax(Math.round(Raid.T2_RAID_REWARD * GuildRival.TIER_REWARD_FACTOR.hard * 0.8));
+        const bankCalls = dynamoHandler.updateGuildDatabase.mock.calls.filter(c => c[1] === 'bankStored');
+        expect(bankCalls.length).toBe(1);
+        expect(bankCalls[0][2]).toBe(expectedReward); // fits fully now, thanks to m2's own bonus — no spillover
+        expect(mockHandlePotatoSplit).not.toHaveBeenCalled();
+    });
+
     test('increments warbandRepelledCount on every live-roster member on a win', async () => {
         const guild = guildFixture({ bankStored: 0 });
         dynamoHandler.findGuildById.mockResolvedValue(guild);

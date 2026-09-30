@@ -4,7 +4,74 @@
 // (not personal potatoes), and the tier lookup stays threshold-based rather than an exact
 // match (see getNextItemFromShop below).
 const dynamoHandler = require("./dynamoHandler");
-const { guildShops } = require("./constants");
+const { guildShops, shops, REGRADE_CAPS, Bank } = require("./constants");
+const safehouseFactory = require("./safehouseFactory");
+
+// Guild bank capacity's live member-contribution bonus (2026-09-30, direct instruction:
+// "use a % of bank for everything shop and regrade up to the infinite but not the
+// infinite" — a design refinement of the earlier ask "could guilds maybe make use of a per
+// player, % of their bank also adds to guild bank capacity type thing"). Closes the gap a
+// balance audit had already flagged: the guild bankCapacity shop ladder tops out at a
+// FINITE 2.5B shared across up to 25 members, while a single well-developed solo player's
+// own Main Safehouse (safehouseFactory.getMainSafehouseCapacity) can already exceed that
+// alone, and becomes literally Infinite once bank-capacity regrade is fully maxed.
+//
+// PERSONAL_BANK_CAPACITY_CEILING is the highest FINITE value that formula can ever actually
+// return, right at the boundary before it flips to Infinity: the personal bank shop's own
+// max tier (shops.bankShop's last item, 1,000,000,000) plus the full regrade cap
+// (REGRADE_CAPS.bankCapacity, 103,000,000,000) — derived from the live constants rather
+// than a second hardcoded number, so a future retune of either ladder can't silently drift
+// this out of sync. A maxed member substitutes this ceiling instead of Infinity — a guild's
+// own bank capacity must never become infinite just because one member's personal one did.
+const PERSONAL_BANK_CAPACITY_CEILING = (() => {
+    const bankShop = shops.find(s => s.shopId === 'bankShop');
+    const maxTier = bankShop.items[bankShop.items.length - 1];
+    return maxTier.amount + REGRADE_CAPS.bankCapacity;
+})();
+
+// Every member's own findUser record, unfiltered — deliberately the WHOLE roster, not just
+// guild.memberList's autoJoinRaids subset raidFactory.getLiveRaidRoster returns (bank
+// capacity contribution is about who's IN the guild, not who's opted into raids).
+async function getAllMemberDetails(guild) {
+    return Promise.all(guild.memberList.map(m => dynamoHandler.findUser(m.id, m.username)));
+}
+
+// One member's own contribution basis — the same live Main Safehouse figure /bank and
+// /profile already show (companion bankCapacityPercent/rebirth% folded in), capped at
+// PERSONAL_BANK_CAPACITY_CEILING in place of Infinity for a fully-regraded member. A
+// missing/malformed record contributes 0, same "can't poison a whole-roster sum" guard
+// raidFactory.getMemberRaidPower already uses for raid power — checked on `regrades.
+// bankCapacity` specifically (not just truthiness of `memberDetails` itself) since
+// getMainSafehouseCapacity reads straight into that nested path with no guard of its own,
+// same defensive reasoning as findUser's own healing pass existing for exactly this shape.
+function getMemberBankCapacityContribution(memberDetails) {
+    if (!memberDetails || !memberDetails.regrades || !memberDetails.regrades.bankCapacity || !Number.isFinite(memberDetails.bankCapacity)) return 0;
+    const capacity = safehouseFactory.getMainSafehouseCapacity(memberDetails);
+    return Number.isFinite(capacity) ? capacity : PERSONAL_BANK_CAPACITY_CEILING;
+}
+
+// The guild-wide bonus itself — summed member contributions at
+// Bank.GUILD_MEMBER_BANK_CAPACITY_CONTRIBUTION_PERCENT, rounded once at the end rather than
+// per member (avoids compounding rounding error across up to 25 members). Takes an
+// already-fetched memberDetailsList rather than a guild, mirroring
+// raidFactory.getEffectiveRaidPower's own shape — callers that already have the roster's
+// details in scope for another reason (a raid resolution, the roster display) pass them
+// straight through instead of triggering a second fan-out; a caller with nothing in scope
+// yet calls getAllMemberDetails(guild) first.
+function getGuildMemberBankCapacityBonus(memberDetailsList) {
+    const total = memberDetailsList.reduce((sum, m) => sum + getMemberBankCapacityContribution(m), 0);
+    return Math.round(total * Bank.GUILD_MEMBER_BANK_CAPACITY_CONTRIBUTION_PERCENT);
+}
+
+// The number every real capacity check (raid payout overflow, /guild-bank deposit cap,
+// /repel-warband's own payout split, the /guild display) should actually read against —
+// never stored back onto guild.bankCapacity itself, same "live modifier, never baked into
+// the stored value" principle Daily Treasury Interest/Cinderroot's own perks already
+// follow. Keeps guild.bankCapacity's own raw value untouched for getGuildShopBaseValue's
+// tier lookup above, which needs the true shop-purchased base, not this inflated figure.
+function getEffectiveGuildBankCapacity(guild, memberBankCapacityBonus) {
+    return guild.bankCapacity + memberBankCapacityBonus;
+}
 
 // Maps /guild-upgrade's shop-select option to the shopId it maps to in `guildShops`
 // (constants.js). Kept as its own map (rather than reusing the option value directly)
@@ -145,4 +212,8 @@ module.exports = {
     getGuildShopTierStatus,
     formatGuildShopValue,
     attemptGuildShopBuy,
+    PERSONAL_BANK_CAPACITY_CEILING,
+    getAllMemberDetails,
+    getGuildMemberBankCapacityBonus,
+    getEffectiveGuildBankCapacity,
 };
