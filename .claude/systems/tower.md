@@ -3368,3 +3368,78 @@ test — consistent with that file's existing, pre-established convention. Full 
 **financial-project scope note.** Not ported — both toggles gate Discord-specific command/cron
 behavior (`/enter-tower`, a `node-schedule` cron job) with no web equivalent, and touch no game
 logic, balance, or data shape `/gromp` implements.
+
+## A timeout no longer concludes the run — it's now a non-completion, just like a crash (2026-09-30, direct instruction: "for timeout, update it so that it is just a non-complete and user has to enter tower again resuming and either leave or die for it to give them their potatoes/stats")
+
+Follow-up to a direct question after the true-resume work above ("a timeout on the embed used to
+result in the run completing. is this no longer a thing and it just gets saved to the db instead?
+is there any indication to user it was saved rather than complete?") — answered at the time that
+timeouts were UNCHANGED by the resume work (every `awaitMessageComponent` timeout resolves via
+`.catch(() => null)`, never throws, so a timeout always reached the same tail-bookkeeping a real
+Leave/win does). This instruction changes that deliberately: a timeout should no longer conclude
+the run at all.
+
+**Not every timeout, only the two that used to CONCLUDE the run.** This file has 5
+`awaitMessageComponent` call sites, all sharing the same `.catch(() => null)` shape, but only 2 of
+them ever reached a conclusion on timeout:
+- `createNextEmbed`'s Continue/Leave screen — timed out → treated as LEAVE (credited the whole run).
+- `createEliteEmbed`'s Fight/Leave decision — timed out → treated as declining the fight (a
+  graceful retreat, also a full conclusion).
+
+The other 3 never concluded anything on their own, so none of them changed: `chooseRiskPolicy`
+(timeout → defaults to SAFE, keeps climbing), `createFloorEmbed`'s own floor-choice screen (timeout
+→ defaults to choice index 0, keeps climbing), `createEliteEncounter` (only one real button —
+forced continuation into the fight either way).
+
+**Changed** (`src/utils/towerFactory.js`): a new `TowerTimeoutError` class (extends `Error`,
+exported from the module). `createNextEmbed`'s and `createEliteEmbed`'s own `if(!confirmation)`
+timeout branches now `throw new TowerTimeoutError(...)` instead of `return false` — propagating all
+the way up through `startRun()`'s own floor loop (uncaught anywhere in `towerFactory.js`) into
+`enter-tower.js`'s existing crash `try`/`catch` around `startRun()`. That catch block already did
+EXACTLY what a timeout needs (restore `canEnterTower`, credit nothing, leave `towerRunCheckpoint`
+in place for the next `/enter-tower` to resume from) — no new mechanics were needed, only a way to
+signal "stop without concluding" from inside those two screens.
+
+**Deliberately NOT the stale-click fallback.** Both `createNextEmbed` and `createEliteEmbed` have a
+SEPARATE fallback further down (a real confirmation whose `customId` matches neither on-screen
+option — a delayed/retried Discord interaction from an already-replaced screen, root-caused
+2026-09-18) that still defaults to the same LEAVE-equivalent it always did. That's a different
+failure mode (Discord interaction timing, not "the player didn't respond") and wasn't part of this
+instruction, so it's untouched.
+
+**Changed** (`src/commands/tower/enter-tower.js`): the crash catch block now checks `e?.name ===
+'TowerTimeoutError'` (a bare name check, not `instanceof TowerTimeoutError` — deliberately, since
+`enter-tower.test.js` fully automocks `towerFactory.js`, which would make `instanceof` against a
+jest-automocked class identity fragile; a name check needs no import of the real class here at
+all) to give a timeout its own honest message instead of "hit an unexpected error": "you didn't
+respond in time, so your tower run stopped around floor N" (with or without a checkpoint's own
+floor/resume framing, same branching the generic crash message already had). Also logs via
+`console.log` rather than `console.error` — a timeout is an expected, everyday occurrence, not a
+bug worth flagging the same way a real crash is. Every other mechanic (restore `canEnterTower`,
+credit nothing, checkpoint left in place, fallback channel message on a dead interaction token) is
+byte-for-byte identical between a timeout and a genuine crash — only the message and log level
+differ.
+
+**What a timed-out floor's own in-flight reward actually does.** A floor's reward is credited into
+`this.run` BEFORE its Continue/Leave confirmation screen ever shows (see `updateValue`/
+`resolveNext`) — but the CHECKPOINT for that floor only fires once `startRun()`'s outer loop gets
+back around to it, which never happens if the Continue/Leave screen itself times out and throws.
+So a timeout on that specific screen loses that one floor's already-computed reward from the
+checkpoint's perspective (the last successfully checkpointed floor is the PREVIOUS one) — on
+resume, a brand new floor gets rolled in its place via `getFloor()`, not the same floor content
+replayed. This is consistent with, not a new gap beyond, how a genuine crash on that same screen
+already behaved before this change.
+
+**Tests.** `towerFactory.test.js` gained a new `describe('a genuine timeout (no click at all) on a
+screen that used to conclude the run')` block (4 tests): `createNextEmbed` and `createEliteEmbed`
+each throwing `TowerTimeoutError` on a genuine timeout, a full `startRun()` propagating that throw
+uncaught, and a confirmation that the stale-click fallback is unaffected (still resolves `false`,
+never throws). `enter-tower.test.js` gained 2 tests: a timeout after a floor checkpointed (asserts
+the "didn't respond in time" wording, no crash-style "unexpected error" text, `console.log` not
+`console.error`, and the checkpoint staying in place) and a timeout before any floor checkpoints
+(same wording checks, "nothing saved yet" framing). Full suite: **122 suites (1 fully skipped) /
+2270 tests (17 skipped, 2253 passing)** — net +6 new tests, 0 broken.
+
+**financial-project scope note.** Not ported — Discord-interaction-specific timing behavior
+(`awaitMessageComponent`'s own 30s collector timeout) with no web equivalent, touching no game
+logic, balance, or data shape `/gromp` implements.

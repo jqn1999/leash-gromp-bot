@@ -285,7 +285,23 @@ module.exports = {
             // this run's progress, not their whole day. Logging e (not just its message —
             // see the matching fix in handleCommands.js) finally captures a real stack trace
             // to root-cause the crash itself, which static reading alone couldn't pin down.
-            console.error(`Tower run crashed for ${username} (${userId}) at floor ${tF.floor}:`, e);
+            //
+            // A deliberate TowerTimeoutError (2026-09-30 — a player not responding to the
+            // Continue/Leave or Elite Fight/Leave screen within 30s, see towerFactory.js's own
+            // comment on that class) is NOT a bug — it's an expected, everyday occurrence, so
+            // it's logged at a lower level and given its own honest message below instead of
+            // "hit an unexpected error." The RECOVERY MECHANICS are identical either way —
+            // that's the whole point of routing both through this one catch block. Checked by
+            // `e?.name` (not `instanceof TowerTimeoutError`) deliberately — a bare name check
+            // needs no import of the real class here (towerFactory.js's exports are mocked out
+            // entirely in this file's own test suite, which would otherwise make instanceof
+            // fragile against a jest-automocked class identity).
+            const isTimeout = e?.name === 'TowerTimeoutError';
+            if (isTimeout) {
+                console.log(`Tower run stopped for ${username} (${userId}) at floor ${tF.floor} — no response in time:`, e.message);
+            } else {
+                console.error(`Tower run crashed for ${username} (${userId}) at floor ${tF.floor}:`, e);
+            }
             await dynamoHandler.updateUserDatabase(userId, "canEnterTower", true);
 
             // Deliberately NOT crediting anything and NOT clearing towerRunCheckpoint here
@@ -297,9 +313,16 @@ module.exports = {
             // next `/enter-tower` call to resume from — that's the entire recovery path now,
             // nothing else needs to happen in this catch block beyond restoring canEnterTower so
             // the player is actually allowed to call it again.
-            const recoveryMessage = latestCheckpoint
-                ? `${userDisplayName}, your tower run hit an unexpected error around floor ${tF.floor} and had to stop — sorry about that! Good news: your progress through floor ${latestCheckpoint.floor} is safely saved, nothing was lost. Run /enter-tower again to pick up right where you left off.`
-                : `${userDisplayName}, your tower run hit an unexpected error around floor ${tF.floor} and had to stop — sorry about that! Nothing from that attempt was saved yet, but your entry has been restored, so you can run /enter-tower again right away.`;
+            let recoveryMessage;
+            if (isTimeout) {
+                recoveryMessage = latestCheckpoint
+                    ? `${userDisplayName}, you didn't respond in time, so your tower run stopped around floor ${tF.floor} — no worries, nothing was lost! Your progress through floor ${latestCheckpoint.floor} is safely saved. Run /enter-tower again to pick up right where you left off.`
+                    : `${userDisplayName}, you didn't respond in time, so your tower run stopped around floor ${tF.floor} — nothing from that attempt was saved yet, but your entry has been restored, so you can run /enter-tower again right away.`;
+            } else {
+                recoveryMessage = latestCheckpoint
+                    ? `${userDisplayName}, your tower run hit an unexpected error around floor ${tF.floor} and had to stop — sorry about that! Good news: your progress through floor ${latestCheckpoint.floor} is safely saved, nothing was lost. Run /enter-tower again to pick up right where you left off.`
+                    : `${userDisplayName}, your tower run hit an unexpected error around floor ${tF.floor} and had to stop — sorry about that! Nothing from that attempt was saved yet, but your entry has been restored, so you can run /enter-tower again right away.`;
+            }
             try {
                 if (interaction.deferred || interaction.replied) {
                     await interaction.editReply({ content: recoveryMessage, embeds: [], components: [] });

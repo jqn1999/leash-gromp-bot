@@ -33,6 +33,33 @@ async function safeEditReply(interaction, payload) {
     }
 }
 
+// A player not responding within 30s to a screen that would otherwise CONCLUDE the run
+// (createNextEmbed's Continue/Leave, createEliteEmbed's Fight/Leave) used to be treated
+// exactly like an explicit Leave/decline — silently banking and crediting the whole run
+// (2026-09-30, direct instruction: "for timeout, update it so that it is just a non-complete
+// and user has to enter tower again resuming and either leave or die for it to give them
+// their potatoes/stats"). Thrown instead of returned now, from those two call sites only —
+// propagates all the way up through startRun()'s own try/catch in enter-tower.js, which
+// already does exactly what's wanted for an unconcluded run (restores canEnterTower, credits
+// nothing, leaves the checkpoint in place for `/enter-tower` to resume). A distinct error
+// type (rather than reusing a bare Error) lets that same catch block give the player an
+// accurate "you didn't respond in time" message instead of "hit an unexpected error" — same
+// non-crediting/resume-eligible mechanics either way, different, honest wording. Does NOT
+// apply to chooseRiskPolicy's timeout (defaults to SAFE and keeps climbing, never concludes
+// the run), createFloorEmbed's timeout (defaults to choice index 0, also keeps climbing), or
+// createEliteEncounter's timeout (only one real option, forced continuation either way) —
+// none of those three ever reach a conclusion on their own, so none of them needed to change.
+// Also does NOT apply to the STALE-CLICK fallback further down createNextEmbed/createEliteEmbed
+// (a real confirmation whose customId matches neither on-screen option) — a different failure
+// mode (a delayed/retried Discord interaction, not "the player didn't respond"), left with its
+// existing safe-default behavior.
+class TowerTimeoutError extends Error {
+    constructor(message) {
+        super(message);
+        this.name = 'TowerTimeoutError';
+    }
+}
+
 class towerFactory{
 
     // onFloorComplete (2026-09-30, direct instruction: "implement #1" — per-floor checkpointing
@@ -768,13 +795,12 @@ class towerFactory{
         const collectorFilter = i => i.user.id === this.interaction.user.id;
         const confirmation = await reply.awaitMessageComponent({ filter: collectorFilter, time: 30_000 }).catch(() => null);
 
-        // A timed-out/unresponsive click is treated as LEAVE — banks whatever's already
-        // accumulated rather than losing it to an expired interaction token further down
-        // the run (Discord's webhook token is only good for ~15 minutes total; safest
-        // default is to stop here, not silently hang or throw).
+        // No longer treated as LEAVE (2026-09-30, direct instruction — see TowerTimeoutError's
+        // own comment above) — a timeout here now stops the run WITHOUT concluding it, so the
+        // player has to /enter-tower again and actually leave or die for this to bank anything.
         if(!confirmation){
             await this.interaction.editReply({ components: [] }).catch(() => {});
-            return false
+            throw new TowerTimeoutError(`No response on the Continue/Leave screen at floor ${this.floor}`);
         }
         if(confirmation.customId == "continue"){
         await confirmation.update({content: '', components: []}).catch(() => {})
@@ -808,11 +834,12 @@ class towerFactory{
         const collectorFilter = i => i.user.id === this.interaction.user.id;
         const confirmation = await reply.awaitMessageComponent({ filter: collectorFilter, time: 30_000 }).catch(() => null);
 
-        // Timed out -> declines the fight, same as an explicit Leave (never risk a run
-        // dying to an unresponsive click).
+        // No longer declines the fight (2026-09-30, direct instruction — see TowerTimeoutError's
+        // own comment above) — a timeout here now stops the run WITHOUT concluding it, same as
+        // createNextEmbed's own timeout branch, rather than silently banking a graceful retreat.
         if(!confirmation){
             await this.interaction.editReply({ components: [] }).catch(() => {});
-            return false
+            throw new TowerTimeoutError(`No response on the Elite fight decision at floor ${this.floor}`);
         }
         if(confirmation.customId == "fight"){
         await confirmation.update({content: '', components: []}).catch(() => {})
@@ -1134,5 +1161,6 @@ module.exports = {
     pickChoiceIndex,
     investment,
     scalingFactor,
-    safeEditReply
+    safeEditReply,
+    TowerTimeoutError
 }

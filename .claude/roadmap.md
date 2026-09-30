@@ -19621,3 +19621,47 @@ turning either on is left as a judgment call for whoever runs the command, not d
 **Cross-repo note.** Not ported to `financial-project` — both gate Discord-specific
 command/cron behavior with no web equivalent, touching no game logic, balance, or data shape
 `/gromp` implements.
+
+## Tower: a timeout no longer concludes the run
+
+**Asked**, as a direct follow-up after confirming timeouts were unaffected by the true-resume
+work: "for timeout, update it so that it is just a non-complete and user has to enter tower again
+resuming and either leave or die for it to give them their potatoes/stats."
+
+Only 2 of `towerFactory.js`'s 5 `awaitMessageComponent` timeout sites ever concluded the run on
+timeout: `createNextEmbed`'s Continue/Leave screen (defaulted to LEAVE, credited everything) and
+`createEliteEmbed`'s Fight/Leave decision (defaulted to declining, also a full conclusion). The
+other 3 (`chooseRiskPolicy`, `createFloorEmbed`, `createEliteEncounter`) just pick a safe default
+and keep climbing — never concluded anything, so none of them changed.
+
+**Changed** (`src/utils/towerFactory.js`): new `TowerTimeoutError` class. Those two timeout
+branches now `throw` it instead of `return false` — propagates uncaught through `startRun()` into
+`enter-tower.js`'s existing crash `try`/`catch`, which already does exactly what's needed for a
+non-concluded run (restore `canEnterTower`, credit nothing, leave the checkpoint for the next
+`/enter-tower` to resume). The SEPARATE stale-click fallback in both methods (a delayed/retried
+Discord interaction with an unrecognized `customId` — a different failure mode, root-caused
+2026-09-18) is untouched, still defaulting to LEAVE-equivalent as before.
+
+**Changed** (`src/commands/tower/enter-tower.js`): the crash catch block checks `e?.name ===
+'TowerTimeoutError'` (name check, not `instanceof` — avoids fragility against
+`enter-tower.test.js`'s fully-automocked `towerFactory` module) to give a timeout its own honest
+"you didn't respond in time" message instead of "hit an unexpected error," and logs via
+`console.log` instead of `console.error` (expected occurrence, not a bug). Every other mechanic is
+identical to a genuine crash.
+
+**One consequence worth naming**: a floor's reward is computed into `this.run` BEFORE its
+Continue/Leave screen shows, but the checkpoint for that floor only fires once `startRun()`'s outer
+loop returns to it — which never happens if that same screen times out and throws. So a timeout
+there loses that one floor's in-flight reward from the checkpoint's perspective; resuming rolls a
+brand new floor in its place rather than replaying the same one. Consistent with how a crash on
+that screen already worked, not a new gap.
+
+**Tests.** `towerFactory.test.js` gained a 4-test block covering both methods throwing on a
+genuine timeout, the throw propagating through a full `startRun()`, and confirming the stale-click
+fallback is unaffected. `enter-tower.test.js` gained 2 tests for the timeout-specific
+messaging/logging, with and without a prior checkpoint. Full suite: **122 suites (1 fully skipped)
+/ 2270 tests (17 skipped, 2253 passing)** — net +6 new tests, 0 broken.
+
+**Cross-repo note.** Not ported to `financial-project` — a Discord `awaitMessageComponent`
+collector timeout has no web equivalent, and this touches no game logic, balance, or data shape
+`/gromp` implements.
