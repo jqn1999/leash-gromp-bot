@@ -3400,12 +3400,12 @@ EXACTLY what a timeout needs (restore `canEnterTower`, credit nothing, leave `to
 in place for the next `/enter-tower` to resume from) — no new mechanics were needed, only a way to
 signal "stop without concluding" from inside those two screens.
 
-**Deliberately NOT the stale-click fallback.** Both `createNextEmbed` and `createEliteEmbed` have a
-SEPARATE fallback further down (a real confirmation whose `customId` matches neither on-screen
-option — a delayed/retried Discord interaction from an already-replaced screen, root-caused
-2026-09-18) that still defaults to the same LEAVE-equivalent it always did. That's a different
-failure mode (Discord interaction timing, not "the player didn't respond") and wasn't part of this
-instruction, so it's untouched.
+**The stale-click fallback below was originally left untouched, then changed the SAME day** — see
+"Stale clicks get the same non-completion treatment" further down this file. Both `createNextEmbed`
+and `createEliteEmbed` have a SEPARATE fallback further down (a real confirmation whose `customId`
+matches neither on-screen option — a delayed/retried Discord interaction from an already-replaced
+screen, root-caused 2026-09-18); it now also throws `TowerTimeoutError` instead of defaulting to
+LEAVE-equivalent, on the reasoning that a stale click is no more a real decision than silence is.
 
 **Changed** (`src/commands/tower/enter-tower.js`): the crash catch block now checks `e?.name ===
 'TowerTimeoutError'` (a bare name check, not `instanceof TowerTimeoutError` — deliberately, since
@@ -3443,3 +3443,47 @@ the "didn't respond in time" wording, no crash-style "unexpected error" text, `c
 **financial-project scope note.** Not ported — Discord-interaction-specific timing behavior
 (`awaitMessageComponent`'s own 30s collector timeout) with no web equivalent, touching no game
 logic, balance, or data shape `/gromp` implements.
+
+## Stale clicks get the same non-completion treatment as a timeout (2026-09-30, same-day follow-up, direct instruction: "If nothing matches, also consider that just a scenario like timing out and the user's state gets saved so they can continue it again next time")
+
+Asked as a direct follow-up right after confirming what auto-selection logic exists for a
+non-response and which scenarios (if any) still auto-pick Leave — the answer named ONE remaining
+case: the stale-click fallback on `createNextEmbed`/`createEliteEmbed` (a real click whose
+`customId` matches neither on-screen option — a delayed/retried Discord interaction, 2026-09-18
+root cause) still defaulted to the same LEAVE-equivalent the timeout branch used to, since that
+fallback predates the timeout change above and was deliberately left alone as "a different failure
+mode." This instruction closes that gap: from the player's perspective, a stale click resolves
+nothing either — they didn't actually choose Continue/Leave or Fight/Leave, so it shouldn't
+conclude the run any more than silence does.
+
+**Changed** (`src/utils/towerFactory.js`): the stale-click fallback branches in `createNextEmbed`
+and `createEliteEmbed` (the code just below their own `if(!confirmation)` timeout branch) now also
+`throw new TowerTimeoutError(...)` instead of returning `false`. `TowerTimeoutError`'s own
+class-level comment was updated to describe both trigger paths together rather than claiming the
+stale-click fallback was excluded. The error message differs slightly per site (e.g. `Unrecognized
+click ('${confirmation.customId}') on the Continue/Leave screen at floor ${this.floor}`) purely for
+log/debugging clarity — the player-facing wording in `enter-tower.js` is unchanged and stays
+generic ("you didn't respond in time..."), acceptable even though a stale click isn't literally
+silence, since the mechanics and the practical experience (nothing they did resolved the screen)
+are the same either way.
+
+**Deliberately NOT extended to `createFloorEmbed`'s or `createEliteEncounter`'s own stale-click
+fallback** — same reasoning as the original timeout change: neither of those ever concluded the run
+on a stale click to begin with (defaults to choice index 0, or forced continuation), so there was
+nothing to close there.
+
+**Tests.** The `describe('a stale click whose customId matches nothing on the CURRENT screen
+defaults safely')` block lost its `createNextEmbed`/`createEliteEmbed` cases (moved, not deleted)
+and kept only `createFloorEmbed`/`createEliteEncounter`, which are genuinely unaffected. Those two
+moved into the renamed `describe('neither a timeout nor a stale click is a real decision, on a
+screen that used to conclude the run')` block (formerly the genuine-timeout-only block), which
+gained 2 new stale-click tests (one per method) alongside its existing genuine-timeout tests — 4
+targeted tests total for the two methods × two trigger paths. The old "stale click is NOT affected"
+test (asserting the pre-this-change behavior) was replaced rather than kept alongside a
+contradicting one. `enter-tower.js`'s own catch-block logic was untouched (it already branches
+generically on `e?.name`, regardless of which of the four `towerFactory.js` call sites the error
+came from), so `enter-tower.test.js` needed no changes. Full suite: **122 suites (1 fully skipped)
+/ 2269 tests (17 skipped, 2252 passing)** — net -1 test overall (3 tests removed/replaced, 2 added),
+0 broken.
+
+**financial-project scope note.** Not ported — same reasoning as the section above.

@@ -19665,3 +19665,31 @@ messaging/logging, with and without a prior checkpoint. Full suite: **122 suites
 **Cross-repo note.** Not ported to `financial-project` — a Discord `awaitMessageComponent`
 collector timeout has no web equivalent, and this touches no game logic, balance, or data shape
 `/gromp` implements.
+
+## Tower: stale clicks now get the same non-completion treatment as a timeout
+
+**Asked**, as a direct follow-up after a question-and-answer about auto-selection logic ("Is there
+auto selection logic in the tower when a user doesn't respond to the choices? If so is there any
+scenario where it picks leave") that surfaced one remaining case: "If nothing matches, also
+consider that just a scenario like timing out and the user's state gets saved so they can continue
+it again next time." The answer had named the stale-click fallback on `createNextEmbed`/
+`createEliteEmbed` (a delayed/retried Discord click whose `customId` matches nothing current,
+2026-09-18 root cause) as the one remaining path that still auto-picked Leave — it predated the
+timeout change and was deliberately left alone as "a different failure mode."
+
+**Changed** (`src/utils/towerFactory.js`): both methods' stale-click fallback branches now also
+`throw new TowerTimeoutError(...)` instead of defaulting to LEAVE-equivalent — a stale click
+resolves nothing any more than silence does, from the player's perspective. `createFloorEmbed`'s
+and `createEliteEncounter`'s own stale-click fallbacks are untouched (neither ever concluded the
+run on a stale click either).
+
+**Tests.** Reorganized rather than just patched: the "stale click defaults safely" describe block
+now only covers the two genuinely-unaffected methods; the timeout describe block was renamed and
+gained 2 new stale-click tests alongside its existing timeout tests, replacing the one test that
+asserted the now-superseded "stale click still falls back safely" behavior. `enter-tower.js`'s own
+catch-block logic needed no changes (already branches generically on `e?.name`, not on which
+towerFactory.js call site threw). Full suite: **122 suites (1 fully skipped) / 2269 tests (17
+skipped, 2252 passing)** — net -1 overall (3 removed/replaced, 2 added), 0 broken.
+
+**Cross-repo note.** Not ported to `financial-project` — same reasoning as the timeout entry
+above.
