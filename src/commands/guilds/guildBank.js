@@ -5,7 +5,6 @@ const { Bank, GuildRoles } = require("../../utils/constants");
 const { EmbedFactory } = require("../../utils/embedFactory");
 const embedFactory = new EmbedFactory();
 const spudKeepFactory = require("../../utils/spudKeepFactory");
-const guildShopFactory = require("../../utils/guildShopFactory");
 
 function calculateTax(amount) {
     return Bank.GUILD_TAX_BASE + Math.floor(amount * Bank.GUILD_TAX_PERCENT)
@@ -55,16 +54,7 @@ module.exports = {
         if (!guild) return;
         const memberList = guild.memberList;
         let guildBankStored = guild.bankStored;
-        // Effective capacity (2026-09-30, direct instruction: "use a % of bank for
-        // everything shop and regrade up to the infinite but not the infinite") — the
-        // shop-purchased guild.bankCapacity PLUS a live bonus summed from every member's
-        // own personal bank capacity (see startRaid.js's resolveRaid for the full writeup
-        // and guildShopFactory.getGuildMemberBankCapacityBonus for the formula). A deposit's
-        // own remaining-space gate now reflects what the guild can ACTUALLY hold, not just
-        // its shop tier.
-        const allMemberDetails = await guildShopFactory.getAllMemberDetails(guild);
-        const memberBankCapacityBonus = guildShopFactory.getGuildMemberBankCapacityBonus(allMemberDetails);
-        let guildBankCapacity = guildShopFactory.getEffectiveGuildBankCapacity(guild, memberBankCapacityBonus);
+        let guildBankCapacity = guild.bankCapacity;
 
         const member = memberList.find((currentMember) => currentMember.id == userId)
         if (!member) {

@@ -9,7 +9,6 @@ const bigEventsChannel = require("../../utils/bigEventsChannel");
 const { EmbedFactory } = require("../../utils/embedFactory");
 const embedFactory = new EmbedFactory();
 const raidFactory = new RaidFactory();
-const guildShopFactory = require("../../utils/guildShopFactory");
 
 // Guild Rival Warbands (systems/guilds.md#guild-rival-warbands) — mirrors /confront-rival's
 // own immediacy: no confirm step, resolves on the spot once both gates below are met.
@@ -105,15 +104,8 @@ module.exports = {
             // Routed through the guild's own existing addToBankOrPurse (bank-first, then
             // whichever of raidSplitMode/raidPayoutMode the guild has already picked) — the
             // exact same infrastructure every ordinary raid reward already uses, with the
-            // live raid roster as the split audience. Bank capacity check uses the guild's
-            // own EFFECTIVE capacity (2026-09-30, direct instruction — see startRaid.js's
-            // resolveRaid for the full writeup) — the whole roster's own member bonus, not
-            // just raidMemberDetails above (that's the autoJoinRaids subset; bank capacity
-            // contribution is about who's IN the guild).
-            const allMemberDetails = await guildShopFactory.getAllMemberDetails(guild);
-            const memberBankCapacityBonus = guildShopFactory.getGuildMemberBankCapacityBonus(allMemberDetails);
-            const effectiveBankCapacity = guildShopFactory.getEffectiveGuildBankCapacity(guild, memberBankCapacityBonus);
-            const remainingBankSpace = guild.raidPayoutMode === 'direct' ? 0 : Math.max(0, effectiveBankCapacity - guild.bankStored);
+            // live raid roster as the split audience.
+            const remainingBankSpace = guild.raidPayoutMode === 'direct' ? 0 : Math.max(0, guild.bankCapacity - guild.bankStored);
             await addToBankOrPurse(guildId, guild.bankStored, remainingBankSpace, raidList, result.rewardAmount, raidSplitMode, raidListByMulti, interaction.client.user.id);
 
             // LIFETIME, per-user counter — the achievement system has no guild-level concept

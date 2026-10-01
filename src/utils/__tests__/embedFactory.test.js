@@ -1914,56 +1914,6 @@ describe('createGuildEmbed Guild Companion field', () => {
     });
 });
 
-// Bank Capacity field's memberBankCapacityBonus display (2026-09-30, direct instruction: "use
-// a % of bank for everything shop and regrade up to the infinite but not the infinite") — the
-// optional second arg defaults to 0, so every pre-existing caller/test that omits it keeps
-// showing the plain shop-purchased guild.bankCapacity unchanged; a positive bonus switches to
-// the "(+X from members)" breakdown instead of silently baking it into a single number.
-describe('createGuildEmbed Bank Capacity field\'s member bonus display', () => {
-    const raidFactory = require('../raidFactory');
-    const companionFactory = require('../companionFactory');
-
-    function baseGuild(overrides = {}) {
-        return {
-            guildName: 'Some Guild',
-            memberList: [{ id: 'u1', username: 'Leader', role: 'Leader' }],
-            memberCap: 5,
-            raidCount: 0,
-            bankStored: 0,
-            bankCapacity: 1000000,
-            totalEarnings: 0,
-            guildBuff: 'workMulti',
-            guildCompanion: null,
-            ...overrides,
-        };
-    }
-
-    beforeEach(() => {
-        raidFactory.getRaidLevelInfo.mockReturnValue({ level: 1, winsToNextLevel: 6, multiplier: 1 });
-        raidFactory.getGuildDailyInterest.mockReturnValue(0);
-        companionFactory.getCompanionById.mockReturnValue({ id: 'cinderroot', name: 'Cinderroot, the Hoardwarden' });
-    });
-
-    test('shows the plain raw bankCapacity, unchanged, when memberBankCapacityBonus is omitted entirely', () => {
-        const embed = embedFactory.createGuildEmbed(baseGuild());
-        const field = embed.data.fields.find(f => f.name === 'Bank Capacity:');
-        expect(field).toBeDefined();
-        expect(field.value).toBe('1,000,000');
-    });
-
-    test('shows the plain raw bankCapacity, unchanged, when memberBankCapacityBonus is explicitly 0', () => {
-        const embed = embedFactory.createGuildEmbed(baseGuild(), 0);
-        const field = embed.data.fields.find(f => f.name === 'Bank Capacity:');
-        expect(field.value).toBe('1,000,000');
-    });
-
-    test('shows the combined total plus a "(+X from members)" breakdown once the bonus is positive', () => {
-        const embed = embedFactory.createGuildEmbed(baseGuild(), 50000);
-        const field = embed.data.fields.find(f => f.name === 'Bank Capacity:');
-        expect(field.value).toBe('1,050,000 (+50,000 from members)');
-    });
-});
-
 // Daily Treasury Interest field (2026-09-13, direct instruction: "add something in the guild
 // tab that has the current daily interest calculation's amount so users can see how much
 // interest guild is getting") — createGuildEmbed delegates the actual formula to

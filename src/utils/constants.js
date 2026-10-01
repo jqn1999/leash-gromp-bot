@@ -739,18 +739,7 @@ const Bank = {
     // shrinking the window. Kept below Bank Shop tier 1's 100,000 result so that
     // purchase still feels like a real upgrade (a 2x jump), not a formality — see
     // shops[bankShop].items[0].currentAmount, which must stay in sync with this value.
-    STARTING_CAPACITY: 50000,
-    // Guild bank capacity's live per-member contribution (2026-09-30, direct instruction:
-    // "use a % of bank for everything shop and regrade up to the infinite but not the
-    // infinite") — see guildShopFactory.js's own getGuildMemberBankCapacityBonus for the
-    // full formula. At 5%, a member sitting at personal shop-max (1,000,000,000) contributes
-    // 50,000,000 toward their guild's effective bank capacity; a member whose bank-capacity
-    // regrade is fully maxed contributes guildShopFactory.PERSONAL_BANK_CAPACITY_CEILING's
-    // 5% (5,200,000,000) instead of an infinite amount. Picked to be meaningful (several
-    // well-developed members can noticeably outgrow the guild's own 2.5B shop-ladder max)
-    // without trivializing that ladder on its own — a single moderately-developed member
-    // shouldn't already dwarf what the whole guild spent raid winnings grinding toward.
-    GUILD_MEMBER_BANK_CAPACITY_CONTRIBUTION_PERCENT: 0.05
+    STARTING_CAPACITY: 50000
 }
 
 // Guild treasury interest's level-scaled base rate (`dynamoHandler.applyGuildTreasuryInterest`) —

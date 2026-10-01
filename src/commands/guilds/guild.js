@@ -2,7 +2,6 @@ const { ApplicationCommandOptionType } = require("discord.js");
 const { getUserInteractionDetails, requireUserDetails } = require("../../utils/helperCommands")
 const dynamoHandler = require("../../utils/dynamoHandler");
 const { EmbedFactory } = require("../../utils/embedFactory");
-const guildShopFactory = require("../../utils/guildShopFactory");
 const embedFactory = new EmbedFactory();
 
 module.exports = {
@@ -56,14 +55,7 @@ module.exports = {
             return;
         }
         
-        // Effective bank capacity's own live member bonus (2026-09-30, direct instruction
-        // — see startRaid.js's resolveRaid for the full writeup) — fetched here rather than
-        // inside createGuildEmbed itself, keeping that function synchronous/pure like every
-        // other createXEmbed in embedFactory.js.
-        const allMemberDetails = await guildShopFactory.getAllMemberDetails(guild);
-        const memberBankCapacityBonus = guildShopFactory.getGuildMemberBankCapacityBonus(allMemberDetails);
-
-        const embed = embedFactory.createGuildEmbed(guild, memberBankCapacityBonus);
+        const embed = embedFactory.createGuildEmbed(guild);
         interaction.editReply({ embeds: [embed] });
     }
 }

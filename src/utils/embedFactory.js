@@ -1391,15 +1391,7 @@ class EmbedFactory {
         return embed;
     }
 
-    // memberBankCapacityBonus (2026-09-30, direct instruction: "use a % of bank for
-    // everything shop and regrade up to the infinite but not the infinite") — the live
-    // guild-wide bonus summed from every member's own personal bank capacity (see
-    // guild.js's own caller and guildShopFactory.getGuildMemberBankCapacityBonus for the
-    // formula). Optional, defaults to 0 so every existing caller/test that doesn't pass it
-    // still shows the plain shop-purchased guild.bankCapacity unchanged — this function
-    // itself stays synchronous/pure (no DB access of its own), matching every other
-    // createXEmbed in this file; the caller is responsible for fetching member details.
-    createGuildEmbed(guild, memberBankCapacityBonus = 0) {
+    createGuildEmbed(guild) {
         let fields = [];
 
         if (!guild.thumbnailUrl) {
@@ -1435,9 +1427,7 @@ class EmbedFactory {
         })
         fields.push({
             name: `Bank Capacity:`,
-            value: memberBankCapacityBonus > 0
-                ? `${(guild.bankCapacity + memberBankCapacityBonus).toLocaleString()} (+${memberBankCapacityBonus.toLocaleString()} from members)`
-                : `${guild.bankCapacity.toLocaleString()}`,
+            value: `${guild.bankCapacity.toLocaleString()}`,
             inline: true
         })
         // Guild treasury interest preview (2026-09-13, direct instruction: "add something in
