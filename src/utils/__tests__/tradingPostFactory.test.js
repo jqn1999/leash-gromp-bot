@@ -2,7 +2,7 @@ jest.mock('../dynamoHandler');
 
 const dynamoHandler = require('../dynamoHandler');
 const { resolveTradingPostScope, isScopeGuild, hasAnyLivePotion, findPotionById, getDailyTag, hasBoughtToday, computePotionPrice, getDailyRotation, attemptPurchasePotion } = require('../tradingPostFactory');
-const { Potions } = require('../constants');
+const { Potions, TradingPostRotation } = require('../constants');
 
 // This player's own daily rotation is used throughout — attemptPurchasePotion only ever
 // accepts a potionId that's actually in TODAY's rotation for the buyer, so every
@@ -152,13 +152,41 @@ describe('computePotionPrice — floor(priceFloor + pricePerPoint/pricePct * use
         expect(computePotionPrice(potion, {})).toBe(5000);
         expect(computePotionPrice(potion, { workMultiplierAmount: 'not-a-number' })).toBe(5000);
     });
+
+    test('antiRobWardIII (pricePerPoint) scales off workMultiplierAmount with its own floor/rate', () => {
+        const potion = Potions.CATALOG.find(p => p.id === 'antiRobWardIII');
+        expect(computePotionPrice(potion, { workMultiplierAmount: 0 })).toBe(12000);
+        expect(computePotionPrice(potion, { workMultiplierAmount: 50 })).toBe(12000 + 1800 * 50);
+    });
+});
+
+// Anti-rob Wards (2026-10-01) — catalog shape only; the actual rob-chance reduction is
+// consumed and tested in rob.js's own test suite (robAntiRobPotion.test.js), not here,
+// same division as every other effectType (this file owns the catalog/purchase machinery,
+// never the consuming command's own effect logic).
+describe('antiRob Ward line — catalog shape', () => {
+    const wards = Potions.CATALOG.filter(p => p.effectType === 'antiRob');
+
+    test('all 3 tiers exist, escalating in value, every one fixed at 30 minutes', () => {
+        expect(wards.map(p => p.id)).toEqual(['antiRobWard', 'antiRobWardII', 'antiRobWardIII']);
+        expect(wards.map(p => p.durationSeconds)).toEqual([1800, 1800, 1800]);
+        expect(wards[0].value).toBeLessThan(wards[1].value);
+        expect(wards[1].value).toBeLessThan(wards[2].value);
+    });
+
+    test('is included in TradingPostRotation.SLOT_EFFECT_TYPES, so it gets a guaranteed daily slot', () => {
+        expect(TradingPostRotation.SLOT_EFFECT_TYPES).toContain('antiRob');
+    });
 });
 
 describe('getDailyRotation', () => {
+    // Asserted via TradingPostRotation.SLOT_EFFECT_TYPES.length (4, since the 2026-10-01
+    // antiRob addition) rather than a hardcoded literal, so this doesn't need another
+    // manual update the next time a new effect type/slot is added.
     test('always returns exactly one potion per TradingPostRotation.SLOT_EFFECT_TYPES entry', () => {
         const result = getDailyRotation('some-user');
-        expect(result).toHaveLength(3);
-        expect(result.map(p => p.effectType).sort()).toEqual(['passiveAmount', 'workMulti', 'workTimer'].sort());
+        expect(result).toHaveLength(TradingPostRotation.SLOT_EFFECT_TYPES.length);
+        expect(result.map(p => p.effectType).sort()).toEqual([...TradingPostRotation.SLOT_EFFECT_TYPES].sort());
     });
 
     test('is deterministic for the same userId + dailyTag', () => {
@@ -174,16 +202,16 @@ describe('getDailyRotation', () => {
         const b = getDailyRotation('user-b', now).map(p => p.id);
         // Not guaranteed to differ in every slot, but at least confirms independence —
         // both rotations are still individually valid (one per effect type).
-        expect(a).toHaveLength(3);
-        expect(b).toHaveLength(3);
+        expect(a).toHaveLength(TradingPostRotation.SLOT_EFFECT_TYPES.length);
+        expect(b).toHaveLength(TradingPostRotation.SLOT_EFFECT_TYPES.length);
     });
 
     test('a new dailyTag (a different day) can roll a different rotation than the prior day', () => {
         const day1 = getDailyRotation('rolling-user', new Date('2026-09-21T12:00:00Z')).map(p => p.id);
         const day2 = getDailyRotation('rolling-user', new Date('2026-09-14T12:00:00Z')).map(p => p.id);
         // Both remain individually valid regardless of whether they happen to match.
-        expect(day1).toHaveLength(3);
-        expect(day2).toHaveLength(3);
+        expect(day1).toHaveLength(TradingPostRotation.SLOT_EFFECT_TYPES.length);
+        expect(day2).toHaveLength(TradingPostRotation.SLOT_EFFECT_TYPES.length);
     });
 });
 

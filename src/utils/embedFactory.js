@@ -28,6 +28,7 @@ const POTION_EFFECT_LABELS = {
     workMulti: "Work Multiplier",
     workTimer: "Cooldown-Skip Chance",
     passiveAmount: "Passive Income",
+    antiRob: "Rob Resistance",
 };
 function formatPotionEffect(potion) {
     const label = POTION_EFFECT_LABELS[potion.effectType] || potion.effectType;
@@ -4242,8 +4243,9 @@ class EmbedFactory {
             statusLine = `No potion currently active — buy one below.`;
         }
 
-        // Daily rotation (2026-09-21) — only TODAY's 3 rotated potions (one per effect type,
-        // tradingPostFactory.getDailyRotation), each priced LIVE off this viewer's own stats
+        // Daily rotation (2026-09-21, extended to a 4th effect type 2026-10-01) — only
+        // TODAY's rotated potions (one per effect type, tradingPostFactory.getDailyRotation),
+        // each priced LIVE off this viewer's own stats
         // (computePotionPrice), never all 9 catalog entries/a static price. Daily stock limit
         // note mirrors the disabled-button state tradingPost.js's own buildBuyRow already
         // computes off the same tradingPostFactory.hasBoughtToday check, so the embed text and

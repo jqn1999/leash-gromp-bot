@@ -87,6 +87,15 @@ async function computeRobChance(userDetails, targetUserDetails) {
         robChance += mercenaryBuffFactory.getMercenaryBuffValue("robChance", rank);
     }
 
+    // Trading Post's anti-rob Wards (2026-10-01, direct instruction) — read off the
+    // TARGET's own activePotion, not the robber's, and SUBTRACTED rather than added:
+    // every term above raises the robber's own odds, this is the one defensive term,
+    // bought by the victim to protect themselves. Floored at 0 — Math.random() < a
+    // negative chance is already always false, but an explicit floor keeps robChance a
+    // well-defined probability for robChanceDisplay and any future caller.
+    const targetWardPercent = dynamoHandler.isPotionLive(targetUserDetails.activePotion, "antiRob") ? targetUserDetails.activePotion.value : 0;
+    robChance = Math.max(0, robChance - targetWardPercent);
+
     return robChance;
 }
 

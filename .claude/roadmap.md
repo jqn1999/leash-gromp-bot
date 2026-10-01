@@ -20095,3 +20095,60 @@ tests (18 skipped, 2271 passing)** — net 0 new tests, 0 broken.
 
 **Cross-repo note.** No port — same reasoning as the page-3 feature itself (not yet built on
 `financial-project`'s `/gromp` page).
+
+## Trading Post gets a 4th potion line: anti-rob Wards
+
+**Asked**: "Add an anti rob potion to the trading post. It should last 30 minutes. How much should
+it cost?"
+
+**Two real design forks, confirmed via `AskUserQuestion` before writing any code** — both change
+win-chance math or the catalog's own structural shape, so neither was picked silently per this
+repo's "flag invariant-breaking side effects before implementing" rule:
+1. **Effect strength**: full rob immunity vs. a flat % robChance reduction. Chose the flat
+   reduction — every other potion/buff already feeding `/rob`'s `computeRobChance` (Barn Owl's
+   `robChanceFlat`, the guild/mercenary `robChance` buffs) is a percentage modifier, never a binary
+   block; a hard "always fails" branch would have been a structurally new effect type and strictly
+   stronger per potato spent than anything else in the shop.
+2. **Catalog shape**: a single one-off potion vs. a full 3-tier line with its own guaranteed daily
+   rotation slot, matching every other effect type exactly. Chose the 3-tier line —
+   `TradingPostRotation.SLOT_EFFECT_TYPES` grew from 3 entries to 4
+   (`[..., "passiveAmount", "antiRob"]`), so players now get a guaranteed anti-rob option in their
+   daily rotation, not just a chance at one buried in the same pool as the other 9.
+
+**What changed**:
+- `constants.js` — `Potions.CATALOG` gained 3 entries: Traveler's Ward (-15%), Watchman's Ward
+  (-20%), Constable's Ward (-25%), effectType `antiRob`, all three fixed at 1800s (30 min) — the
+  one deliberate break from every other line's "value AND duration both scale per tier" shape,
+  since a short strong burst fit the "insurance before a vulnerable moment" framing better than an
+  all-day passive. Priced off `workMultiplierAmount` (same decoupled-pricing precedent
+  `quickstepTonic` already set — a progression proxy, not the stat the effect touches),
+  `pricePerPoint` 350/800/1800, deliberately between `workDraught`'s and `quickstepTonic`'s own
+  ramps since there's no equivalent `/work`-payout-formula-derived margin to calibrate against for
+  a conditional, adversarial effect like this one.
+- `rob.js` — `computeRobChance` gained one new term reading the TARGET's own `activePotion` (not
+  the robber's), subtracted instead of added, with the whole final `robChance` floored at
+  `Math.max(0, ...)` so no term combination (existing or future) can go negative.
+- `embedFactory.js` — `POTION_EFFECT_LABELS` gained `antiRob: "Rob Resistance"`; two stale "3
+  rotated potions" comments (here and in `tradingPost.js`) corrected to stop citing a number that's
+  now wrong — neither file's actual logic needed a change, both already iterate the rotation
+  generically.
+
+**Root-cause-style check before considering this done**: audited every place in the codebase that
+reads `effectType`/`SLOT_EFFECT_TYPES` to confirm nothing else hardcoded "3" — `tradingPost.js`'s
+button row, `createTradingPostEmbed`'s field list, and the "Active Potion:" status field on
+`/profile` are all already generic (`.map` over the rotation, or a `potionId` lookup against the
+full catalog), so this was a 3-file functional change (`constants.js`, `rob.js`,
+`embedFactory.js`) plus comment accuracy fixes, not the wider sweep it could have been.
+
+**Tests.** `tradingPostFactory.test.js`'s `getDailyRotation` describe block re-based its length
+assertions off `TradingPostRotation.SLOT_EFFECT_TYPES.length` instead of a hardcoded `3`, plus a
+new catalog-shape block for the Ward line and one new `computePotionPrice` case. New
+`robAntiRobPotion.test.js` (mirrors `robMercenaryBuff.test.js`'s own style) covers: a live Ward
+turning a would-be win into a loss, an expired Ward granting nothing, a different active potion
+type granting nothing, the floor-at-0 behavior under an extreme case, and the preview embed
+showing the reduced percentage. Full suite: **122 suites (1 fully skipped) / 2298 tests (18
+skipped, 2280 passing)** — net +9 new tests, 0 broken.
+
+**Cross-repo note.** This is a new player-facing mechanic — flagging per CLAUDE.md's sibling-repo
+rule rather than silently skipping, but not yet audited against `financial-project`'s own Trading
+Post implementation (or lack thereof) in this session.

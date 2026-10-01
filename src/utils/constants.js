@@ -2801,6 +2801,69 @@ const Potions = {
             priceStat: "passiveAmount",
             priceFloor: 3000,
             pricePct: 0.0065
+        },
+        // Anti-rob Wards (2026-10-01, direct instruction: "add an anti rob potion... it
+        // should last 30 minutes"). A flat SUBTRACTION from whoever's robChance against
+        // you — see rob.js's own computeRobChance, the one consumer — not the "additive %
+        // into an existing bucket" shape every other effectType above uses, since there's
+        // no bucket on the VICTIM's side to add into; `value` is still stored as a plain
+        // positive magnitude, same sign convention as every other potion, with the
+        // subtraction direction living entirely in the consuming code, not the data.
+        // Deliberately NOT full immunity (confirmed with the user over the alternative) —
+        // a flat chance reduction, same shape robChanceFlat (Barn Owl) and the guild/
+        // mercenary robChance buffs already use, just negative and sourced from the
+        // target instead of the robber.
+        //
+        // durationSeconds fixed at 1800 (30 min) across all 3 tiers, by direct
+        // instruction — unlike every other line above, only the % strength scales per
+        // tier here, not the duration. A short, strong defensive burst rather than a
+        // long passive buff fits "anti-rob" better: you reach for this when you're about
+        // to be sitting on a pile of liquid potatoes you don't want a bandit taking a cut
+        // of, not as an all-day passive the way workMulti/passiveAmount potions are.
+        //
+        // Priced off workMultiplierAmount (not a stat this potion's effect touches at
+        // all) — same decoupling quickstepTonic's own priceStat already established:
+        // the potion's cost is calibrated against the player's general progression
+        // level, not literally the stat its effect feeds. workMultiplierAmount is the
+        // most-used progression proxy in this catalog already (workDraught,
+        // quickstepTonic), so reusing it here instead of inventing a third proxy stays
+        // consistent. pricePerPoint set between workDraught's (250/650/1500) and
+        // quickstepTonic's (450/1100/2650) own ramps — meaningfully cheaper than a 2-8h
+        // buff line point-for-point (this only runs 30 minutes), but priced as real
+        // insurance against a rob's 25-50%-of-liquid-potatoes downside, not a throwaway
+        // impulse buy.
+        {
+            id: "antiRobWard",
+            name: "Traveler's Ward",
+            effectType: "antiRob",
+            tier: 1,
+            value: 0.15,
+            durationSeconds: 1800,         // 30 min, fixed across all 3 tiers
+            priceStat: "workMultiplierAmount",
+            priceFloor: 4000,
+            pricePerPoint: 350
+        },
+        {
+            id: "antiRobWardII",
+            name: "Watchman's Ward",
+            effectType: "antiRob",
+            tier: 2,
+            value: 0.20,
+            durationSeconds: 1800,
+            priceStat: "workMultiplierAmount",
+            priceFloor: 8000,
+            pricePerPoint: 800
+        },
+        {
+            id: "antiRobWardIII",
+            name: "Constable's Ward",
+            effectType: "antiRob",
+            tier: 3,
+            value: 0.25,
+            durationSeconds: 1800,
+            priceStat: "workMultiplierAmount",
+            priceFloor: 12000,
+            pricePerPoint: 1800
         }
     ]
 }
@@ -2813,8 +2876,10 @@ const Potions = {
 const TradingPostRotation = {
     // Fixed slot order — one daily slot per effect type, so a player never has zero
     // options for a whole mechanic on a given day (as opposed to a fully random pool
-    // draw, which could duplicate effect types and omit one entirely).
-    SLOT_EFFECT_TYPES: ["workMulti", "workTimer", "passiveAmount"],
+    // draw, which could duplicate effect types and omit one entirely). "antiRob" added
+    // 2026-10-01 alongside the new Ward line above — a 4th guaranteed daily slot, same
+    // treatment as the original 3.
+    SLOT_EFFECT_TYPES: ["workMulti", "workTimer", "passiveAmount", "antiRob"],
     // Cumulative tier-roll thresholds, same cumulative-walk shape as CompanionShop.RARITY_ODDS
     // in this same file — roll < 0.65 => tier 1, < 0.95 => tier 2, else tier 3.
     TIER_ODDS_CUMULATIVE: [0.65, 0.95, 1.0]

@@ -535,3 +535,100 @@ to run `/trading-post` when nothing's active, the potion's name + expiry timesta
 live, an EXPIRED potion reading identically to none at all, and the field's position directly under
 "Title:"). Full suite: **111 suites / 2034 tests, all passing** (up from 111/2030 — net 0 new
 suites, +4 tests).
+
+## Shipped: anti-rob Wards — a 4th effect type (2026-10-01, direct instruction — "add an anti rob potion to the trading post... it should last 30 minutes")
+
+Every potion before this protected or grew the HOLDER's own numbers (work multiplier, cooldown
+skip, passive income) — nothing defended against another PLAYER's action against you. `/rob`
+(`rob.js`) had no counterplay at all: a target's only lever was their own liquid-potato balance
+shrinking `calculateRobChance`'s own ratio term, nothing they could actively buy.
+
+**Design, confirmed with the user before implementing** (two real forks, both asked via
+`AskUserQuestion` rather than picked silently, since either one changes win-chance math and the
+catalog's own structural shape):
+- **Flat % robChance reduction, not full immunity.** Same additive-term shape `robChanceFlat`
+  (Barn Owl) and the guild/mercenary `robChance` buffs already use — just negative, and read off
+  the TARGET's `activePotion` instead of the robber's. A hard "rob always fails" branch would have
+  been a structurally new kind of effect (every other potion/buff in this game is a percentage
+  modifier, never a binary block) and strictly stronger per potato spent; the flat-reduction shape
+  keeps it in the same family as everything else already feeding `computeRobChance`.
+- **A full 3-tier line (Tier I/II/III) with its own guaranteed daily rotation slot** — matching
+  every other effect type's shape exactly — rather than a single one-off potion folded into the
+  existing 3-slot pool. `TradingPostRotation.SLOT_EFFECT_TYPES` grew from 3 entries to 4
+  (`["workMulti", "workTimer", "passiveAmount", "antiRob"]`), so a player is now guaranteed one
+  anti-rob option in their daily rotation, same "never zero options for a whole mechanic" reasoning
+  `SLOT_EFFECT_TYPES`'s own original comment already states for the first 3.
+
+**The Ward line** (`Potions.CATALOG`, `constants.js`) — id prefix `antiRobWard`/`antiRobWardII`/
+`antiRobWardIII`, effectType `antiRob`:
+
+| Tier | Name | Value (robChance reduction) | Duration |
+|---|---|---|---|
+| I | Traveler's Ward | -15% | 30 min |
+| II | Watchman's Ward | -20% | 30 min |
+| III | Constable's Ward | -25% | 30 min |
+
+`value` is still stored as a plain POSITIVE magnitude in the catalog, same sign convention every
+other potion uses — the subtraction direction lives entirely in the one consuming call site
+(`rob.js`'s `computeRobChance`), not the data itself.
+
+**Duration deliberately fixed at 30 minutes across all 3 tiers** — by direct instruction, unlike
+every other line (which scales BOTH value and duration per tier, 2h/4h/8h). Only the % strength
+escalates here. Reasoning: this is a short, strong defensive burst a player reaches for right
+before sitting on a pile of liquid potatoes they don't want a bandit taking a 25-50% cut of (see
+`calculateRobAmount`), not an all-day passive the way the work/passive lines are — a 30-minute
+window still meaningfully covers roughly half of `Rob.ROB_TIMER_SECONDS` (3600s, the ATTACKER's own
+cooldown between attempts), so it's a real, if imperfect, shield rather than a token gesture.
+
+**Priced off `workMultiplierAmount`**, not a stat this potion's effect touches at all — same
+decoupling `quickstepTonic` already established (that line's own `effectType` is `workTimer` but
+its `priceStat` is `workMultiplierAmount` too, priced against "value of an extra /work call," not
+its own mechanic). `workMultiplierAmount` is the most-used progression proxy already in this
+catalog, so reusing it here instead of inventing a third pricing stat stays consistent.
+`pricePerPoint` (350/800/1800) sits between `workDraught`'s (250/650/1500) and `quickstepTonic`'s
+(450/1100/2650) own ramps — meaningfully cheaper than a 2-8h buff line point-for-point (this only
+runs 30 minutes), priced as real insurance against a rob's real downside rather than a throwaway
+impulse buy. Unlike the original 9-potion catalog's `/work`-payout-formula-derived "~80% margin"
+calibration (see the Shipped entry above), there's no equivalent guaranteed-value formula for a
+conditional, adversarial effect like this one — the Ward's price was calibrated by comparison
+against the existing lines' own shape instead, not independently re-derived.
+
+**`rob.js`'s `computeRobChance`** (shared by the preview embed and the actual roll, so both can
+never drift apart) gained one new term after the existing guild/companion/mercenary robChance
+additions: `targetUserDetails.activePotion`, checked via `dynamoHandler.isPotionLive(..., "antiRob")`,
+subtracted rather than added, with the WHOLE final `robChance` floored at `Math.max(0, ...)` — not
+just this one term — so no combination of terms (existing or future) can leave `robChance` negative
+for `determineRobOutcome`'s own `Math.random() < robChance` check or the displayed `robChanceDisplay`
+percentage.
+
+**Only `/rob` — deliberately not `/rob-npc`'s own formula**, same scoping the mercenary `robChance`
+buff category already established for itself (`computeRobChance`'s own comment: "real /rob only
+(never /rob-npc's own formula)"). `/rob-npc` is a solo mercenary-vs-NPC heist mechanic, not a
+player-vs-player threat — "anti-rob" protection against another player robbing you doesn't apply
+there.
+
+**Display**: `embedFactory.js`'s `POTION_EFFECT_LABELS` gained `antiRob: "Rob Resistance"`, so the
+Trading Post embed's field shows `+15% Rob Resistance` etc. — the existing `formatPotionEffect`'s
+`+X%` framing reads naturally for a defensive stat too, no special-casing needed since `value` is
+still a positive magnitude. `createTradingPostEmbed`/`tradingPost.js`'s own button-row builder are
+both already fully generic over `getDailyRotation`'s result (`.map`, no hardcoded slot count), so
+neither needed a code change — only their own stale "3 rotated potions" comments got corrected for
+accuracy.
+
+**Tests**: `tradingPostFactory.test.js`'s `getDailyRotation` describe block was re-based off
+`TradingPostRotation.SLOT_EFFECT_TYPES.length` instead of a hardcoded `3` (so it doesn't need
+another manual edit next time a slot is added), plus a new "antiRob Ward line — catalog shape"
+describe block (all 3 tiers present and escalating, duration fixed at 1800s across all 3, slot
+membership) and one new `computePotionPrice` case for `antiRobWardIII`. New
+`robAntiRobPotion.test.js` (mirrors `robMercenaryBuff.test.js`'s own mock/fixture style — no
+dedicated `rob.test.js` exists in this codebase) covers: a live Ward turning a would-be win into a
+loss via the same discriminating-roll technique `robMercenaryBuff.test.js` already uses, an
+EXPIRED Ward granting nothing, a DIFFERENT active effect type (a work potion) granting nothing, the
+floor-at-0 behavior (Constable's Ward against an already-minimal base chance, confirmed `Math.
+random() === 0` still loses), and the preview embed showing the Ward-reduced percentage. Full
+suite: **122 suites (1 fully skipped) / 2298 tests (18 skipped, 2280 passing)** — net +9 new tests,
+0 broken.
+
+**Cross-repo note**: this is a new player-facing mechanic `financial-project`'s own Trading Post
+(if/when its `/gromp` page implements one) would need an equivalent port — not yet audited or
+ported in this session; flagged to the user per this repo's CLAUDE.md sibling-repo rule.
