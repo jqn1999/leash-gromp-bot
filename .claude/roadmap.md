@@ -20152,3 +20152,49 @@ skipped, 2280 passing)** — net +9 new tests, 0 broken.
 **Cross-repo note.** This is a new player-facing mechanic — flagging per CLAUDE.md's sibling-repo
 rule rather than silently skipping, but not yet audited against `financial-project`'s own Trading
 Post implementation (or lack thereof) in this session.
+
+## Anti-rob Wards get a retaliation tax on a failed rob
+
+**Asked**, same-day follow-up: "Make it also tax the robber on a fail if the robee has potion on.
+The tax should be sole[ly a] multiplier based on the other user's work multi and how much they can
+possibly steal from the user they are robbing. High multi + high amount of potatoes = big
+deterrent for the robber."
+
+Before this, a Ward only ever lowered the robber's odds of success — failing against a Warded
+target cost exactly the same as failing against anyone else, no extra cost attached to the choice
+of target.
+
+**Confirmed via `AskUserQuestion` before implementing**: whether the extra tax goes to the target
+or is destroyed. Chose destroyed (pure loss, no house skim — same precedent the existing fail fine
+already set), rejecting crediting the target: a rich-enough robber against a Warded target can
+drive `robChance` to ~0, so two colluding accounts could otherwise use this as a tax-free potato
+transfer, bypassing `/give`'s own tax.
+
+**What changed**:
+- `constants.js` — new `Rob.ANTI_ROB_TAX_WORK_MULTI_DIVISOR: 100`, a calibration constant (not
+  tied to any existing baseline — a fresh account's real `workMultiplierAmount` default is 1, not
+  100) chosen so a robber around the 100x range pays a tax on the order of the target's own
+  max-possible-steal figure, scaling up sharply for an overdeveloped robber.
+- `rob.js` — new `calculateAntiRobTax(robberWorkMultiplierAmount, targetUserPotatoes)`:
+  `floor(targetUserPotatoes * .50 * (robberWorkMultiplierAmount / divisor))` — the `.50` is
+  literally `calculateRobAmountRange`'s own max-steal ceiling, matching "how much they can
+  possibly steal" verbatim. Deterministic (no roll of its own), charged only on a FAILED attempt
+  against a target with a live `antiRob` potion, added on top of the ordinary fail fine (never
+  replacing it).
+- `embedFactory.js` — both `createRobPreviewEmbed` and `createRobEmbed` gained an optional
+  `wardTaxAmount` param (default 0, every pre-existing caller/test unaffected). Shown in the
+  PREVIEW (not just the result) since a hidden deterrent doesn't deter anything — the robber sees
+  the exact extra cost before confirming, same as every other stake already shown there.
+
+**Tests.** New describe block in `robAntiRobPotion.test.js`, built around `Math.random` mocked to
+a single fixed value that deterministically drives both the win/loss roll AND the fail fine's own
+random multiplier (both draw from the same `Math.random` in production, so this isn't a test
+shortcut): a failed roll against a Warded target debits exactly `fineAmount + wardTax` (both
+independently computed, not just "bigger than normal"); the identical roll against a non-Warded
+target pays only the ordinary fine; a successful rob against a Warded target never charges the tax
+(fail-only, confirmed explicitly); and a 10x robber work-multiplier difference against the same
+Warded target produces an exactly-computed larger total debit. Full suite: **122 suites (1 fully
+skipped) / 2302 tests (18 skipped, 2284 passing)** — net +4 new tests, 0 broken.
+
+**Cross-repo note.** Extends the same new mechanic from the entry above — not yet ported to
+`financial-project`.

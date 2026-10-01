@@ -632,3 +632,55 @@ suite: **122 suites (1 fully skipped) / 2298 tests (18 skipped, 2280 passing)** 
 **Cross-repo note**: this is a new player-facing mechanic `financial-project`'s own Trading Post
 (if/when its `/gromp` page implements one) would need an equivalent port — not yet audited or
 ported in this session; flagged to the user per this repo's CLAUDE.md sibling-repo rule.
+
+### Follow-up, same day: Ward retaliation tax on a failed rob
+
+**Asked**: "Make it also tax the robber on a fail if the robee has potion on. The tax should be
+sole[ly a] multiplier based on the other user's work multi and how much they can possibly steal
+from the user they are robbing. High multi + high amount of potatoes = big deterrent for the
+robber."
+
+Before this, a Ward only ever lowered the robber's ODDS — a robber who failed against a Warded
+target paid the exact same fine as failing against anyone else. No real cost attached to
+specifically targeting a protected player beyond the lower hit rate itself.
+
+**Confirmed via `AskUserQuestion` before implementing**: where the extra tax potatoes go. Chose a
+pure loss (no house skim, never credited to the target) — same precedent the existing fail fine
+already set. Crediting it to the target instead was rejected: a sufficiently rich robber against a
+Warded target can drive `robChance` to 0 (near-guaranteed fail), so two colluding accounts could
+have used a credit-to-target design to transfer potatoes with zero tax, bypassing `/give`'s own
+tax entirely.
+
+**`rob.js`'s new `calculateAntiRobTax(robberWorkMultiplierAmount, targetUserPotatoes)`** —
+deterministic (no roll of its own, unlike every other rob amount in this file):
+`floor(targetUserPotatoes * .50 * (robberWorkMultiplierAmount / Rob.ANTI_ROB_TAX_WORK_MULTI_DIVISOR))`.
+The `.50` ceiling is literally `calculateRobAmountRange`'s own max-steal cap (the user's own "how
+much they can possibly steal" framing). `ANTI_ROB_TAX_WORK_MULTI_DIVISOR = 100` (`constants.js`) is
+a plain calibration constant — a robber around the 100x range pays a tax roughly ON THE ORDER of
+the target's own max-steal figure, scaling up sharply past that for a genuinely overdeveloped
+robber. Charged ONLY on a failed attempt against a target with a live `antiRob` potion, ADDED on
+top of (not replacing) the ordinary `calculateFailedRobPenalty` fine.
+
+**Shown in the PREVIEW, not just the result** — `createRobPreviewEmbed` gained an optional
+`wardTaxAmount` param (default 0, so every pre-existing call/test is unaffected) that both extends
+the "If Caught:" field and adds a dedicated "🛡️ Target is Warded!" field naming the exact extra
+cost, computed the same way `minGain`/`minFine` already are, before the confirm button. A hidden
+deterrent isn't much of a deterrent — the whole point is the robber sees the stakes before
+committing, same reasoning the rest of the preview embed already follows. `createRobEmbed` gained
+the matching optional param for the result embed's own "🛡️ Ward Tax:" breakdown line, so a robber
+who ate the tax understands why their loss was bigger than the usual fine range instead of reading
+as an unexplained outlier.
+
+**Tests.** New describe block in `robAntiRobPotion.test.js`: a failed roll against a Warded target
+debits `fineAmount + wardTax` exactly (both components independently computed and verified, not
+just "bigger than before" — `Math.random` is mocked to a fixed value that deterministically drives
+both the win/loss roll AND the fine's own random multiplier, since both draw from the same
+`Math.random` in production); the identical failed roll against a NON-Warded target pays only the
+ordinary fine; a SUCCESSFUL rob against a Warded target never charges the tax (fail-only
+retaliation, confirmed explicitly); and a higher robber work multiplier against the same Warded
+target produces an exactly-computed larger total debit, confirming the "high multi = big
+deterrent" scaling. Full suite: **122 suites (1 fully skipped) / 2302 tests (18 skipped, 2284
+passing)** — net +4 new tests, 0 broken.
+
+**Cross-repo note**: same as above — this extends the same new mechanic, not yet ported to
+`financial-project`.

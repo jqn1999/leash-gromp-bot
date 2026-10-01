@@ -161,3 +161,118 @@ describe('/rob target\'s anti-rob Ward', () => {
         expect(chanceField.value).toContain(expectedPercent);
     });
 });
+
+// Ward retaliation tax (2026-10-01, direct instruction: "Make it also tax the robber on a
+// fail if the robee has potion on. The tax should be sole[ly a] multiplier based on the
+// other user's work multi and how much they can possibly steal from the user they are
+// robbing. High multi + high amount of potatoes = big deterrent for the robber") — an
+// ADDITIONAL penalty on top of the usual fail fine, deterministic (no roll of its own),
+// charged only when the target has a live antiRob potion. Math.random is mocked to a fixed
+// value throughout this block, which deterministically feeds BOTH the win/loss roll (via
+// determineRobOutcome) AND the fine's own randomMultiplier roll (via
+// calculateFailedRobPenalty's getRandomFromInterval) — real behavior, not a test
+// convenience, since both draw from the same Math.random under the hood.
+describe('/rob Ward retaliation tax on a fail', () => {
+    test('a robber with a live Ward-protected target pays fineAmount + the Ward tax, not just the fine', async () => {
+        // robChance = .05 + (.2 - (500000/1500000)*.2) = .18333; Constable's Ward (-25%)
+        // floors it to 0 — ANY roll loses, so R=0.4 only needs to drive the fine's own
+        // randomMultiplier deterministically, not the win/loss outcome.
+        const WARD_III = Potions.CATALOG.find(p => p.id === 'antiRobWardIII');
+        mockUsers(
+            actingUser({ potatoes: 500000, workMultiplierAmount: 200 }),
+            targetUser({ potatoes: 1000000, activePotion: liveWard(WARD_III) }),
+        );
+        const interaction = fakeInteraction();
+        const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.4);
+        try {
+            await callback({ user: { id: 'bot-1' } }, interaction);
+        } finally {
+            randomSpy.mockRestore();
+        }
+        // fineAmount = floor(500000 * (.25 + .4*.25)) = floor(500000*.35) = 175000.
+        // wardTax = floor((1000000*.50) * (200/100)) = floor(500000*2) = 1000000.
+        // total debit = 1175000 -> userPotatoes lands at 500000 - 1175000 = -675000
+        // (liquid potatoes going negative off a single bad roll is this command's own
+        // existing, accepted precedent — see calculateFailedRobPenalty's own comment).
+        const actingWrite = dynamoHandler.updateUserFields.mock.calls.find(([id]) => id === 'user-1');
+        expect(actingWrite[1].potatoes).toBe(500000 - 1175000);
+    });
+
+    test('the SAME failed roll against a target with NO Ward pays only the ordinary fine, no extra tax', async () => {
+        mockUsers(
+            actingUser({ potatoes: 500000, workMultiplierAmount: 200 }),
+            targetUser({ potatoes: 1000000, activePotion: null }),
+        );
+        const interaction = fakeInteraction();
+        // robChance here = .18333 (no Ward to floor it) — a high roll (.95) still misses.
+        const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.95);
+        try {
+            await callback({ user: { id: 'bot-1' } }, interaction);
+        } finally {
+            randomSpy.mockRestore();
+        }
+        // fineAmount = floor(500000 * (.25 + .95*.25)) = floor(500000*.4875) = 243750.
+        // No Ward -> no extra tax -> this is the WHOLE debit.
+        const actingWrite = dynamoHandler.updateUserFields.mock.calls.find(([id]) => id === 'user-1');
+        expect(actingWrite[1].potatoes).toBe(500000 - 243750);
+    });
+
+    test('a SUCCESSFUL rob never charges the Ward tax, even against a Warded target (the tax is a fail-only retaliation)', async () => {
+        // A weak-enough Ward (Tier I, -15%) against a robChance comfortably above it still
+        // leaves room for a win roll.
+        const WARD_I = Potions.CATALOG.find(p => p.id === 'antiRobWard');
+        mockUsers(
+            actingUser({ potatoes: 0, workMultiplierAmount: 200 }),
+            targetUser({ potatoes: 1000000, activePotion: liveWard(WARD_I) }),
+        );
+        const interaction = fakeInteraction();
+        // robChance = .05 + (.2 - 0) = .25; Ward I (-15%) -> .10. Roll 0.05 wins.
+        const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.05);
+        try {
+            await callback({ user: { id: 'bot-1' } }, interaction);
+        } finally {
+            randomSpy.mockRestore();
+        }
+        const actingWrite = dynamoHandler.updateUserFields.mock.calls.find(([id]) => id === 'user-1');
+        // A win only ever ADDS potatoes — no tax of any kind on the robber's own write.
+        expect(actingWrite[1].potatoes).toBeGreaterThan(0);
+    });
+
+    test('a higher robber work multiplier against the same Warded target scales the tax up proportionally ("high multi = big deterrent")', async () => {
+        const WARD_III = Potions.CATALOG.find(p => p.id === 'antiRobWardIII');
+        async function failAndGetDebit(workMultiplierAmount) {
+            mockUsers(
+                actingUser({ potatoes: 2000000, workMultiplierAmount }),
+                targetUser({ potatoes: 1000000, activePotion: liveWard(WARD_III) }),
+            );
+            const interaction = fakeInteraction();
+            const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0); // robChance floored to 0 either way -> always a loss; fine's own roll pinned at its minimum
+            try {
+                await callback({ user: { id: 'bot-1' } }, interaction);
+            } finally {
+                randomSpy.mockRestore();
+            }
+            const actingWrite = dynamoHandler.updateUserFields.mock.calls.find(([id]) => id === 'user-1');
+            return 2000000 - actingWrite[1].potatoes;
+        }
+
+        const lowMultiDebit = await failAndGetDebit(50);
+        jest.clearAllMocks();
+        dynamoHandler.isPotionLive.mockImplementation((potion, effectType) => Boolean(potion && potion.effectType === effectType && potion.expiresAt > Date.now()));
+        dynamoHandler.updateUserFields.mockResolvedValue();
+        dynamoHandler.findGuildById.mockResolvedValue(null);
+        const highMultiDebit = await failAndGetDebit(500);
+
+        // Both runs share the identical fine component (same acting potatoes, same pinned
+        // roll at Math.random() = 0 -> fine = floor(2000000 * .25) = 500000). Only the Ward
+        // tax term scales with workMultiplierAmount:
+        // low (50):  wardTax = floor(500000 * (50/100))  =  250000 -> total  750000
+        // high (500): wardTax = floor(500000 * (500/100)) = 2500000 -> total 3000000
+        // A 10x multiplier difference produces exactly a 10x difference in the tax term
+        // itself, diluted to 4x on the TOTAL debit once the shared flat fine is included —
+        // asserted exactly, not loosely, since every input here is fully deterministic.
+        expect(lowMultiDebit).toBe(750000);
+        expect(highMultiDebit).toBe(3000000);
+        expect(highMultiDebit).toBeGreaterThan(lowMultiDebit * 3);
+    });
+});

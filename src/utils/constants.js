@@ -850,7 +850,23 @@ const RaidLevel = {
 const Rob = {
     WORK_TIMER_INCREASE_MS: 3450000, // halved from 6900000 — failing already costs a wealth loss + the 1hr ROB_TIMER_SECONDS lockout, this was a third penalty stacked on top
     ROB_TIMER_SECONDS: 3600,
-    BASE_ROB_PENALTY: 5000
+    BASE_ROB_PENALTY: 5000,
+    // Anti-rob Ward retaliation tax (2026-10-01, direct instruction: "tax the robber on a
+    // fail if the robee has potion on... sole[ly a] multiplier based on the other user's
+    // work multi and how much they can possibly steal... high multi + high amount of
+    // potatoes = big deterrent") — see rob.js's calculateAntiRobTax, the one consumer.
+    // tax = (target's max possible steal, same .50 ceiling calculateRobAmountRange already
+    // uses) * (robber's own raw workMultiplierAmount / this divisor). 100 is a plain
+    // calibration constant, not tied to any existing baseline field (a brand-new account's
+    // real workMultiplierAmount default is 1, not 100) — chosen so a robber around the
+    // 100x-ish range (an established, but not yet heavily-developed, player) pays a tax
+    // roughly ON THE ORDER of the target's own max-steal figure (factor ~= 1.0), scaling up
+    // sharply past that for a genuinely overdeveloped robber picking on a protected target —
+    // a real deterrent, not a token fee. A pure loss, same "no house skim" precedent the
+    // existing fail fine already set (confirmed with the user over crediting it to the
+    // target instead — that would let two colluding accounts launder potatoes tax-free by
+    // deliberately failing robs against each other).
+    ANTI_ROB_TAX_WORK_MULTI_DIVISOR: 100
 }
 
 // Prestige-style reset: available once every base shop AND every regrade track is fully
