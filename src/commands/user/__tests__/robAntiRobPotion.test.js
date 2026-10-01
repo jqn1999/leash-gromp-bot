@@ -10,7 +10,7 @@ const { Potions } = require('../../../utils/constants');
 const { callback } = require('../rob');
 
 const NOTHING_EQUIPPED = { owned: [], active: null, ownedCount: 0, mythicOwnedCount: 0 };
-const WARD_II = Potions.CATALOG.find(p => p.id === 'antiRobWardII'); // value 0.20
+const WARD_II = Potions.CATALOG.find(p => p.id === 'antiRobWardII'); // value 0.30
 
 function actingUser(overrides = {}) {
     return {
@@ -73,8 +73,8 @@ beforeEach(() => {
 
 describe('/rob target\'s anti-rob Ward', () => {
     // userPotatoes: 0, targetUserPotatoes: 1000 -> base robChance = .05 + (.2 - 0) = .25.
-    // WARD_II subtracts .20, landing at .05. A roll of .10 sits strictly between the two —
-    // a win without the Ward, a loss with it.
+    // WARD_II subtracts .30, floored at 0 (would otherwise go negative). A roll of .10 sits
+    // strictly between the two — a win without the Ward, a loss with it.
     const DISCRIMINATING_ROLL = 0.10;
 
     test('without a Ward active, a roll of .10 (< the .25 base chance) is a win', async () => {
@@ -91,7 +91,7 @@ describe('/rob target\'s anti-rob Ward', () => {
         expect(targetWrite[1].potatoes).toBeLessThan(1000);
     });
 
-    test('with a live Watchman\'s Ward (Tier II, -20%) active on the target, the SAME .10 roll becomes a loss', async () => {
+    test('with a live Watchman\'s Ward (Tier II, -30%) active on the target, the SAME .10 roll becomes a loss', async () => {
         mockUsers(actingUser(), targetUser({ activePotion: liveWard() }));
         const interaction = fakeInteraction();
         const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(DISCRIMINATING_ROLL);
@@ -131,7 +131,7 @@ describe('/rob target\'s anti-rob Ward', () => {
 
     test('a Ward stronger than the base chance floors robChance at 0, not negative', async () => {
         // userPotatoes: 1000, targetUserPotatoes: 0 -> total=1000, robChance = .05 + (.2 - 1*.2) = .05.
-        // Constable's Ward (Tier III, -25%) would drive this negative without the floor.
+        // Constable's Ward (Tier III, -45%) would drive this negative without the floor.
         const WARD_III = Potions.CATALOG.find(p => p.id === 'antiRobWardIII');
         mockUsers(actingUser({ potatoes: 1000 }), targetUser({ potatoes: 0, activePotion: liveWard(WARD_III) }));
         const interaction = fakeInteraction();
@@ -145,7 +145,7 @@ describe('/rob target\'s anti-rob Ward', () => {
         expect(dynamoHandler.updateUserFields.mock.calls.find(([id]) => id === 'target-1')).toBeUndefined();
     });
 
-    test('the preview embed reflects the Ward-reduced chance (base .25 - Tier II\'s 20%)', async () => {
+    test('the preview embed reflects the Ward-reduced chance, floored at 0 (base .25 - Tier II\'s 30% would otherwise go negative)', async () => {
         mockUsers(actingUser(), targetUser({ activePotion: liveWard() }));
         const interaction = fakeInteraction();
         const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.999999); // whiff either way, only need the preview
@@ -156,7 +156,7 @@ describe('/rob target\'s anti-rob Ward', () => {
         }
         const previewCall = interaction.editReply.mock.calls[0];
         const previewEmbed = previewCall[0].embeds[0];
-        const expectedPercent = ((0.25 - WARD_II.value) * 100).toFixed(2);
+        const expectedPercent = (Math.max(0, 0.25 - WARD_II.value) * 100).toFixed(2);
         const chanceField = previewEmbed.data.fields.find(f => f.value && f.value.includes('%'));
         expect(chanceField.value).toContain(expectedPercent);
     });
@@ -174,7 +174,7 @@ describe('/rob target\'s anti-rob Ward', () => {
 // convenience, since both draw from the same Math.random under the hood.
 describe('/rob Ward retaliation tax on a fail', () => {
     test('a robber with a live Ward-protected target pays fineAmount + the Ward tax, not just the fine', async () => {
-        // robChance = .05 + (.2 - (500000/1500000)*.2) = .18333; Constable's Ward (-25%)
+        // robChance = .05 + (.2 - (500000/1500000)*.2) = .18333; Constable's Ward (-45%)
         // floors it to 0 — ANY roll loses, so R=0.4 only needs to drive the fine's own
         // randomMultiplier deterministically, not the win/loss outcome.
         const WARD_III = Potions.CATALOG.find(p => p.id === 'antiRobWardIII');

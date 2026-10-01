@@ -20198,3 +20198,29 @@ skipped) / 2302 tests (18 skipped, 2284 passing)** — net +4 new tests, 0 broke
 
 **Cross-repo note.** Extends the same new mechanic from the entry above — not yet ported to
 `financial-project`.
+
+## Ward Tier II/III values raised to 15-30-45%
+
+**Asked**, same-day follow-up: "Make it 15-30-45%."
+
+`Potions.CATALOG`'s antiRob line (`constants.js`): Tier II (`antiRobWardII`, Watchman's Ward)
+raised from -20% to -30%; Tier III (`antiRobWardIII`, Constable's Ward) raised from -25% to -45%.
+Tier I (Traveler's Ward) was already at -15%, unchanged. Only `value` moved — `durationSeconds`
+(1800s, all 3 tiers) and every price field are untouched; the Ward retaliation tax formula
+(`calculateAntiRobTax`) doesn't read `value` at all, so that mechanic is unaffected by this change.
+
+**Tests updated for accuracy, not because anything broke the pass/fail outcome**:
+`robAntiRobPotion.test.js`'s robChance-reduction tests mostly read `WARD_II.value`/`WARD_III`
+dynamically off the catalog already, so their actual logic needed no change — except one real bug
+the stronger Tier II value exposed: the preview-embed test's own expected-percent formula
+(`(0.25 - WARD_II.value) * 100`) didn't floor at 0 the way the real `computeRobChance` does, so at
+the old -20% (0.25-0.20=0.05, never negative) the missing floor was invisible; at the new -30%
+(0.25-0.30=-0.05) it would have asserted a nonsensical "-5.00%" the app never actually shows.
+Fixed to `Math.max(0, 0.25 - WARD_II.value) * 100`, matching production. Stale hardcoded
+percentages in a few test titles/comments (e.g. "Tier II, -20%") were also corrected for accuracy,
+though the tests behind them still pass either way (the discriminating-roll tests' real behavior —
+win-without-Ward, loss-with-Ward — doesn't depend on which exact value floors to 0, only that it
+does). Full suite confirmed green after the fix.
+
+**Cross-repo note.** Same mechanic as the two entries above — not yet ported to
+`financial-project`.

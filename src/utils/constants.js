@@ -2864,7 +2864,7 @@ const Potions = {
             name: "Watchman's Ward",
             effectType: "antiRob",
             tier: 2,
-            value: 0.20,
+            value: 0.30,     // raised from 0.20, 2026-10-01 direct instruction ("make it 15-30-45%")
             durationSeconds: 1800,
             priceStat: "workMultiplierAmount",
             priceFloor: 8000,
@@ -2875,7 +2875,7 @@ const Potions = {
             name: "Constable's Ward",
             effectType: "antiRob",
             tier: 3,
-            value: 0.25,
+            value: 0.45,     // raised from 0.25, same 2026-10-01 instruction
             durationSeconds: 1800,
             priceStat: "workMultiplierAmount",
             priceFloor: 12000,

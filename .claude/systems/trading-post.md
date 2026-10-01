@@ -565,8 +565,11 @@ catalog's own structural shape):
 | Tier | Name | Value (robChance reduction) | Duration |
 |---|---|---|---|
 | I | Traveler's Ward | -15% | 30 min |
-| II | Watchman's Ward | -20% | 30 min |
-| III | Constable's Ward | -25% | 30 min |
+| II | Watchman's Ward | -30% | 30 min |
+| III | Constable's Ward | -45% | 30 min |
+
+Tiers II/III raised from their original -20%/-25% the same day (direct instruction: "make it
+15-30-45%") — only `value` moved; `durationSeconds` and every price field are untouched.
 
 `value` is still stored as a plain POSITIVE magnitude in the catalog, same sign convention every
 other potion uses — the subtraction direction lives entirely in the one consuming call site
