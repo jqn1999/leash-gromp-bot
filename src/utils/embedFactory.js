@@ -28,6 +28,7 @@ const POTION_EFFECT_LABELS = {
     workMulti: "Work Multiplier",
     workTimer: "Cooldown-Skip Chance",
     passiveAmount: "Passive Income",
+    antiRob: "Rob Resistance",
 };
 function formatPotionEffect(potion) {
     const label = POTION_EFFECT_LABELS[potion.effectType] || potion.effectType;
@@ -3909,7 +3910,11 @@ class EmbedFactory {
 
     // Shown before the roll happens so the player can back out — previously the odds
     // and stakes were only ever revealed in the same embed as the already-decided result.
-    createRobPreviewEmbed(userDisplayName, userId, userAvatar, targetUserDisplayName, chanceToRob, minGain, maxGain, minFine, maxFine) {
+    // wardTaxAmount (new, optional, default 0) — an anti-rob Ward's retaliation tax
+    // (2026-10-01, rob.js's calculateAntiRobTax), shown up front so the deterrent actually
+    // deters: a robber who'd never see this until the result embed can't be scared off by
+    // it. 0 (the target has no live Ward) renders identically to before this change.
+    createRobPreviewEmbed(userDisplayName, userId, userAvatar, targetUserDisplayName, chanceToRob, minGain, maxGain, minFine, maxFine, wardTaxAmount = 0) {
         const avatarUrl = getUserAvatar(userId, userAvatar);
         const fields = [
             {
@@ -3929,10 +3934,20 @@ class EmbedFactory {
             },
             {
                 name: `If Caught:`,
-                value: `-${minFine.toLocaleString()} to ${maxFine.toLocaleString()} potatoes`,
+                value: wardTaxAmount > 0
+                    ? `-${minFine.toLocaleString()} to -${maxFine.toLocaleString()} potatoes, PLUS -${wardTaxAmount.toLocaleString()} Ward tax`
+                    : `-${minFine.toLocaleString()} to ${maxFine.toLocaleString()} potatoes`,
                 inline: true,
             },
         ];
+
+        if (wardTaxAmount > 0) {
+            fields.push({
+                name: `🛡️ Target is Warded!`,
+                value: `They're protected by an anti-rob Ward — failing this attempt costs you an EXTRA ${wardTaxAmount.toLocaleString()} potatoes on top of the usual fine.`,
+                inline: false,
+            });
+        }
 
         const embed = new EmbedBuilder()
             .setTitle(`${userDisplayName}, rob ${targetUserDisplayName}?`)
@@ -4242,8 +4257,9 @@ class EmbedFactory {
             statusLine = `No potion currently active — buy one below.`;
         }
 
-        // Daily rotation (2026-09-21) — only TODAY's 3 rotated potions (one per effect type,
-        // tradingPostFactory.getDailyRotation), each priced LIVE off this viewer's own stats
+        // Daily rotation (2026-09-21, extended to a 4th effect type 2026-10-01) — only
+        // TODAY's rotated potions (one per effect type, tradingPostFactory.getDailyRotation),
+        // each priced LIVE off this viewer's own stats
         // (computePotionPrice), never all 9 catalog entries/a static price. Daily stock limit
         // note mirrors the disabled-button state tradingPost.js's own buildBuyRow already
         // computes off the same tradingPostFactory.hasBoughtToday check, so the embed text and
@@ -4273,7 +4289,12 @@ class EmbedFactory {
 
     // companionXpGained/companionName (new, optional, default 0/null) — see
     // createBountyResultEmbed's own comment on the same pair.
-    createRobEmbed(userDisplayName, userId, userAvatar, robOrFineAmount, targetUserDisplayName, userPotatoes, targetUserPotatoes, chanceToRob, companionXpGained = 0, companionName = null) {
+    // wardTaxAmount (new, optional, default 0) — see createRobPreviewEmbed's own comment;
+    // this is the realized tax already folded into robOrFineAmount (the actual debit), shown
+    // here as its own breakdown line so a robber who got hit by it understands why the
+    // number is bigger than the usual fine range, rather than reading as an unexplained
+    // outlier.
+    createRobEmbed(userDisplayName, userId, userAvatar, robOrFineAmount, targetUserDisplayName, userPotatoes, targetUserPotatoes, chanceToRob, companionXpGained = 0, companionName = null, wardTaxAmount = 0) {
         const avatarUrl = getUserAvatar(userId, userAvatar);
         let fields = [];
         const robResultLabel = robOrFineAmount > 0 ? 'successfully robbed' : 'failed to rob';
@@ -4305,6 +4326,13 @@ class EmbedFactory {
             value: `${userPotatoes.toLocaleString()} potatoes`,
             inline: true,
         })
+        if (wardTaxAmount > 0) {
+            fields.push({
+                name: `🛡️ Ward Tax:`,
+                value: `-${wardTaxAmount.toLocaleString()} potatoes (${targetUserDisplayName} was protected by an anti-rob Ward)`,
+                inline: true,
+            })
+        }
         if (companionXpGained > 0) {
             fields.push({
                 name: `🐾 Companion XP:`,

@@ -20095,3 +20095,163 @@ tests (18 skipped, 2271 passing)** — net 0 new tests, 0 broken.
 
 **Cross-repo note.** No port — same reasoning as the page-3 feature itself (not yet built on
 `financial-project`'s `/gromp` page).
+
+## Trading Post gets a 4th potion line: anti-rob Wards
+
+**Asked**: "Add an anti rob potion to the trading post. It should last 30 minutes. How much should
+it cost?"
+
+**Two real design forks, confirmed via `AskUserQuestion` before writing any code** — both change
+win-chance math or the catalog's own structural shape, so neither was picked silently per this
+repo's "flag invariant-breaking side effects before implementing" rule:
+1. **Effect strength**: full rob immunity vs. a flat % robChance reduction. Chose the flat
+   reduction — every other potion/buff already feeding `/rob`'s `computeRobChance` (Barn Owl's
+   `robChanceFlat`, the guild/mercenary `robChance` buffs) is a percentage modifier, never a binary
+   block; a hard "always fails" branch would have been a structurally new effect type and strictly
+   stronger per potato spent than anything else in the shop.
+2. **Catalog shape**: a single one-off potion vs. a full 3-tier line with its own guaranteed daily
+   rotation slot, matching every other effect type exactly. Chose the 3-tier line —
+   `TradingPostRotation.SLOT_EFFECT_TYPES` grew from 3 entries to 4
+   (`[..., "passiveAmount", "antiRob"]`), so players now get a guaranteed anti-rob option in their
+   daily rotation, not just a chance at one buried in the same pool as the other 9.
+
+**What changed**:
+- `constants.js` — `Potions.CATALOG` gained 3 entries: Traveler's Ward (-15%), Watchman's Ward
+  (-20%), Constable's Ward (-25%), effectType `antiRob`, all three fixed at 1800s (30 min) — the
+  one deliberate break from every other line's "value AND duration both scale per tier" shape,
+  since a short strong burst fit the "insurance before a vulnerable moment" framing better than an
+  all-day passive. Priced off `workMultiplierAmount` (same decoupled-pricing precedent
+  `quickstepTonic` already set — a progression proxy, not the stat the effect touches),
+  `pricePerPoint` 350/800/1800, deliberately between `workDraught`'s and `quickstepTonic`'s own
+  ramps since there's no equivalent `/work`-payout-formula-derived margin to calibrate against for
+  a conditional, adversarial effect like this one.
+- `rob.js` — `computeRobChance` gained one new term reading the TARGET's own `activePotion` (not
+  the robber's), subtracted instead of added, with the whole final `robChance` floored at
+  `Math.max(0, ...)` so no term combination (existing or future) can go negative.
+- `embedFactory.js` — `POTION_EFFECT_LABELS` gained `antiRob: "Rob Resistance"`; two stale "3
+  rotated potions" comments (here and in `tradingPost.js`) corrected to stop citing a number that's
+  now wrong — neither file's actual logic needed a change, both already iterate the rotation
+  generically.
+
+**Root-cause-style check before considering this done**: audited every place in the codebase that
+reads `effectType`/`SLOT_EFFECT_TYPES` to confirm nothing else hardcoded "3" — `tradingPost.js`'s
+button row, `createTradingPostEmbed`'s field list, and the "Active Potion:" status field on
+`/profile` are all already generic (`.map` over the rotation, or a `potionId` lookup against the
+full catalog), so this was a 3-file functional change (`constants.js`, `rob.js`,
+`embedFactory.js`) plus comment accuracy fixes, not the wider sweep it could have been.
+
+**Tests.** `tradingPostFactory.test.js`'s `getDailyRotation` describe block re-based its length
+assertions off `TradingPostRotation.SLOT_EFFECT_TYPES.length` instead of a hardcoded `3`, plus a
+new catalog-shape block for the Ward line and one new `computePotionPrice` case. New
+`robAntiRobPotion.test.js` (mirrors `robMercenaryBuff.test.js`'s own style) covers: a live Ward
+turning a would-be win into a loss, an expired Ward granting nothing, a different active potion
+type granting nothing, the floor-at-0 behavior under an extreme case, and the preview embed
+showing the reduced percentage. Full suite: **122 suites (1 fully skipped) / 2298 tests (18
+skipped, 2280 passing)** — net +9 new tests, 0 broken.
+
+**Cross-repo note.** This is a new player-facing mechanic — flagging per CLAUDE.md's sibling-repo
+rule rather than silently skipping, but not yet audited against `financial-project`'s own Trading
+Post implementation (or lack thereof) in this session.
+
+## Anti-rob Wards get a retaliation tax on a failed rob
+
+**Asked**, same-day follow-up: "Make it also tax the robber on a fail if the robee has potion on.
+The tax should be sole[ly a] multiplier based on the other user's work multi and how much they can
+possibly steal from the user they are robbing. High multi + high amount of potatoes = big
+deterrent for the robber."
+
+Before this, a Ward only ever lowered the robber's odds of success — failing against a Warded
+target cost exactly the same as failing against anyone else, no extra cost attached to the choice
+of target.
+
+**Confirmed via `AskUserQuestion` before implementing**: whether the extra tax goes to the target
+or is destroyed. Chose destroyed (pure loss, no house skim — same precedent the existing fail fine
+already set), rejecting crediting the target: a rich-enough robber against a Warded target can
+drive `robChance` to ~0, so two colluding accounts could otherwise use this as a tax-free potato
+transfer, bypassing `/give`'s own tax.
+
+**What changed**:
+- `constants.js` — new `Rob.ANTI_ROB_TAX_WORK_MULTI_DIVISOR: 100`, a calibration constant (not
+  tied to any existing baseline — a fresh account's real `workMultiplierAmount` default is 1, not
+  100) chosen so a robber around the 100x range pays a tax on the order of the target's own
+  max-possible-steal figure, scaling up sharply for an overdeveloped robber.
+- `rob.js` — new `calculateAntiRobTax(robberWorkMultiplierAmount, targetUserPotatoes)`:
+  `floor(targetUserPotatoes * .50 * (robberWorkMultiplierAmount / divisor))` — the `.50` is
+  literally `calculateRobAmountRange`'s own max-steal ceiling, matching "how much they can
+  possibly steal" verbatim. Deterministic (no roll of its own), charged only on a FAILED attempt
+  against a target with a live `antiRob` potion, added on top of the ordinary fail fine (never
+  replacing it).
+- `embedFactory.js` — both `createRobPreviewEmbed` and `createRobEmbed` gained an optional
+  `wardTaxAmount` param (default 0, every pre-existing caller/test unaffected). Shown in the
+  PREVIEW (not just the result) since a hidden deterrent doesn't deter anything — the robber sees
+  the exact extra cost before confirming, same as every other stake already shown there.
+
+**Tests.** New describe block in `robAntiRobPotion.test.js`, built around `Math.random` mocked to
+a single fixed value that deterministically drives both the win/loss roll AND the fail fine's own
+random multiplier (both draw from the same `Math.random` in production, so this isn't a test
+shortcut): a failed roll against a Warded target debits exactly `fineAmount + wardTax` (both
+independently computed, not just "bigger than normal"); the identical roll against a non-Warded
+target pays only the ordinary fine; a successful rob against a Warded target never charges the tax
+(fail-only, confirmed explicitly); and a 10x robber work-multiplier difference against the same
+Warded target produces an exactly-computed larger total debit. Full suite: **122 suites (1 fully
+skipped) / 2302 tests (18 skipped, 2284 passing)** — net +4 new tests, 0 broken.
+
+**Cross-repo note.** Extends the same new mechanic from the entry above — not yet ported to
+`financial-project`.
+
+## Ward Tier II/III values raised to 15-30-45%
+
+**Asked**, same-day follow-up: "Make it 15-30-45%."
+
+`Potions.CATALOG`'s antiRob line (`constants.js`): Tier II (`antiRobWardII`, Watchman's Ward)
+raised from -20% to -30%; Tier III (`antiRobWardIII`, Constable's Ward) raised from -25% to -45%.
+Tier I (Traveler's Ward) was already at -15%, unchanged. Only `value` moved — `durationSeconds`
+(1800s, all 3 tiers) and every price field are untouched; the Ward retaliation tax formula
+(`calculateAntiRobTax`) doesn't read `value` at all, so that mechanic is unaffected by this change.
+
+**Tests updated for accuracy, not because anything broke the pass/fail outcome**:
+`robAntiRobPotion.test.js`'s robChance-reduction tests mostly read `WARD_II.value`/`WARD_III`
+dynamically off the catalog already, so their actual logic needed no change — except one real bug
+the stronger Tier II value exposed: the preview-embed test's own expected-percent formula
+(`(0.25 - WARD_II.value) * 100`) didn't floor at 0 the way the real `computeRobChance` does, so at
+the old -20% (0.25-0.20=0.05, never negative) the missing floor was invisible; at the new -30%
+(0.25-0.30=-0.05) it would have asserted a nonsensical "-5.00%" the app never actually shows.
+Fixed to `Math.max(0, 0.25 - WARD_II.value) * 100`, matching production. Stale hardcoded
+percentages in a few test titles/comments (e.g. "Tier II, -20%") were also corrected for accuracy,
+though the tests behind them still pass either way (the discriminating-roll tests' real behavior —
+win-without-Ward, loss-with-Ward — doesn't depend on which exact value floors to 0, only that it
+does). Full suite confirmed green after the fix.
+
+**Cross-repo note.** Same mechanic as the two entries above — not yet ported to
+`financial-project`.
+
+## Ward retaliation tax's max-steal base cut from 50% to 10%
+
+**Asked**, same-day follow-up: "reduce the penalty for failing to rob a player with the rob
+protection potion on to 10% instead of 50%."
+
+The retaliation tax's own "how much they can possibly steal" base (the first factor in
+`calculateAntiRobTax`) started at `.50`, directly reusing `calculateRobAmountRange`'s own
+max-steal ceiling since both were originally the same figure. This drops it to `.10` — a flat 5x
+cut to the tax at every robber work-multiplier tier, independent of `ANTI_ROB_TAX_WORK_MULTI_
+DIVISOR` (unchanged at 100), which the instruction didn't touch.
+
+**What changed**:
+- `constants.js` — new named `Rob.ANTI_ROB_TAX_MAX_STEAL_PERCENT: 0.10`, promoted out of
+  `calculateAntiRobTax`'s own inline `.50` literal now that it's genuinely divergent from
+  `calculateRobAmountRange`'s own ceiling (keeping it inline would have left a stale "same cap"
+  implication the comment used to state outright).
+- `rob.js` — `calculateAntiRobTax` reads the new constant instead of a bare `.50`.
+
+**Tests.** Two exact-value cases in `robAntiRobPotion.test.js` re-derived their expected totals
+against the new 10% base (200000 Ward tax instead of 1000000 in the combined-debit case; 50000/
+500000 instead of 250000/2500000 in the work-multiplier-scaling case) — both already asserted
+exact numbers rather than loose bounds, so this was a straight recalculation, not a test-design
+change. One side effect: the first case's robber no longer ends up with negative liquid potatoes
+(125000 instead of -675000) since the smaller tax base no longer pushes the total debit past what
+they had — the comment claiming that precedent was removed since it's no longer what that specific
+test actually demonstrates (the underlying "can go negative" behavior is still real, just not
+exercised by this particular test's numbers anymore). Full suite confirmed green.
+
+**Cross-repo note.** Same mechanic as the three entries above — not yet ported to
+`financial-project`.

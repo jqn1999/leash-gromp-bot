@@ -44,6 +44,27 @@ function calculateRobAmountRange(targetUserPotatoes) {
     return [Math.floor(targetUserPotatoes * .25), Math.floor(targetUserPotatoes * .50)];
 }
 
+// Anti-rob Ward retaliation tax (2026-10-01, direct instruction) — an ADDITIONAL penalty on
+// top of the normal fail fine, charged only when the TARGET has a live antiRob potion (see
+// resolveRobAttempt's own fail branch, the one real caller). Deterministic, unlike every
+// other amount above — both inputs (the robber's own workMultiplierAmount, the target's
+// current potatoes) are already known at preview time, so there's no roll to hide behind;
+// the preview embed shows this exact figure rather than a range.
+// = (target's own max possible steal, Rob.ANTI_ROB_TAX_MAX_STEAL_PERCENT of their potatoes —
+// lowered from 0.50 to 0.10, 2026-10-02 direct instruction, no longer the same figure
+// calculateRobAmountRange's own .50 ceiling uses) * (robber's raw workMultiplierAmount /
+// Rob.ANTI_ROB_TAX_WORK_MULTI_DIVISOR) — see those constants' own comments for the
+// calibration reasoning. A robber with 0 or negative work multiplier (shouldn't normally
+// happen, but guarded same as every other amount function here) pays no tax rather than a
+// negative one.
+function calculateAntiRobTax(robberWorkMultiplierAmount, targetUserPotatoes) {
+    if (targetUserPotatoes <= 0 || !(robberWorkMultiplierAmount > 0)) {
+        return 0;
+    }
+    const maxPossibleSteal = targetUserPotatoes * Rob.ANTI_ROB_TAX_MAX_STEAL_PERCENT;
+    return Math.floor(maxPossibleSteal * (robberWorkMultiplierAmount / Rob.ANTI_ROB_TAX_WORK_MULTI_DIVISOR));
+}
+
 function calculateRobChance(userPotatoes, targetUserPotatoes) {
     if (userPotatoes < 0) {
         return .25;
@@ -86,6 +107,15 @@ async function computeRobChance(userDetails, targetUserDetails) {
         const rank = mercenaryFactory.getMercenaryRankInfo(userDetails.mercenaryBountyWinCount).rank;
         robChance += mercenaryBuffFactory.getMercenaryBuffValue("robChance", rank);
     }
+
+    // Trading Post's anti-rob Wards (2026-10-01, direct instruction) — read off the
+    // TARGET's own activePotion, not the robber's, and SUBTRACTED rather than added:
+    // every term above raises the robber's own odds, this is the one defensive term,
+    // bought by the victim to protect themselves. Floored at 0 — Math.random() < a
+    // negative chance is already always false, but an explicit floor keeps robChance a
+    // well-defined probability for robChanceDisplay and any future caller.
+    const targetWardPercent = dynamoHandler.isPotionLive(targetUserDetails.activePotion, "antiRob") ? targetUserDetails.activePotion.value : 0;
+    robChance = Math.max(0, robChance - targetWardPercent);
 
     return robChance;
 }
@@ -157,8 +187,17 @@ async function resolveRobAttempt(interaction, userId, username, userDisplayName,
         await interaction.editReply({ embeds: [embed], components: [] });
     } else {
         const fineAmount = calculateFailedRobPenalty(userPotatoes);
-        userPotatoes -= fineAmount;
-        userTotalLosses -= fineAmount;
+
+        // Anti-rob Ward retaliation tax (2026-10-01, direct instruction) — an ADDITIONAL
+        // penalty on top of the normal fail fine, charged only when the TARGET has a live
+        // antiRob potion. A pure loss, same "no house skim" precedent the fine right above
+        // already set — never credited to the target (that would let two colluding
+        // accounts launder potatoes tax-free by deliberately failing robs at each other).
+        const targetHasWard = dynamoHandler.isPotionLive(targetUserDetails.activePotion, "antiRob");
+        const wardTaxAmount = targetHasWard ? calculateAntiRobTax(userDetails.workMultiplierAmount, targetUserPotatoes) : 0;
+
+        userPotatoes -= (fineAmount + wardTaxAmount);
+        userTotalLosses -= (fineAmount + wardTaxAmount);
 
         // The 10% admin cut of a failed rob's fine was removed 2026-08-30, direct
         // instruction — the fine is now a pure loss with no house skim, unlike the
@@ -174,7 +213,7 @@ async function resolveRobAttempt(interaction, userId, username, userDisplayName,
             companions: leveledCompanions
         });
 
-        const embed = embedFactory.createRobEmbed(userDisplayName, userId, userAvatar, -fineAmount, targetUserDisplayName, userPotatoes, targetUserPotatoes, robChanceDisplay, companionXpGained, companionName);
+        const embed = embedFactory.createRobEmbed(userDisplayName, userId, userAvatar, -(fineAmount + wardTaxAmount), targetUserDisplayName, userPotatoes, targetUserPotatoes, robChanceDisplay, companionXpGained, companionName, wardTaxAmount);
         await interaction.editReply({ embeds: [embed], components: [] });
     }
 }
@@ -254,7 +293,13 @@ module.exports = {
         // instead of finding out both at once in the result embed.
         const [minGain, maxGain] = calculateRobAmountRange(targetUserDetails.potatoes);
         const [minFine, maxFine] = calculateFailedRobPenaltyRange(userDetails.potatoes);
-        const previewEmbed = embedFactory.createRobPreviewEmbed(userDisplayName, userId, userAvatar, targetUserDisplayName, robChanceDisplay, minGain, maxGain, minFine, maxFine);
+        // Shown up front, not hidden until the result — the whole point is deterrence, so
+        // the robber needs to see the stakes before committing. Deterministic (see
+        // calculateAntiRobTax's own comment), unlike minFine/maxFine above, so this is a
+        // single exact figure rather than a range.
+        const targetHasWardPreview = dynamoHandler.isPotionLive(targetUserDetails.activePotion, "antiRob");
+        const wardTaxPreview = targetHasWardPreview ? calculateAntiRobTax(userDetails.workMultiplierAmount, targetUserDetails.potatoes) : 0;
+        const previewEmbed = embedFactory.createRobPreviewEmbed(userDisplayName, userId, userAvatar, targetUserDisplayName, robChanceDisplay, minGain, maxGain, minFine, maxFine, wardTaxPreview);
         const reply = await interaction.editReply({ embeds: [previewEmbed], components: [buildConfirmCancelRow('rob', 'Rob them')] });
 
         const collectorFilter = i => i.user.id === interaction.user.id;

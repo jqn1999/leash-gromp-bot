@@ -850,7 +850,30 @@ const RaidLevel = {
 const Rob = {
     WORK_TIMER_INCREASE_MS: 3450000, // halved from 6900000 — failing already costs a wealth loss + the 1hr ROB_TIMER_SECONDS lockout, this was a third penalty stacked on top
     ROB_TIMER_SECONDS: 3600,
-    BASE_ROB_PENALTY: 5000
+    BASE_ROB_PENALTY: 5000,
+    // Anti-rob Ward retaliation tax (2026-10-01, direct instruction: "tax the robber on a
+    // fail if the robee has potion on... sole[ly a] multiplier based on the other user's
+    // work multi and how much they can possibly steal... high multi + high amount of
+    // potatoes = big deterrent") — see rob.js's calculateAntiRobTax, the one consumer.
+    // tax = (target's max possible steal, ANTI_ROB_TAX_MAX_STEAL_PERCENT of their potatoes)
+    // * (robber's own raw workMultiplierAmount / this divisor). 100 is a plain calibration
+    // constant, not tied to any existing baseline field (a brand-new account's real
+    // workMultiplierAmount default is 1, not 100) — chosen so a robber around the 100x-ish
+    // range (an established, but not yet heavily-developed, player) pays a tax roughly ON
+    // THE ORDER of the target's own max-steal figure (factor ~= 1.0), scaling up sharply
+    // past that for a genuinely overdeveloped robber picking on a protected target — a real
+    // deterrent, not a token fee. A pure loss, same "no house skim" precedent the existing
+    // fail fine already set (confirmed with the user over crediting it to the target instead
+    // — that would let two colluding accounts launder potatoes tax-free by deliberately
+    // failing robs against each other).
+    ANTI_ROB_TAX_WORK_MULTI_DIVISOR: 100,
+    // Lowered from 0.50 to 0.10, 2026-10-02 direct instruction ("reduce the penalty... to
+    // 10% instead of 50%") — no longer pinned to calculateRobAmountRange's own .50 max-steal
+    // ceiling (hence its own named constant now, rather than staying an inline literal that
+    // implied a now-false "same cap" relationship to that range). Cuts the retaliation tax's
+    // magnitude by 5x straight through every robber work-multiplier tier — a real deterrent
+    // still exists, it's just a softer one than the original pass.
+    ANTI_ROB_TAX_MAX_STEAL_PERCENT: 0.10
 }
 
 // Prestige-style reset: available once every base shop AND every regrade track is fully
@@ -2801,6 +2824,69 @@ const Potions = {
             priceStat: "passiveAmount",
             priceFloor: 3000,
             pricePct: 0.0065
+        },
+        // Anti-rob Wards (2026-10-01, direct instruction: "add an anti rob potion... it
+        // should last 30 minutes"). A flat SUBTRACTION from whoever's robChance against
+        // you — see rob.js's own computeRobChance, the one consumer — not the "additive %
+        // into an existing bucket" shape every other effectType above uses, since there's
+        // no bucket on the VICTIM's side to add into; `value` is still stored as a plain
+        // positive magnitude, same sign convention as every other potion, with the
+        // subtraction direction living entirely in the consuming code, not the data.
+        // Deliberately NOT full immunity (confirmed with the user over the alternative) —
+        // a flat chance reduction, same shape robChanceFlat (Barn Owl) and the guild/
+        // mercenary robChance buffs already use, just negative and sourced from the
+        // target instead of the robber.
+        //
+        // durationSeconds fixed at 1800 (30 min) across all 3 tiers, by direct
+        // instruction — unlike every other line above, only the % strength scales per
+        // tier here, not the duration. A short, strong defensive burst rather than a
+        // long passive buff fits "anti-rob" better: you reach for this when you're about
+        // to be sitting on a pile of liquid potatoes you don't want a bandit taking a cut
+        // of, not as an all-day passive the way workMulti/passiveAmount potions are.
+        //
+        // Priced off workMultiplierAmount (not a stat this potion's effect touches at
+        // all) — same decoupling quickstepTonic's own priceStat already established:
+        // the potion's cost is calibrated against the player's general progression
+        // level, not literally the stat its effect feeds. workMultiplierAmount is the
+        // most-used progression proxy in this catalog already (workDraught,
+        // quickstepTonic), so reusing it here instead of inventing a third proxy stays
+        // consistent. pricePerPoint set between workDraught's (250/650/1500) and
+        // quickstepTonic's (450/1100/2650) own ramps — meaningfully cheaper than a 2-8h
+        // buff line point-for-point (this only runs 30 minutes), but priced as real
+        // insurance against a rob's 25-50%-of-liquid-potatoes downside, not a throwaway
+        // impulse buy.
+        {
+            id: "antiRobWard",
+            name: "Traveler's Ward",
+            effectType: "antiRob",
+            tier: 1,
+            value: 0.15,
+            durationSeconds: 1800,         // 30 min, fixed across all 3 tiers
+            priceStat: "workMultiplierAmount",
+            priceFloor: 4000,
+            pricePerPoint: 350
+        },
+        {
+            id: "antiRobWardII",
+            name: "Watchman's Ward",
+            effectType: "antiRob",
+            tier: 2,
+            value: 0.30,     // raised from 0.20, 2026-10-01 direct instruction ("make it 15-30-45%")
+            durationSeconds: 1800,
+            priceStat: "workMultiplierAmount",
+            priceFloor: 8000,
+            pricePerPoint: 800
+        },
+        {
+            id: "antiRobWardIII",
+            name: "Constable's Ward",
+            effectType: "antiRob",
+            tier: 3,
+            value: 0.45,     // raised from 0.25, same 2026-10-01 instruction
+            durationSeconds: 1800,
+            priceStat: "workMultiplierAmount",
+            priceFloor: 12000,
+            pricePerPoint: 1800
         }
     ]
 }
@@ -2813,8 +2899,10 @@ const Potions = {
 const TradingPostRotation = {
     // Fixed slot order — one daily slot per effect type, so a player never has zero
     // options for a whole mechanic on a given day (as opposed to a fully random pool
-    // draw, which could duplicate effect types and omit one entirely).
-    SLOT_EFFECT_TYPES: ["workMulti", "workTimer", "passiveAmount"],
+    // draw, which could duplicate effect types and omit one entirely). "antiRob" added
+    // 2026-10-01 alongside the new Ward line above — a 4th guaranteed daily slot, same
+    // treatment as the original 3.
+    SLOT_EFFECT_TYPES: ["workMulti", "workTimer", "passiveAmount", "antiRob"],
     // Cumulative tier-roll thresholds, same cumulative-walk shape as CompanionShop.RARITY_ODDS
     // in this same file — roll < 0.65 => tier 1, < 0.95 => tier 2, else tier 3.
     TIER_ODDS_CUMULATIVE: [0.65, 0.95, 1.0]

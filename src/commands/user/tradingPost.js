@@ -7,8 +7,9 @@ const embedFactory = new EmbedFactory();
 
 const BUY_PREFIX = 'trading_post_buy_';
 
-// One button per TODAY'S rotated potion (3, via tradingPostFactory.getDailyRotation — one
-// per effect type, not all 9 catalog entries), well under Discord's 5-per-row cap —
+// One button per TODAY'S rotated potion (one per effect type, via
+// tradingPostFactory.getDailyRotation, not all 12 catalog entries), well under Discord's
+// 5-per-row cap —
 // disabled when the caller can't afford the LIVE computed price OR has already bought that
 // potion today (2026-09-21, the daily-stock limit — a predictable, always-known-in-advance
 // state, unlike the effect-type-conflict rejection below), same "a doomed click should
