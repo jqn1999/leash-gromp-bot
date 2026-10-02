@@ -50,16 +50,18 @@ function calculateRobAmountRange(targetUserPotatoes) {
 // other amount above — both inputs (the robber's own workMultiplierAmount, the target's
 // current potatoes) are already known at preview time, so there's no roll to hide behind;
 // the preview embed shows this exact figure rather than a range.
-// = (target's own max possible steal, same .50 ceiling calculateRobAmountRange already
-// caps at) * (robber's raw workMultiplierAmount / Rob.ANTI_ROB_TAX_WORK_MULTI_DIVISOR) — see
-// that constant's own comment for the calibration reasoning. A robber with 0 or negative
-// work multiplier (shouldn't normally happen, but guarded same as every other amount
-// function here) pays no tax rather than a negative one.
+// = (target's own max possible steal, Rob.ANTI_ROB_TAX_MAX_STEAL_PERCENT of their potatoes —
+// lowered from 0.50 to 0.10, 2026-10-02 direct instruction, no longer the same figure
+// calculateRobAmountRange's own .50 ceiling uses) * (robber's raw workMultiplierAmount /
+// Rob.ANTI_ROB_TAX_WORK_MULTI_DIVISOR) — see those constants' own comments for the
+// calibration reasoning. A robber with 0 or negative work multiplier (shouldn't normally
+// happen, but guarded same as every other amount function here) pays no tax rather than a
+// negative one.
 function calculateAntiRobTax(robberWorkMultiplierAmount, targetUserPotatoes) {
     if (targetUserPotatoes <= 0 || !(robberWorkMultiplierAmount > 0)) {
         return 0;
     }
-    const maxPossibleSteal = targetUserPotatoes * .50;
+    const maxPossibleSteal = targetUserPotatoes * Rob.ANTI_ROB_TAX_MAX_STEAL_PERCENT;
     return Math.floor(maxPossibleSteal * (robberWorkMultiplierAmount / Rob.ANTI_ROB_TAX_WORK_MULTI_DIVISOR));
 }
 

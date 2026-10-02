@@ -20224,3 +20224,34 @@ does). Full suite confirmed green after the fix.
 
 **Cross-repo note.** Same mechanic as the two entries above — not yet ported to
 `financial-project`.
+
+## Ward retaliation tax's max-steal base cut from 50% to 10%
+
+**Asked**, same-day follow-up: "reduce the penalty for failing to rob a player with the rob
+protection potion on to 10% instead of 50%."
+
+The retaliation tax's own "how much they can possibly steal" base (the first factor in
+`calculateAntiRobTax`) started at `.50`, directly reusing `calculateRobAmountRange`'s own
+max-steal ceiling since both were originally the same figure. This drops it to `.10` — a flat 5x
+cut to the tax at every robber work-multiplier tier, independent of `ANTI_ROB_TAX_WORK_MULTI_
+DIVISOR` (unchanged at 100), which the instruction didn't touch.
+
+**What changed**:
+- `constants.js` — new named `Rob.ANTI_ROB_TAX_MAX_STEAL_PERCENT: 0.10`, promoted out of
+  `calculateAntiRobTax`'s own inline `.50` literal now that it's genuinely divergent from
+  `calculateRobAmountRange`'s own ceiling (keeping it inline would have left a stale "same cap"
+  implication the comment used to state outright).
+- `rob.js` — `calculateAntiRobTax` reads the new constant instead of a bare `.50`.
+
+**Tests.** Two exact-value cases in `robAntiRobPotion.test.js` re-derived their expected totals
+against the new 10% base (200000 Ward tax instead of 1000000 in the combined-debit case; 50000/
+500000 instead of 250000/2500000 in the work-multiplier-scaling case) — both already asserted
+exact numbers rather than loose bounds, so this was a straight recalculation, not a test-design
+change. One side effect: the first case's robber no longer ends up with negative liquid potatoes
+(125000 instead of -675000) since the smaller tax base no longer pushes the total debit past what
+they had — the comment claiming that precedent was removed since it's no longer what that specific
+test actually demonstrates (the underlying "can go negative" behavior is still real, just not
+exercised by this particular test's numbers anymore). Full suite confirmed green.
+
+**Cross-repo note.** Same mechanic as the three entries above — not yet ported to
+`financial-project`.

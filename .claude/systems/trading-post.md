@@ -656,13 +656,17 @@ tax entirely.
 
 **`rob.js`'s new `calculateAntiRobTax(robberWorkMultiplierAmount, targetUserPotatoes)`** —
 deterministic (no roll of its own, unlike every other rob amount in this file):
-`floor(targetUserPotatoes * .50 * (robberWorkMultiplierAmount / Rob.ANTI_ROB_TAX_WORK_MULTI_DIVISOR))`.
-The `.50` ceiling is literally `calculateRobAmountRange`'s own max-steal cap (the user's own "how
-much they can possibly steal" framing). `ANTI_ROB_TAX_WORK_MULTI_DIVISOR = 100` (`constants.js`) is
-a plain calibration constant — a robber around the 100x range pays a tax roughly ON THE ORDER of
-the target's own max-steal figure, scaling up sharply past that for a genuinely overdeveloped
-robber. Charged ONLY on a failed attempt against a target with a live `antiRob` potion, ADDED on
-top of (not replacing) the ordinary `calculateFailedRobPenalty` fine.
+`floor(targetUserPotatoes * Rob.ANTI_ROB_TAX_MAX_STEAL_PERCENT * (robberWorkMultiplierAmount / Rob.ANTI_ROB_TAX_WORK_MULTI_DIVISOR))`.
+`ANTI_ROB_TAX_MAX_STEAL_PERCENT` started at `.50` (literally `calculateRobAmountRange`'s own
+max-steal cap, matching the user's original "how much they can possibly steal" framing), then was
+lowered to `.10` the next day (direct instruction: "reduce the penalty... to 10% instead of 50%")
+— no longer tied to that range's own ceiling, hence its own named constant now rather than an
+inline literal that implied a "same cap" relationship that's no longer true. `ANTI_ROB_TAX_WORK_
+MULTI_DIVISOR = 100` (`constants.js`) is unchanged — a robber around the 100x range pays a tax
+roughly ON THE ORDER of the target's own (now smaller) max-steal figure, scaling up sharply past
+that for a genuinely overdeveloped robber. Charged ONLY on a failed attempt against a target with
+a live `antiRob` potion, ADDED on top of (not replacing) the ordinary `calculateFailedRobPenalty`
+fine.
 
 **Shown in the PREVIEW, not just the result** — `createRobPreviewEmbed` gained an optional
 `wardTaxAmount` param (default 0, so every pre-existing call/test is unaffected) that both extends

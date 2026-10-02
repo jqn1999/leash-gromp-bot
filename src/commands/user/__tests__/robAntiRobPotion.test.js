@@ -190,12 +190,11 @@ describe('/rob Ward retaliation tax on a fail', () => {
             randomSpy.mockRestore();
         }
         // fineAmount = floor(500000 * (.25 + .4*.25)) = floor(500000*.35) = 175000.
-        // wardTax = floor((1000000*.50) * (200/100)) = floor(500000*2) = 1000000.
-        // total debit = 1175000 -> userPotatoes lands at 500000 - 1175000 = -675000
-        // (liquid potatoes going negative off a single bad roll is this command's own
-        // existing, accepted precedent — see calculateFailedRobPenalty's own comment).
+        // wardTax = floor((1000000*.10) * (200/100)) = floor(100000*2) = 200000 (10% base,
+        // lowered from 50% — see Rob.ANTI_ROB_TAX_MAX_STEAL_PERCENT's own comment).
+        // total debit = 375000 -> userPotatoes lands at 500000 - 375000 = 125000.
         const actingWrite = dynamoHandler.updateUserFields.mock.calls.find(([id]) => id === 'user-1');
-        expect(actingWrite[1].potatoes).toBe(500000 - 1175000);
+        expect(actingWrite[1].potatoes).toBe(500000 - 375000);
     });
 
     test('the SAME failed roll against a target with NO Ward pays only the ordinary fine, no extra tax', async () => {
@@ -265,14 +264,14 @@ describe('/rob Ward retaliation tax on a fail', () => {
 
         // Both runs share the identical fine component (same acting potatoes, same pinned
         // roll at Math.random() = 0 -> fine = floor(2000000 * .25) = 500000). Only the Ward
-        // tax term scales with workMultiplierAmount:
-        // low (50):  wardTax = floor(500000 * (50/100))  =  250000 -> total  750000
-        // high (500): wardTax = floor(500000 * (500/100)) = 2500000 -> total 3000000
+        // tax term scales with workMultiplierAmount (base: target's 1000000 * 10% = 100000):
+        // low (50):  wardTax = floor(100000 * (50/100))  =  50000  -> total  550000
+        // high (500): wardTax = floor(100000 * (500/100)) = 500000 -> total 1000000
         // A 10x multiplier difference produces exactly a 10x difference in the tax term
-        // itself, diluted to 4x on the TOTAL debit once the shared flat fine is included —
+        // itself, diluted on the TOTAL debit once the shared flat fine is included —
         // asserted exactly, not loosely, since every input here is fully deterministic.
-        expect(lowMultiDebit).toBe(750000);
-        expect(highMultiDebit).toBe(3000000);
-        expect(highMultiDebit).toBeGreaterThan(lowMultiDebit * 3);
+        expect(lowMultiDebit).toBe(550000);
+        expect(highMultiDebit).toBe(1000000);
+        expect(highMultiDebit).toBeGreaterThan(lowMultiDebit);
     });
 });

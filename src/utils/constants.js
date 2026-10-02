@@ -855,18 +855,25 @@ const Rob = {
     // fail if the robee has potion on... sole[ly a] multiplier based on the other user's
     // work multi and how much they can possibly steal... high multi + high amount of
     // potatoes = big deterrent") — see rob.js's calculateAntiRobTax, the one consumer.
-    // tax = (target's max possible steal, same .50 ceiling calculateRobAmountRange already
-    // uses) * (robber's own raw workMultiplierAmount / this divisor). 100 is a plain
-    // calibration constant, not tied to any existing baseline field (a brand-new account's
-    // real workMultiplierAmount default is 1, not 100) — chosen so a robber around the
-    // 100x-ish range (an established, but not yet heavily-developed, player) pays a tax
-    // roughly ON THE ORDER of the target's own max-steal figure (factor ~= 1.0), scaling up
-    // sharply past that for a genuinely overdeveloped robber picking on a protected target —
-    // a real deterrent, not a token fee. A pure loss, same "no house skim" precedent the
-    // existing fail fine already set (confirmed with the user over crediting it to the
-    // target instead — that would let two colluding accounts launder potatoes tax-free by
-    // deliberately failing robs against each other).
-    ANTI_ROB_TAX_WORK_MULTI_DIVISOR: 100
+    // tax = (target's max possible steal, ANTI_ROB_TAX_MAX_STEAL_PERCENT of their potatoes)
+    // * (robber's own raw workMultiplierAmount / this divisor). 100 is a plain calibration
+    // constant, not tied to any existing baseline field (a brand-new account's real
+    // workMultiplierAmount default is 1, not 100) — chosen so a robber around the 100x-ish
+    // range (an established, but not yet heavily-developed, player) pays a tax roughly ON
+    // THE ORDER of the target's own max-steal figure (factor ~= 1.0), scaling up sharply
+    // past that for a genuinely overdeveloped robber picking on a protected target — a real
+    // deterrent, not a token fee. A pure loss, same "no house skim" precedent the existing
+    // fail fine already set (confirmed with the user over crediting it to the target instead
+    // — that would let two colluding accounts launder potatoes tax-free by deliberately
+    // failing robs against each other).
+    ANTI_ROB_TAX_WORK_MULTI_DIVISOR: 100,
+    // Lowered from 0.50 to 0.10, 2026-10-02 direct instruction ("reduce the penalty... to
+    // 10% instead of 50%") — no longer pinned to calculateRobAmountRange's own .50 max-steal
+    // ceiling (hence its own named constant now, rather than staying an inline literal that
+    // implied a now-false "same cap" relationship to that range). Cuts the retaliation tax's
+    // magnitude by 5x straight through every robber work-multiplier tier — a real deterrent
+    // still exists, it's just a softer one than the original pass.
+    ANTI_ROB_TAX_MAX_STEAL_PERCENT: 0.10
 }
 
 // Prestige-style reset: available once every base shop AND every regrade track is fully
