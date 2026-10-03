@@ -20404,3 +20404,153 @@ shape gained `isMetalPotatoMeddley`, and a new reward/stat-grant branch) that `f
 own `/gromp` page would need an equivalent for if it re-implements Mercenary Bounty's win/loss
 math server-side — not yet ported; flagged per this repo's own `CLAUDE.md` cross-repo-sync rule,
 not yet actioned in the same session.
+
+## `/work`'s cooldown-skip chain rewritten to one write per chain instead of one write per link
+
+**Asked**: a chain of up to `Work.MAX_COOLDOWN_SKIP_CHAIN_LENGTH + 1` (6) `/work` resolutions was
+firing a separate `dynamoHandler.updateUserFields` call per link (plus a separate re-fetch, a
+separate companion-leveling write, and separate achievement/quest/festival/guild-contract checks,
+also once per link) — direct instruction to collapse the whole chain down to exactly ONE write for
+this player's own record, "the full rewrite option, not the scoped-down safe win," after being
+shown both and the buff-staleness tradeoff this entails.
+
+**What changed, mechanically.** All 11 `workFactory.js` scenario handlers
+(`handleGoldenPotato`/`handlePoisonPotato`/`handleLargePotato`/`handleMetalPotato`/
+`handleSweetPotato`/`handleCompanionEncounter`/`handleTaroTrader`/`handleAncientPotato`/
+`handleMimicPotato`/`handleGoldenYam`/`handleRegularWork`) no longer call
+`dynamoHandler.updateUserFields` (or any other write) themselves. Each one now computes its
+reward exactly as before and stashes the write it WOULD have made onto
+`userDetails._workChainDelta` — `{ setFields, addFields, houseTax?, mimicHoardDelta?,
+guildRaidTimerGuildId? }` — a transient, non-persisted flag mirroring this file's/work.js's own
+existing `_cooldownSkippedByCompanion`/`_cooldownSkipChance`/`_companionXpGained` convention,
+rather than reshaping every handler's own return VALUE (which stayed byte-for-byte the same type
+it always was — a bare number for Regular/Large/Taro/Golden Yam, the same result object shape for
+everything else) — so every existing caller of a handler's return value (embed-building code,
+`festivalShop.js`'s voucher display, admin.js) needed zero changes. The three extra non-write-
+value writes the handlers used to fire inline also moved onto this same delta:
+`handleMimicPotato`'s `addStatFields('mimic_hoard', ...)` (as `mimicHoardDelta`, a signed amount),
+`handleAncientPotato`'s `updateGuildDatabase(guildId, 'raidTimer', ...)` (as
+`guildRaidTimerGuildId`), and `calculateGainAmount`'s unconditional house-tax `addUserDatabase`
+call — the last one gated behind a new `deferTax` param (default `false`, so every OTHER existing
+caller — `/rob-npc`'s Heist payout, `/take-bounty`, everywhere else this shared function is used —
+keeps its old immediate-write behavior completely unchanged; only the 6 workFactory.js call sites
+that needed deferring pass `deferTax: true` and get `{ gainAmount, houseTax }` back instead of a
+bare number).
+
+`work.js`'s `performWork` is no longer recursive. It used to be one call per link, each one
+re-`findUser`-ing fresh state and recursing into the next link on a skip. It's now a single
+`while` loop over the whole chain: each iteration rolls a scenario, calls that scenario's new
+`resolve` function (a sibling to the existing `action` closure — `resolve` computes the delta and
+builds the embed/big-event payloads WITHOUT writing or sending either; `action` wraps `resolve`
+and still writes+sends immediately for itself, so `admin.js`'s `/admin-work` — which calls
+`scenario.action` directly, once, with no concept of a chain — needed zero changes), merges that
+link's delta into a chain-wide accumulator via `Object.assign` (last-link-wins per field, same
+outcome a sequence of real DB `set`s would give), and applies the SAME delta onto the in-memory
+`userDetails` object so the next link's own math (and the once-per-chain checks after the loop)
+see this link's real result — replacing the old "re-fetch after each link's write" pattern with
+no re-fetch at all. The loop ends when a link doesn't skip, or when the chain cap is hit; either
+way, exactly one `dynamoHandler.updateUserFields` call follows, carrying every link's accumulated
+`setFields`/summed `workCount` add. The 2026-10-03 chain-cap-reset fix (the entry two above this
+one) is preserved exactly — if the cap is hit on a link that ITSELF skipped, `workTimer` gets
+overwritten to a real full `Work.WORK_TIMER_SECONDS` cooldown — just folded into this one write
+instead of a separate extra one. The non-write-count-affecting consolidation (achievements,
+quests, festival quests, guild contract, the "biggest single payout" personal-best record, and
+companion leveling) was folded in the same pass, now running once per chain against the chain's
+real pre-chain/post-chain baseline instead of once per link.
+
+**Tradeoff #1 — buff staleness within a chain, KNOWINGLY ACCEPTED, not an oversight.** Before
+this rewrite (the 2026-09-20 architect pass), `dynamoHandler.calculateWorkTimerValue` fetched its
+five cooldown-skip sources (companion/World-Boss/guild/Spud-Keep/mercenary-buff) FRESH from the DB
+on every single call — including every link of a chain — specifically so a companion swap, a
+guild buff changing, or Spud Keep's holder changing mid-chain would be picked up by the very next
+link, not wait for the player's next manual `/work`. `calculateWorkTimerValue` gained a 4th,
+optional `cachedSources` param (default `null`, so every call site that doesn't pass it — which is
+every one of them except this rewrite's own — behaves identically to before); `performWork` now
+calls `dynamoHandler.getWorkCooldownSkipSources(userDetails)` exactly ONCE, at the very top of the
+chain, and hands that SAME array to every link's own `calculateWorkTimerValue` call for the rest
+of that chain via each handler's own new trailing `cachedSkipSources` param (threaded through a
+small `resolveWorkTimer` helper in `workFactory.js`, mirrored as `resolveWorkTimerForMetalFailure`
+in `work.js` for Metal's own inline sub-roll failure branch, that reproduces the EXACT original
+2-or-3-arg call shape whenever no cache is supplied — so every pre-existing direct unit test of a
+handler, `admin.js`, and `festivalFactory.js`'s voucher redemption all still call it exactly as
+they always did). **What's lost**: a buff change mid-chain is no longer picked up by links 2
+through N of that SAME chain — it only takes effect starting that player's NEXT `/work` call. In
+practice this only ever matters for the (already rare) case of a multi-link skip chain
+overlapping the (already rare) moment some other system changes one of those five sources — but
+it's real, not theoretical, and is now pinned by an actual test
+(`workChainWriteCount.test.js`'s "buff-staleness tradeoff" block: asserts
+`getWorkCooldownSkipSources` is called exactly once for a forced multi-link chain, and that a
+buff whose own value climbs to "always skip" on every call AFTER the first is never actually
+picked up — the chain still ends after one link because it only ever consulted that first,
+frozen read).
+
+**Tradeoff #2 — the whole chain is now atomic, a direct and unavoidable consequence of
+"exactly one write," not a separate choice.** Before this rewrite, each link wrote AND announced
+(sent its result embed) immediately, so a crash on link 3 of a chain still left links 1-2's real
+rewards persisted and their embeds already sent — only link 3 itself was lost. Now, nothing is
+written OR announced until the single end-of-chain write succeeds (this fell out of restructuring
+`performWork`'s own auto-recovery `try`/`catch`, originally scoped around one link's dispatch, to
+now wrap the WHOLE loop plus that one write — moving it anywhere narrower would reintroduce
+partial writes this rewrite's own target rules out). A crash anywhere in the loop, before that
+write, now discards the WHOLE chain's computed-but-unpersisted result, not just whichever link
+crashed — the player is still told plainly that nothing was lost and `/work` is immediately
+available again (`workAutoRecovery.test.js` still passes unmodified), and that's now actually true
+for the entire chain rather than just whichever link happened to fail. Flagged here explicitly
+since it's a genuine behavior change beyond tradeoff #1, even though it follows directly from the
+literal "exactly one write" target rather than being an independent design decision.
+
+**A real bug caught and fixed during this rewrite, not part of the original plan.**
+`calculateWorkTimerValue` only ever SETS `userDetails._cooldownSkippedByCompanion` on a skip
+HIT — it never clears it on a miss, which was always safe under the old architecture (every link
+got a brand-new `userDetails` object off its own fresh `findUser`). The new loop reuses the SAME
+`userDetails` object across every link, so without an explicit reset at the top of each
+iteration, a miss on link N would have silently inherited link N-1's still-true flag on that same
+object — wrongly chaining forever (caught by the new `workChainWriteCount.test.js`'s own 5-link
+regression test initially producing 6 links instead of 5 before this one-line fix: `userDetails.
+_cooldownSkippedByCompanion = null;` at the top of the loop body, before each link runs). A
+second, smaller gap of the same shape existed for `userDetails.workCount` specifically — it's an
+ADD expression, never folded into `aggregatedSetFields`/`userDetails` by the main merge loop, so
+the once-per-chain achievement/quest checks after the loop would have seen a stale pre-chain
+`workCount` instead of this chain's real final value (the old per-link re-fetch used to give
+achievement/quest checks the REAL post-write value for free) — fixed by mirroring
+`aggregatedWorkCount` onto `userDetails.workCount` right after the chain's one write succeeds.
+
+**Other call sites touched to keep working at all, not just to hit the write-count target.**
+`festivalFactory.js`'s Encounter Voucher redemption (`attemptPurchaseFestivalSlot`) calls
+`handleSweetPotato`/`handleMetalPotato`/`handleLargePotato` directly, outside any `/work` chain,
+and used to rely on those handlers' own immediate write landing as a SECOND, disjoint-fields write
+alongside its own festivalTokens/festivalShop write. With the handlers no longer writing
+anything, `attemptPurchaseFestivalSlot` now reads the voucher's own `_workChainDelta` and merges
+its `setFields` into the SAME single write (and separately credits any `houseTax` the voucher's
+own `calculateGainAmount` call produced, previously silently applied via that now-removed second
+write) — a side benefit of one fewer write for a voucher purchase too, though that wasn't the
+point of touching this file.
+
+**Tests.** `workFactory.test.js`'s existing coverage for every one of the 11 handlers was
+mechanically migrated from asserting on `dynamoHandler.updateUserFields.mock.calls[N]` to
+asserting on the returned `userDetails._workChainDelta` instead (same assertions, same outcomes,
+just reading the delta instead of a DB-mock call — including the guild/hoard/house-tax-specific
+assertions, which now check `delta.guildRaidTimerGuildId`/`delta.mimicHoardDelta`/`delta.houseTax`
+and separately assert the OLD immediate DB calls no longer happen at all).
+`workCooldownSkipChainCap.test.js` was rewritten (its own write-COUNT assertions were specifically
+about the old per-link-write shape this rewrite replaced by design — the OUTCOME it locks in,
+a real full-duration cooldown surviving the cap-hit-on-its-own-skip case, is unchanged and
+re-asserted against the new single write). `festivalFactory.test.js`'s two direct-handler-call
+tests got the same delta-based migration. A new `workChainWriteCount.test.js` adds the two tests
+this rewrite's own plan specifically called for: a forced, deterministic 5-link skip chain
+asserting `updateUserFields` is called exactly once with the full 5-link accumulated outcome
+(potatoes/totalEarnings/workScenarioCounts/workCount/house-tax all equal to 5x one link's own
+deterministic gain, plus the right 5-message embed sequence, editReply once then followUp x4),
+and the buff-staleness pin described under tradeoff #1 above. `companionHuntBlocksWork.test.js`
+needed `followUp` added to its bare-bones fake interaction — a real (non-blocked) chain can now
+legitimately reach a first-work-style achievement unlock once `userDetails.workCount` correctly
+reflects the chain's real result (see the workCount bug fix above), which that test's interaction
+stub had never previously needed to support. Full suite: **125 of 126 suites (1 pre-existing,
+unrelated skip) / 2318 tests (18 pre-existing, unrelated skips, 2300 passing)** — net +3 new
+tests, 0 broken.
+
+**Cross-repo note.** This is a pure backend write-count/architecture change with no player-visible
+formula, odds, reward amount, or message content change (every outcome is byte-for-byte what the
+old per-link-write version would have produced) — `financial-project`'s own `/gromp` page has no
+equivalent write-count concern to port, since its own Lambdas aren't built around this same
+recursive-chain shape. Not flagged for porting.

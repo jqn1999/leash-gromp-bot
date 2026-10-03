@@ -419,7 +419,34 @@ async function getWorkCooldownSkipSources(userDetails) {
 // `skippable: false` explicitly for all three (both Poison branches, and Mimic) rather
 // than relying on the cooldownTime mismatch alone — explicit intent, not an incidental
 // numeric coincidence that a future mitigation retune could accidentally break.
-const calculateWorkTimerValue = async function (userDetails, cooldownTime, skippable = true) {
+// cachedSources (new, optional, 2026-10-03 /work chain write-count rewrite) — lets a
+// caller supply a skip-sources list it already fetched instead of this function fetching
+// its own fresh copy via getWorkCooldownSkipSources. /work's own performWork is the one
+// real caller that does this: it reads companion/World-Boss/guild/Spud-Keep/mercenary-buff
+// skip sources ONCE at the start of a cooldown-skip chain and hands that SAME object to
+// every link's own calculateWorkTimerValue call for the rest of that chain, instead of
+// this function re-fetching all five sources from the DB fresh on every single link (the
+// old, pre-rewrite behavior — every OTHER caller, and /work's own very first link, still
+// gets that fresh-every-call behavior for free, since they simply never pass this arg and
+// it defaults to null here).
+//
+// This is a DELIBERATE, KNOWN correctness tradeoff, not an oversight — traded away
+// specifically to hit this rewrite's one-write-per-chain target, not a side effect of it.
+// The 2026-09-20 architect pass that built the original per-link fresh-read design argued
+// for it explicitly: a companion swap, a guild's buff changing, or Spud Keep's holder
+// changing mid-chain should be picked up by the very next link, not wait for the player's
+// next manual /work call. That guarantee is now GONE for links 2..N of the same chain —
+// once a chain's skip sources are read at link 1, every later link in that SAME chain
+// rolls its own skip chance against that frozen snapshot, even if one of those five
+// sources genuinely changed in the DB in between (another command swapping this player's
+// active companion mid-chain is the only realistic way that happens, since a chain runs
+// to completion in a single synchronous tick of this process — but it's still a real,
+// externally-observable gap, not a theoretical one). The change is only ever picked up
+// starting that player's NEXT /work call (a fresh chain, a fresh read). See
+// .claude/roadmap.md's dated entry for this rewrite for the full reasoning on why this
+// specific tradeoff was accepted (write-count reduction), and
+// .claude/systems/economy-and-work.md for how this interacts with the chain mechanic.
+const calculateWorkTimerValue = async function (userDetails, cooldownTime, skippable = true, cachedSources = null) {
     // Only the STANDARD cooldown is skippable — gated on cooldownTime === WORK_TIMER_SECONDS
     // rather than rolling unconditionally. A non-immune Poison Potato hit passes its own
     // elevated lockoutSeconds here (workFactory.js:546, always < POISON_POTATO_
@@ -428,7 +455,7 @@ const calculateWorkTimerValue = async function (userDetails, cooldownTime, skipp
     // on a poisoned call would otherwise collapse the real lockout down to "ready now" and
     // chain an immediate extra /work call, replacing the punishment with a bare cooldown.
     if (skippable && cooldownTime === Work.WORK_TIMER_SECONDS) {
-        const sources = await getWorkCooldownSkipSources(userDetails);
+        const sources = cachedSources || await getWorkCooldownSkipSources(userDetails);
         // Companion is added on top AFTER the rest of the sources combine, uncapped
         // (2026-09-28, direct instruction) — see cooldownFactory.combineSkipChanceWithCompanionBonus's
         // own comment for the full reasoning.

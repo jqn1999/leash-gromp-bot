@@ -337,16 +337,20 @@ describe('handleRegularWork', () => {
     test('increments workCount via an ADD, not a full re-write of the counter', async () => {
         const userDetails = baseUser();
         await workFactory.handleRegularWork(userDetails, 1000, 1, 0);
-        const [, , addAttributes] = dynamoHandler.updateUserFields.mock.calls[0];
+        const { addFields: addAttributes } = userDetails._workChainDelta;
         expect(addAttributes).toEqual({ workCount: 1 });
     });
 
+    // 2026-10-03 /work chain write-count rewrite — the house tax is no longer credited
+    // immediately inside the handler itself (calculateGainAmount's own deferTax: true
+    // path, see its comment); it's accumulated into userDetails._workChainDelta.houseTax
+    // instead, for the chain loop (work.js) to credit once for the whole chain.
     test('skims 5% of the gain to the bot\'s own house account', async () => {
         const userDetails = baseUser({ workMultiplierAmount: 1 });
         await workFactory.handleRegularWork(userDetails, 1000, 1, 0);
-        expect(dynamoHandler.addUserDatabase).toHaveBeenCalledWith(awsConfigurations.clientId, 'potatoes', expect.any(Number));
-        const [, , houseShare] = dynamoHandler.addUserDatabase.mock.calls[0];
-        expect(houseShare).toBeGreaterThan(0);
+        expect(dynamoHandler.addUserDatabase).not.toHaveBeenCalled();
+        const { houseTax } = userDetails._workChainDelta;
+        expect(houseTax).toBeGreaterThan(0);
     });
 
     test('a higher catch-up bonus increases the gain for an otherwise identical user', async () => {
@@ -384,7 +388,7 @@ describe('handlePoisonPotato', () => {
     test('writes to totalLosses, not totalEarnings', async () => {
         const userDetails = baseUser();
         await workFactory.handlePoisonPotato(userDetails, 1000, 1);
-        const [, setFields] = dynamoHandler.updateUserFields.mock.calls[0];
+        const { setFields } = userDetails._workChainDelta;
         expect(setFields).toHaveProperty('totalLosses');
         expect(setFields).not.toHaveProperty('totalEarnings');
     });
@@ -398,7 +402,7 @@ describe('handlePoisonPotato', () => {
     test('persists poisonMitigation with weeklyHitCount 1 on a fresh user\'s first hit', async () => {
         const userDetails = baseUser();
         await workFactory.handlePoisonPotato(userDetails, 1000, 1);
-        const [, setFields] = dynamoHandler.updateUserFields.mock.calls[0];
+        const { setFields } = userDetails._workChainDelta;
         expect(setFields.poisonMitigation.weeklyHitCount).toBe(1);
     });
 
@@ -406,7 +410,7 @@ describe('handlePoisonPotato', () => {
         const userDetails = baseUser({ poisonMitigation: { weekTag: getCurrentWeekTag(), weeklyHitCount: 1 } });
         const result = await workFactory.handlePoisonPotato(userDetails, 1000, 1);
 
-        const [, setFields] = dynamoHandler.updateUserFields.mock.calls[0];
+        const { setFields } = userDetails._workChainDelta;
         expect(setFields.poisonMitigation.weeklyHitCount).toBe(2);
         expect(dynamoHandler.calculateWorkTimerValue).toHaveBeenCalledWith(
             userDetails,
@@ -428,7 +432,7 @@ describe('handlePoisonPotato', () => {
     test('a stale poisonMitigation from a prior week is treated as a fresh week', async () => {
         const userDetails = baseUser({ poisonMitigation: { weekTag: 'not-a-real-week', weeklyHitCount: 9 } });
         await workFactory.handlePoisonPotato(userDetails, 1000, 1);
-        const [, setFields] = dynamoHandler.updateUserFields.mock.calls[0];
+        const { setFields } = userDetails._workChainDelta;
         expect(setFields.poisonMitigation.weeklyHitCount).toBe(1);
         expect(dynamoHandler.calculateWorkTimerValue).toHaveBeenCalledWith(userDetails, Work.POISON_POTATO_TIMER_INCREASE_SECONDS, false);
     });
@@ -442,7 +446,7 @@ describe('handlePoisonPotato', () => {
             totalPoisonMilestonesReached: 0
         });
         const result = await workFactory.handlePoisonPotato(userDetails, 1000, 1);
-        const [, setFields] = dynamoHandler.updateUserFields.mock.calls[0];
+        const { setFields } = userDetails._workChainDelta;
         expect(setFields.poisonMitigation.weeklyHitCount).toBe(10);
         expect(setFields.totalPoisonMilestonesReached).toBe(1);
         expect(dynamoHandler.calculateWorkTimerValue).toHaveBeenCalledWith(
@@ -460,7 +464,7 @@ describe('handlePoisonPotato', () => {
             totalPoisonMilestonesReached: 1
         });
         await workFactory.handlePoisonPotato(userDetails, 1000, 1);
-        const [, setFields] = dynamoHandler.updateUserFields.mock.calls[0];
+        const { setFields } = userDetails._workChainDelta;
         expect(setFields.poisonMitigation.weeklyHitCount).toBe(11);
         expect(setFields).not.toHaveProperty('totalPoisonMilestonesReached');
     });
@@ -474,7 +478,7 @@ describe('handlePoisonPotato', () => {
             totalPoisonMilestones20Reached: 0
         });
         const result = await workFactory.handlePoisonPotato(userDetails, 1000, 1);
-        const [, setFields] = dynamoHandler.updateUserFields.mock.calls[0];
+        const { setFields } = userDetails._workChainDelta;
         expect(setFields.poisonMitigation.weeklyHitCount).toBe(40);
         expect(setFields.totalPoisonMilestones20Reached).toBe(1);
         expect(setFields).not.toHaveProperty('totalPoisonMilestonesReached');
@@ -577,7 +581,7 @@ describe('handlePoisonPotato', () => {
         test('writes poisonMitigation so repeated Guinea Pig hits still build weekly history', async () => {
             const userDetails = guineaPigUser();
             await workFactory.handlePoisonPotato(userDetails, 1000, 1);
-            const [, setFields] = dynamoHandler.updateUserFields.mock.calls[0];
+            const { setFields } = userDetails._workChainDelta;
             expect(setFields).toHaveProperty('poisonMitigation');
             expect(setFields.poisonMitigation.weeklyHitCount).toBe(1);
         });
@@ -620,13 +624,13 @@ describe('handlePoisonPotato', () => {
             const hit1 = await workFactory.handlePoisonPotato(userDetails, 1000, 1);
             expect(hit1.mitigationInfo.escalationMultiplier).toBeCloseTo(1);
 
-            userDetails.poisonMitigation = hit1.mitigationInfo && dynamoHandler.updateUserFields.mock.calls[0][1].poisonMitigation;
+            userDetails.poisonMitigation = hit1.mitigationInfo && userDetails._workChainDelta.setFields.poisonMitigation;
             const hit2 = await workFactory.handlePoisonPotato(userDetails, 1000, 1);
             expect(hit2.mitigationInfo.hitNumberThisWeek).toBe(2);
             expect(hit2.mitigationInfo.escalationMultiplier).toBeCloseTo(1 + Work.GUINEA_PIG_ESCALATION_PER_HIT);
             expect(hit2.potatoesGained).toBeGreaterThan(hit1.potatoesGained);
 
-            userDetails.poisonMitigation = dynamoHandler.updateUserFields.mock.calls[1][1].poisonMitigation;
+            userDetails.poisonMitigation = userDetails._workChainDelta.setFields.poisonMitigation;
             const hit3 = await workFactory.handlePoisonPotato(userDetails, 1000, 1);
             expect(hit3.mitigationInfo.hitNumberThisWeek).toBe(3);
             expect(hit3.potatoesGained).toBeGreaterThan(hit2.potatoesGained);
@@ -642,7 +646,7 @@ describe('handlePoisonPotato', () => {
             const expectedCapMultiplier = Math.pow(1 + Work.GUINEA_PIG_ESCALATION_PER_HIT, PoisonMitigation.MILESTONE_HIT_THRESHOLD - 1);
             expect(atCap.mitigationInfo.escalationMultiplier).toBeCloseTo(expectedCapMultiplier);
 
-            userDetails.poisonMitigation = dynamoHandler.updateUserFields.mock.calls[0][1].poisonMitigation;
+            userDetails.poisonMitigation = userDetails._workChainDelta.setFields.poisonMitigation;
             const pastCap = await workFactory.handlePoisonPotato(userDetails, 1000, 1);
             // One further hit past the cap must not grow the multiplier (or the payout)
             // any further.
@@ -653,7 +657,7 @@ describe('handlePoisonPotato', () => {
         test('writes to totalEarnings, not totalLosses', async () => {
             const userDetails = guineaPigUser();
             await workFactory.handlePoisonPotato(userDetails, 1000, 1);
-            const [, setFields] = dynamoHandler.updateUserFields.mock.calls[0];
+            const { setFields } = userDetails._workChainDelta;
             expect(setFields).toHaveProperty('totalEarnings');
             expect(setFields).not.toHaveProperty('totalLosses');
         });
@@ -664,7 +668,7 @@ describe('handleMetalPotato', () => {
     test('grants a permanent work-multiplier buff reflected in both the effective field and sweetPotatoBuffs', async () => {
         const userDetails = baseUser({ workMultiplierAmount: 2, sweetPotatoBuffs: { workMultiplierAmount: 0.4, passiveAmount: 0, bankCapacity: 0 } });
         await workFactory.handleMetalPotato(userDetails, 1000, 1, 0);
-        const [, setFields] = dynamoHandler.updateUserFields.mock.calls[0];
+        const { setFields } = userDetails._workChainDelta;
         expect(setFields.workMultiplierAmount).toBeCloseTo(2.6);
         expect(setFields.sweetPotatoBuffs.workMultiplierAmount).toBeCloseTo(1.0);
     });
@@ -672,7 +676,7 @@ describe('handleMetalPotato', () => {
     test('increments workScenarioCounts.metalSuccess', async () => {
         const userDetails = baseUser();
         await workFactory.handleMetalPotato(userDetails, 1000, 1, 0);
-        const [, setFields] = dynamoHandler.updateUserFields.mock.calls[0];
+        const { setFields } = userDetails._workChainDelta;
         expect(setFields.workScenarioCounts.metalSuccess).toBe(1);
     });
 
@@ -741,12 +745,13 @@ describe('handleSweetPotato', () => {
 
     test('persists the granted amount into sweetPotatoBuffs and the live stat field', async () => {
         const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0);
+        const userDetails = baseUser({ workMultiplierAmount: 1 });
         try {
-            await workFactory.handleSweetPotato(baseUser({ workMultiplierAmount: 1 }));
+            await workFactory.handleSweetPotato(userDetails);
         } finally {
             randomSpy.mockRestore();
         }
-        const [, setFields] = dynamoHandler.updateUserFields.mock.calls[0];
+        const { setFields } = userDetails._workChainDelta;
         expect(setFields.workMultiplierAmount).toBeCloseTo(1.2);
         expect(setFields.sweetPotatoBuffs.workMultiplierAmount).toBeCloseTo(0.2);
     });
@@ -930,7 +935,7 @@ describe('handleTaroTrader', () => {
         const userDetails = baseUser({ workMultiplierAmount: 2 });
         const gained = await workFactory.handleTaroTrader(userDetails, 0);
         expect(gained).toBeGreaterThan(0);
-        const [, setFields] = dynamoHandler.updateUserFields.mock.calls[0];
+        const { setFields } = userDetails._workChainDelta;
         expect(setFields).toHaveProperty('starches');
         expect(setFields).not.toHaveProperty('potatoes');
     });
@@ -953,7 +958,7 @@ describe('handleCompanionEncounter (duplicate pull)', () => {
         expect(result.isNew).toBe(false);
         expect(result.potatoesGained).toBeUndefined();
 
-        const [, setFields] = dynamoHandler.updateUserFields.mock.calls[0];
+        const { setFields } = userDetails._workChainDelta;
         expect(setFields.companions.owned).toHaveLength(2);
         expect(setFields.companions.owned[0]).toEqual({ instanceId: 'sprout-a', id: 'sprout', workCount: 5 });
         expect(setFields.companions.owned[1]).toMatchObject({ id: 'sprout', workCount: 0 });
@@ -1033,7 +1038,7 @@ describe('handleAncientPotato', () => {
         expect(result.shopUpgradedStatName).toBeNull();
         expect(result.potatoesGained).toBe(0);
 
-        const [, setFields] = dynamoHandler.updateUserFields.mock.calls[0];
+        const { setFields } = userDetails._workChainDelta;
         expect(setFields.workMultiplierAmount).toBe(SHOP_MAX.workMulti + 10);
         // Real regrade progress DOES advance now — the whole point of this restore — and
         // failStack resets to 0, same as a genuine paid success.
@@ -1073,7 +1078,7 @@ describe('handleAncientPotato', () => {
         expect(result.shopUpgradedStatName).toBeNull();
         expect(result.potatoesGained).toBeGreaterThan(0);
 
-        const [, setFields] = dynamoHandler.updateUserFields.mock.calls[0];
+        const { setFields } = userDetails._workChainDelta;
         // The player's real regrade progress must be completely untouched by this roll —
         // same guarantee the regrade branch itself gives, this just took the other fork.
         expect(setFields.regrades.workMulti).toEqual({ regradeAmount: 0, failStack: 0 });
@@ -1120,7 +1125,7 @@ describe('handleAncientPotato', () => {
         expect(result.shopUpgradeIncrease).toBeGreaterThan(0);
         expect(result.potatoesGained).toBe(0);
 
-        const [, setFields] = dynamoHandler.updateUserFields.mock.calls[0];
+        const { setFields } = userDetails._workChainDelta;
         // No regrade write at all — this branch never touches userDetails.regrades'
         // contents even though the (unchanged) regrades object is still part of the
         // write payload.
@@ -1216,16 +1221,18 @@ describe('handleAncientPotato', () => {
         expect(Work.MAX_ANCIENT_POTATO).toBeLessThan(Work.MAX_GOLDEN_POTATO);
     });
 
+    // 2026-10-03 /work chain write-count rewrite — the guild write is no longer fired
+    // immediately inside the handler; it's carried as userDetails._workChainDelta.
+    // guildRaidTimerGuildId instead, for the chain loop (work.js) to apply once, via its
+    // own dynamoHandler.updateGuildDatabase call, after the whole chain resolves.
     test('resets the guild raid cooldown to ready-now when the roller is in a guild', async () => {
         const userDetails = fullyMaxedUser({ guildId: 'g1' });
-        const before = Date.now();
 
         const result = await workFactory.handleAncientPotato(userDetails, 1000, 1, 0);
 
         expect(result.guildRaidReady).toBe(true);
-        expect(dynamoHandler.updateGuildDatabase).toHaveBeenCalledWith('g1', 'raidTimer', expect.any(Number));
-        const [, , newRaidTimer] = dynamoHandler.updateGuildDatabase.mock.calls[0];
-        expect(newRaidTimer).toBeGreaterThanOrEqual(before);
+        expect(dynamoHandler.updateGuildDatabase).not.toHaveBeenCalled();
+        expect(userDetails._workChainDelta.guildRaidTimerGuildId).toBe('g1');
     });
 
     test('does not touch any guild when the roller has no guild', async () => {
@@ -1242,7 +1249,7 @@ describe('handleAncientPotato', () => {
 
         await workFactory.handleAncientPotato(userDetails, 1000, 1, 0);
 
-        const [, setFields] = dynamoHandler.updateUserFields.mock.calls[0];
+        const { setFields } = userDetails._workChainDelta;
         expect(setFields.workScenarioCounts.ancient).toBe(5);
     });
 });
@@ -1272,7 +1279,7 @@ describe('handleMimicPotato', () => {
 
         expect(lost).toBeLessThan(0);
         expect(lost).toBe(-Math.round(1000000 * Work.MIMIC_POTATO_BANK_PERCENT));
-        const [, setFields] = dynamoHandler.updateUserFields.mock.calls[0];
+        const { setFields } = userDetails._workChainDelta;
         expect(setFields.bankStored).toBe(1000000 + lost);
         expect(setFields).not.toHaveProperty('potatoes');
     });
@@ -1300,7 +1307,7 @@ describe('handleMimicPotato', () => {
 
         const { potatoesLost: lost } = await workFactory.handleMimicPotato(userDetails);
 
-        const [, setFields] = dynamoHandler.updateUserFields.mock.calls[0];
+        const { setFields } = userDetails._workChainDelta;
         expect(setFields.totalLosses).toBe(lost);
         expect(setFields.workScenarioCounts.mimic).toBe(3);
     });
@@ -1314,10 +1321,16 @@ describe('handleMimicPotato', () => {
     // Grows the shared mimic_hoard by exactly what was actually taken from this player's
     // bank (the mitigated loss, not the raw pre-mitigation roll) — see
     // MimicSlaying/dynamoHandler.addStatFields.
+    // 2026-10-03 /work chain write-count rewrite — the shared hoard's own addStatFields
+    // write is no longer fired immediately inside the handler; it's carried as
+    // userDetails._workChainDelta.mimicHoardDelta instead, for the chain loop (work.js) to
+    // apply once, via its own dynamoHandler.addStatFields call, after the whole chain
+    // resolves (accumulated across every Mimic link in that chain, if more than one).
     test('a loss grows the shared mimic_hoard by the exact amount taken', async () => {
         const userDetails = baseUser({ bankStored: 1000000 });
         const { potatoesLost: lost } = await workFactory.handleMimicPotato(userDetails);
-        expect(dynamoHandler.addStatFields).toHaveBeenCalledWith('mimic_hoard', { hoardPotatoes: Math.abs(lost) });
+        expect(dynamoHandler.addStatFields).not.toHaveBeenCalled();
+        expect(userDetails._workChainDelta.mimicHoardDelta).toBe(Math.abs(lost));
     });
 
     // A player with nothing banked loses nothing — no point writing a 0 ADD to the hoard
@@ -1350,7 +1363,7 @@ describe('handleMimicPotato — Mimic Slaying kill branch', () => {
 
         expect(killedMimic).toBe(true);
         expect(potatoesLost).toBe(0);
-        const [, setFields] = dynamoHandler.updateUserFields.mock.calls[0];
+        const { setFields } = userDetails._workChainDelta;
         expect(setFields).not.toHaveProperty('bankStored');
         expect(setFields).not.toHaveProperty('totalLosses');
     });
@@ -1364,10 +1377,11 @@ describe('handleMimicPotato — Mimic Slaying kill branch', () => {
 
         expect(result.hoardPayout).toBe(expectedPayout);
         expect(result.hoardRemaining).toBe(100000 - expectedPayout);
-        const [, setFields] = dynamoHandler.updateUserFields.mock.calls[0];
+        const { setFields } = userDetails._workChainDelta;
         expect(setFields.potatoes).toBe(5000 + expectedPayout);
         expect(setFields.totalEarnings).toBe(5000 + expectedPayout);
-        expect(dynamoHandler.addStatFields).toHaveBeenCalledWith('mimic_hoard', { hoardPotatoes: -expectedPayout });
+        expect(dynamoHandler.addStatFields).not.toHaveBeenCalled();
+        expect(userDetails._workChainDelta.mimicHoardDelta).toBe(-expectedPayout);
     });
 
     test('a kill against an empty (or nonexistent) hoard pays out 0 and skips the addStatFields ADD entirely', async () => {
@@ -1386,7 +1400,7 @@ describe('handleMimicPotato — Mimic Slaying kill branch', () => {
 
         await workFactory.handleMimicPotato(userDetails);
 
-        const [, setFields] = dynamoHandler.updateUserFields.mock.calls[0];
+        const { setFields } = userDetails._workChainDelta;
         expect(setFields.workScenarioCounts.mimic).toBe(3);
         expect(dynamoHandler.calculateWorkTimerValue).toHaveBeenCalledWith(userDetails, Work.WORK_TIMER_SECONDS, false);
     });
@@ -1403,7 +1417,7 @@ describe('handleMimicPotato — Mimic Slaying kill branch', () => {
 
         const result = await workFactory.handleMimicPotato(userDetails);
 
-        const [, setFields] = dynamoHandler.updateUserFields.mock.calls[0];
+        const { setFields } = userDetails._workChainDelta;
         expect(setFields.mimicMitigation.weeklyHitCount).toBe(10);
         expect(setFields.totalMimicMilestonesReached).toBe(1);
         expect(result.mitigationInfo.milestoneJustReached).toBe(true);
@@ -1417,7 +1431,7 @@ describe('handleMimicPotato — Mimic Slaying kill branch', () => {
 
         await workFactory.handleMimicPotato(userDetails);
 
-        const [, setFields] = dynamoHandler.updateUserFields.mock.calls[0];
+        const { setFields } = userDetails._workChainDelta;
         expect(setFields.workScenarioCounts.mimicKilled).toBe(1);
     });
 });
@@ -1443,7 +1457,7 @@ describe('handleMimicPotato weekly mitigation', () => {
         expect(mitigationInfo.reduction).toBe(0);
         expect(mitigationInfo.hitNumberThisWeek).toBe(1);
         expect(potatoesLost).toBe(-Math.round(1000000 * Work.MIMIC_POTATO_BANK_PERCENT));
-        const [, setFields] = dynamoHandler.updateUserFields.mock.calls[0];
+        const { setFields } = userDetails._workChainDelta;
         expect(setFields.mimicMitigation).toEqual({ weekTag: expect.any(String), weeklyHitCount: 1 });
     });
 
@@ -1476,7 +1490,7 @@ describe('handleMimicPotato weekly mitigation', () => {
         expect(mitigationInfo.reduction).toBe(MimicMitigation.MAX_REDUCTION);
         expect(mitigationInfo.milestoneJustReached).toBe(true);
         expect(potatoesLost).toBe(-Math.floor(Work.MAX_MIMIC_POTATO_LOSS * (1 - MimicMitigation.MAX_REDUCTION)));
-        const [, setFields] = dynamoHandler.updateUserFields.mock.calls[0];
+        const { setFields } = userDetails._workChainDelta;
         expect(setFields.totalMimicMilestonesReached).toBe(1);
     });
 
@@ -1489,7 +1503,7 @@ describe('handleMimicPotato weekly mitigation', () => {
 
         await workFactory.handleMimicPotato(userDetails);
 
-        const [, setFields] = dynamoHandler.updateUserFields.mock.calls[0];
+        const { setFields } = userDetails._workChainDelta;
         expect(setFields.mimicMitigation.weeklyHitCount).toBe(11);
         expect(setFields).not.toHaveProperty('totalMimicMilestonesReached');
     });
@@ -1507,7 +1521,7 @@ describe('handleMimicPotato weekly mitigation', () => {
         const { mitigationInfo } = await workFactory.handleMimicPotato(userDetails);
 
         expect(mitigationInfo.milestone20JustReached).toBe(true);
-        const [, setFields] = dynamoHandler.updateUserFields.mock.calls[0];
+        const { setFields } = userDetails._workChainDelta;
         expect(setFields.totalMimicMilestones20Reached).toBe(1);
         expect(setFields).not.toHaveProperty('totalMimicMilestonesReached');
     });
@@ -1548,7 +1562,7 @@ describe('handleGoldenYam', () => {
         // Golden Yam's minimum multiplier (8x) exceeds Taro's maximum (1.5x), so even
         // the worst-case Golden Yam roll beats the best-case Taro roll for the same user.
         expect(goldenYamGained).toBeGreaterThan(taroGained);
-        const [, setFields] = dynamoHandler.updateUserFields.mock.calls[0];
+        const { setFields } = goldenYamUser._workChainDelta;
         expect(setFields).toHaveProperty('starches');
         expect(setFields).not.toHaveProperty('potatoes');
     });
@@ -1558,7 +1572,7 @@ describe('handleGoldenYam', () => {
 
         await workFactory.handleGoldenYam(userDetails, 0);
 
-        const [, setFields] = dynamoHandler.updateUserFields.mock.calls[0];
+        const { setFields } = userDetails._workChainDelta;
         expect(setFields.workScenarioCounts.goldenYam).toBe(2);
     });
 });

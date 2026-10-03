@@ -9,6 +9,12 @@ function fakeInteraction() {
     return {
         deferReply: jest.fn().mockResolvedValue(),
         editReply: jest.fn().mockResolvedValue(),
+        // followUp is reachable once a real (non-blocked) /work call resolves — e.g. the
+        // "allows /work again" and "never blocks" cases below actually run a real chain
+        // whose workCount can now cross a first-work-style achievement threshold (see
+        // work.js's own 2026-10-03 comment on mirroring workCount onto userDetails for the
+        // once-per-chain achievement check) and follow up with an unlock embed.
+        followUp: jest.fn().mockResolvedValue(),
         options: { get: () => undefined },
         user: { id: 'user-1', username: 'User', displayName: 'User' },
     };

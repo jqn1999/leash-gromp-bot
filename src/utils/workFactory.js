@@ -265,6 +265,25 @@ function computeMimicMitigation(mimicMitigation, now = new Date()) {
     };
 }
 
+// cachedSkipSources (new, optional, 2026-10-03 /work chain write-count rewrite) — every
+// scenario handler below now accepts this trailing param and threads it straight through
+// to dynamoHandler.calculateWorkTimerValue instead of letting that function fetch its own
+// fresh skip-sources every single call. Reproduces the EXACT original call shape
+// (calculateWorkTimerValue's own 2-arg or 3-arg form) whenever cachedSkipSources is omitted
+// — which every pre-existing caller (admin.js's /admin-work, festivalFactory.js's voucher
+// redemption, every direct unit test of a handler) still does — so none of them need to
+// change at all. Only work.js's own chain loop ever actually passes a real value here. See
+// dynamoHandler.calculateWorkTimerValue's own comment on cachedSources for the full
+// staleness tradeoff this exists to support.
+function resolveWorkTimer(userDetails, cooldownTime, skippable, cachedSkipSources) {
+    if (cachedSkipSources) {
+        return dynamoHandler.calculateWorkTimerValue(userDetails, cooldownTime, skippable, cachedSkipSources);
+    }
+    return skippable === false
+        ? dynamoHandler.calculateWorkTimerValue(userDetails, cooldownTime, false)
+        : dynamoHandler.calculateWorkTimerValue(userDetails, cooldownTime);
+}
+
 class WorkFactory {
     // 2026-08-24 to 2026-08-29: this handler briefly carried an isBoostedHit dampener
     // (metalPotatoRewards.boostedHitRewardScale, 25% reward + no work-multiplier grant on
@@ -287,8 +306,7 @@ class WorkFactory {
     // Quest/Achievement progress — passing trackProgress=false skips exactly those three
     // writes while still applying the real potato/stat payout, so a normal /work call
     // (which never passes this option) is completely unaffected.
-    async handleMetalPotato(userDetails, workGainAmount, multiplier, catchUpBonus = 0, { trackProgress = true } = {}) {
-        const userId = userDetails.userId;
+    async handleMetalPotato(userDetails, workGainAmount, multiplier, catchUpBonus = 0, { trackProgress = true, cachedSkipSources = null } = {}) {
         let userPotatoes = userDetails.potatoes;
         let userTotalEarnings = userDetails.totalEarnings;
         let userMultiplier = userDetails.workMultiplierAmount;
@@ -308,7 +326,7 @@ class WorkFactory {
 
         const workMultiplierGrant = metalPotatoRewards.workMultiplierReward;
 
-        const potatoesGained = await calculateGainAmount(workGainAmount * 20, Work.MAX_METAL_POTATO, multiplier, effectiveMultiplier, userDetails);
+        const { gainAmount: potatoesGained, houseTax } = await calculateGainAmount(workGainAmount * 20, Work.MAX_METAL_POTATO, multiplier, effectiveMultiplier, userDetails, true);
         userPotatoes += potatoesGained
         userTotalEarnings += potatoesGained
 
@@ -341,11 +359,23 @@ class WorkFactory {
             let workScenarioCounts = userDetails.workScenarioCounts;
             workScenarioCounts.metalSuccess += 1;
             setFields.workScenarioCounts = workScenarioCounts;
-            setFields.workTimer = await dynamoHandler.calculateWorkTimerValue(userDetails, Work.WORK_TIMER_SECONDS);
+            setFields.workTimer = await resolveWorkTimer(userDetails, Work.WORK_TIMER_SECONDS, true, cachedSkipSources);
             addFields.workCount = 1;
         }
 
-        await dynamoHandler.updateUserFields(userId, setFields, addFields);
+        // _workChainDelta (new, 2026-10-03 /work chain write-count rewrite) — replaces this
+        // handler's own former `await dynamoHandler.updateUserFields(userId, setFields,
+        // addFields)` call. Stamped onto userDetails rather than folded into this function's
+        // own return value, mirroring this file's/work.js's existing transient-flag
+        // convention (_cooldownSkippedByCompanion, _cooldownSkipChance, _companionXpGained)
+        // instead of reshaping every handler's return type — admin.js, festivalFactory.js's
+        // voucher redemption, and every direct unit test of this handler all still read
+        // potatoesGained/statGrant off the return value exactly as before. The caller
+        // (work.js's performWork, or this scenario's own `action` for a single, non-chained
+        // resolution) is the one that actually persists setFields/addFields/houseTax now,
+        // either immediately (one real resolution) or accumulated across an entire
+        // cooldown-skip chain into ONE write.
+        userDetails._workChainDelta = { setFields, addFields, houseTax };
 
         // statGrant (2026-09-18, direct instruction) — see handleSweetPotato's own comment;
         // Metal Potato grants all three permanent stats at once, so this is always length 3.
@@ -360,8 +390,7 @@ class WorkFactory {
     }
 
     // trackProgress — see handleMetalPotato's own comment on this option immediately above.
-    async handleSweetPotato(userDetails, { trackProgress = true } = {}) {
-        const userId = userDetails.userId;
+    async handleSweetPotato(userDetails, { trackProgress = true, cachedSkipSources = null } = {}) {
         let userMultiplier = userDetails.workMultiplierAmount;
         let userPassiveAmount = userDetails.passiveAmount;
         let userBankCapacity = userDetails.bankCapacity;
@@ -401,11 +430,12 @@ class WorkFactory {
             let workScenarioCounts = userDetails.workScenarioCounts;
             workScenarioCounts.sweet += 1;
             setFields.workScenarioCounts = workScenarioCounts;
-            setFields.workTimer = await dynamoHandler.calculateWorkTimerValue(userDetails, Work.WORK_TIMER_SECONDS);
+            setFields.workTimer = await resolveWorkTimer(userDetails, Work.WORK_TIMER_SECONDS, true, cachedSkipSources);
             addFields.workCount = 1;
         }
 
-        await dynamoHandler.updateUserFields(userId, setFields, addFields);
+        // _workChainDelta — see handleMetalPotato's own comment on this convention.
+        userDetails._workChainDelta = { setFields, addFields };
 
         // statGrant (2026-09-18, direct instruction — "make sweet and metal show the numbers
         // on the bot too", matching the website's own gromp-economy port of the same fix)
@@ -427,8 +457,7 @@ class WorkFactory {
     // no longer takes them. forcedCompanionId lets /admin-work skip the roll and test a
     // specific companion directly — every real /work call leaves it null/undefined,
     // which falls through to the normal roll.
-    async handleCompanionEncounter(userDetails, forcedCompanionId = null) {
-        const userId = userDetails.userId;
+    async handleCompanionEncounter(userDetails, forcedCompanionId = null, cachedSkipSources = null) {
         const companion = forcedCompanionId ? companionFactory.getCompanionById(forcedCompanionId) : companionFactory.rollCompanion(userDetails);
         const { isNew, companions } = companionFactory.applyCompanionAward(userDetails, companion);
 
@@ -440,13 +469,13 @@ class WorkFactory {
         // runs against a userDetails object that skipped healing.
         workScenarioCounts.companion = (workScenarioCounts.companion || 0) + 1;
 
-        const workTimer = await dynamoHandler.calculateWorkTimerValue(userDetails, Work.WORK_TIMER_SECONDS);
+        const workTimer = await resolveWorkTimer(userDetails, Work.WORK_TIMER_SECONDS, true, cachedSkipSources);
 
-        await dynamoHandler.updateUserFields(userId, {
-            companions: companions,
-            workScenarioCounts: workScenarioCounts,
-            workTimer: workTimer
-        }, { workCount: 1 });
+        // _workChainDelta — see handleMetalPotato's own comment on this convention.
+        userDetails._workChainDelta = {
+            setFields: { companions, workScenarioCounts, workTimer },
+            addFields: { workCount: 1 },
+        };
 
         // Since 2026-08-25's instance rework, a duplicate pull is just a second
         // independent instance starting at level 1/workCount 0 — no bonus workCount to an
@@ -455,8 +484,7 @@ class WorkFactory {
         return { isNew, companion };
     }
 
-    async handleTaroTrader(userDetails, catchUpBonus = 0) {
-        const userId = userDetails.userId;
+    async handleTaroTrader(userDetails, catchUpBonus = 0, cachedSkipSources = null) {
         const userMultiplier = userDetails.workMultiplierAmount;
         let userStarches = userDetails.starches;
         let guildMultiplier = await getGuildWorkMulti(userDetails, userMultiplier);
@@ -474,13 +502,13 @@ class WorkFactory {
         let workScenarioCounts = userDetails.workScenarioCounts;
         workScenarioCounts.taro += 1;
 
-        const workTimer = await dynamoHandler.calculateWorkTimerValue(userDetails, Work.WORK_TIMER_SECONDS);
+        const workTimer = await resolveWorkTimer(userDetails, Work.WORK_TIMER_SECONDS, true, cachedSkipSources);
 
-        await dynamoHandler.updateUserFields(userId, {
-            starches: userStarches,
-            workScenarioCounts: workScenarioCounts,
-            workTimer: workTimer
-        }, { workCount: 1 });
+        // _workChainDelta — see handleMetalPotato's own comment on this convention.
+        userDetails._workChainDelta = {
+            setFields: { starches: userStarches, workScenarioCounts, workTimer },
+            addFields: { workCount: 1 },
+        };
 
         return starchAmount;
     }
@@ -490,8 +518,7 @@ class WorkFactory {
     // starch haul is worth the same as Golden Potato's own 380k-570k range at a 13,000-
     // potato-per-starch reference price — see constants.js's own comment on
     // GOLDEN_YAM_MULTIPLIER_MIN/MAX for the derivation.
-    async handleGoldenYam(userDetails, catchUpBonus = 0) {
-        const userId = userDetails.userId;
+    async handleGoldenYam(userDetails, catchUpBonus = 0, cachedSkipSources = null) {
         const userMultiplier = userDetails.workMultiplierAmount;
         let userStarches = userDetails.starches;
         let guildMultiplier = await getGuildWorkMulti(userDetails, userMultiplier);
@@ -509,13 +536,13 @@ class WorkFactory {
         let workScenarioCounts = userDetails.workScenarioCounts;
         workScenarioCounts.goldenYam += 1;
 
-        const workTimer = await dynamoHandler.calculateWorkTimerValue(userDetails, Work.WORK_TIMER_SECONDS);
+        const workTimer = await resolveWorkTimer(userDetails, Work.WORK_TIMER_SECONDS, true, cachedSkipSources);
 
-        await dynamoHandler.updateUserFields(userId, {
-            starches: userStarches,
-            workScenarioCounts: workScenarioCounts,
-            workTimer: workTimer
-        }, { workCount: 1 });
+        // _workChainDelta — see handleMetalPotato's own comment on this convention.
+        userDetails._workChainDelta = {
+            setFields: { starches: userStarches, workScenarioCounts, workTimer },
+            addFields: { workCount: 1 },
+        };
 
         return starchAmount;
     }
@@ -533,16 +560,20 @@ class WorkFactory {
     // own reasoning. One of the three regrade tracks is picked at random among whichever
     // aren't already at REGRADE_CAPS. A player already fully regraded on all three has
     // nothing left to grant, so they get a big (but sub-Golden) potato payout instead.
-    async handleAncientPotato(userDetails, workGainAmount, multiplier, catchUpBonus = 0) {
-        const userId = userDetails.userId;
+    async handleAncientPotato(userDetails, workGainAmount, multiplier, catchUpBonus = 0, cachedSkipSources = null) {
         let userPotatoes = userDetails.potatoes;
         let userTotalEarnings = userDetails.totalEarnings;
         const regrades = userDetails.regrades;
         let sweetPotatoBuffs = userDetails.sweetPotatoBuffs;
 
-        if (userDetails.guildId) {
-            await dynamoHandler.updateGuildDatabase(userDetails.guildId, 'raidTimer', Date.now());
-        }
+        // guildRaidTimerGuildId (new, 2026-10-03 /work chain write-count rewrite) — this
+        // used to fire its own dynamoHandler.updateGuildDatabase write immediately, right
+        // here. Deferred into _workChainDelta like every other write below instead, so a
+        // chain with more than one Ancient Potato link (rare, but possible up to the chain
+        // cap) resets the guild's raid cooldown via ONE call at the end of the chain rather
+        // than one per occurrence — resetting raidTimer to "now" twice is no different from
+        // doing it once, so this only ever needs to carry the most recent guildId, not a list.
+        const guildRaidTimerGuildId = userDetails.guildId || null;
 
         // regrade.js's hasRequiredBaseAmount requires a track's BASE (shop-purchased)
         // value to already equal that shop's max before /regrade will even attempt that
@@ -562,6 +593,7 @@ class WorkFactory {
         );
 
         let potatoesGained = 0;
+        let houseTax = 0;
         let regradedStatName = null;
         let regradeIncrease = 0;
         let shopUpgradedStatName = null;
@@ -630,7 +662,9 @@ class WorkFactory {
             // bucket every other term here already feeds.
             const potionMultiplier = getPotionWorkMulti(userDetails, userDetails.workMultiplierAmount);
             const effectiveMultiplier = applyCatchUp(userDetails.workMultiplierAmount + guildMultiplier + mercenaryMultiplier + companionMultiplier + rebirthMultiplier + worldBuffMultiplier + potionMultiplier, catchUpBonus);
-            potatoesGained = await calculateGainAmount(workGainAmount * 60, Work.MAX_ANCIENT_POTATO, multiplier, effectiveMultiplier, userDetails);
+            const gainResult = await calculateGainAmount(workGainAmount * 60, Work.MAX_ANCIENT_POTATO, multiplier, effectiveMultiplier, userDetails, true);
+            potatoesGained = gainResult.gainAmount;
+            houseTax = gainResult.houseTax;
             userPotatoes += potatoesGained;
             userTotalEarnings += potatoesGained;
         }
@@ -638,17 +672,27 @@ class WorkFactory {
         let workScenarioCounts = userDetails.workScenarioCounts;
         workScenarioCounts.ancient += 1;
 
-        const workTimer = await dynamoHandler.calculateWorkTimerValue(userDetails, Work.WORK_TIMER_SECONDS);
+        const workTimer = await resolveWorkTimer(userDetails, Work.WORK_TIMER_SECONDS, true, cachedSkipSources);
 
-        await dynamoHandler.updateUserFields(userId, {
-            potatoes: userPotatoes,
-            totalEarnings: userTotalEarnings,
-            regrades: regrades,
-            sweetPotatoBuffs: sweetPotatoBuffs,
-            workScenarioCounts: workScenarioCounts,
-            workTimer: workTimer,
-            ...updateFields
-        }, { workCount: 1 });
+        // _workChainDelta — see handleMetalPotato's own comment on this convention.
+        // guildRaidTimerGuildId is carried alongside setFields/addFields/houseTax rather
+        // than folded into setFields itself — it's a write against the GUILD's own record
+        // (dynamoHandler.updateGuildDatabase), not this player's, so the chain loop has to
+        // apply it through a different call entirely.
+        userDetails._workChainDelta = {
+            setFields: {
+                potatoes: userPotatoes,
+                totalEarnings: userTotalEarnings,
+                regrades: regrades,
+                sweetPotatoBuffs: sweetPotatoBuffs,
+                workScenarioCounts: workScenarioCounts,
+                workTimer: workTimer,
+                ...updateFields
+            },
+            addFields: { workCount: 1 },
+            houseTax,
+            guildRaidTimerGuildId,
+        };
 
         return {
             potatoesGained,
@@ -660,7 +704,7 @@ class WorkFactory {
         };
     }
 
-    async handlePoisonPotato(userDetails, workGainAmount, multiplier) {
+    async handlePoisonPotato(userDetails, workGainAmount, multiplier, cachedSkipSources = null) {
         // Note: catch-up intentionally does not apply here — Poison Potato is a loss,
         // and boosting a struggling player's penalty would undermine the whole point.
         // Raikon's World Boss buff is deliberately excluded for the same reason — it's a
@@ -670,7 +714,6 @@ class WorkFactory {
         // Trading Post's Steadfast Draught (systems/trading-post.md) is excluded for the
         // identical reason — a paid-for "bigger gains" potion should never silently turn
         // into a bigger loss here either.
-        const userId = userDetails.userId;
         let userPotatoes = userDetails.potatoes;
         let userMultiplier = userDetails.workMultiplierAmount;
         let guildMultiplier = await getGuildWorkMulti(userDetails, userMultiplier);
@@ -700,7 +743,7 @@ class WorkFactory {
         // its `reduction` is deliberately NOT applied to Guinea Pig's own gain below (see
         // that branch's own comment for why).
         const { reduction, nextPoisonMitigation, milestoneJustReached, milestone20JustReached } = computePoisonMitigation(userDetails.poisonMitigation);
-        const rawLoss = await calculateGainAmount(workGainAmount * 10, Work.MAX_POISON_POTATO, multiplier, effectiveMultiplier);
+        const { gainAmount: rawLoss, houseTax } = await calculateGainAmount(workGainAmount * 10, Work.MAX_POISON_POTATO, multiplier, effectiveMultiplier, undefined, true);
         let lockoutSeconds = Math.floor(Work.POISON_POTATO_TIMER_INCREASE_SECONDS * (1 - reduction));
 
         // Immune to Venom's own benefit (2026-09-27, direct instruction — the first
@@ -745,7 +788,7 @@ class WorkFactory {
             // could never tell it apart from an ordinary /work resolution; explicitly
             // opting out here stops it from ever rolling a skip/auto-chaining, same as
             // the non-immune branch below already got structurally for free.
-            workTimer = await dynamoHandler.calculateWorkTimerValue(userDetails, Work.WORK_TIMER_SECONDS, false);
+            workTimer = await resolveWorkTimer(userDetails, Work.WORK_TIMER_SECONDS, false, cachedSkipSources);
             updateFields = { potatoes: userPotatoes, totalEarnings: userTotalEarnings, poisonMitigation: nextPoisonMitigation };
         } else {
             const mitigatedLoss = Math.floor(rawLoss * (1 - reduction));
@@ -757,7 +800,7 @@ class WorkFactory {
             // calculateWorkTimerValue's own comment on why that coincidence, while never
             // currently possible given today's discrete mitigation tiers, isn't something
             // worth depending on for correctness).
-            workTimer = await dynamoHandler.calculateWorkTimerValue(userDetails, lockoutSeconds, false);
+            workTimer = await resolveWorkTimer(userDetails, lockoutSeconds, false, cachedSkipSources);
             updateFields = { potatoes: userPotatoes, totalLosses: userTotalLosses, poisonMitigation: nextPoisonMitigation };
         }
 
@@ -775,11 +818,12 @@ class WorkFactory {
         let workScenarioCounts = userDetails.workScenarioCounts;
         workScenarioCounts.poison += 1;
 
-        await dynamoHandler.updateUserFields(userId, {
-            ...updateFields,
-            workScenarioCounts: workScenarioCounts,
-            workTimer: workTimer
-        }, { workCount: 1 });
+        // _workChainDelta — see handleMetalPotato's own comment on this convention.
+        userDetails._workChainDelta = {
+            setFields: { ...updateFields, workScenarioCounts: workScenarioCounts, workTimer: workTimer },
+            addFields: { workCount: 1 },
+            houseTax,
+        };
 
         return { potatoesGained, immune, mitigationInfo };
     }
@@ -795,8 +839,20 @@ class WorkFactory {
     // the mitigation don't fight over ordering: MAX_MIMIC_POTATO_LOSS is "the worst a
     // single hit can be," mitigation then softens that same worst case further the more
     // times it's landed on this player this week.
-    async handleMimicPotato(userDetails) {
-        const userId = userDetails.userId;
+    // hoardAdjustment (new, optional, default 0, 2026-10-03 /work chain write-count
+    // rewrite) — the shared mimic_hoard's own addStatFields write is deferred into
+    // _workChainDelta.mimicHoardDelta now (see below), accumulated across an entire
+    // cooldown-skip chain into ONE write at the end instead of one per Mimic link. That
+    // creates a real (if rare) gap on its own: if the SAME chain lands Mimic more than
+    // once, a second kill in that chain would otherwise read the hoard's pre-chain DB
+    // value all over again via getStatDatabase below — not accounting for the first
+    // kill's own (not-yet-persisted) withdrawal — and could double-pay off a balance that
+    // was never really there twice over. hoardAdjustment is work.js's own running total of
+    // this chain's not-yet-written hoard changes so far, fed back in here so this call's
+    // own read reflects it (currentHoard below), closing that gap — every pre-existing
+    // caller (every direct unit test of this handler, and link 1 of any real chain) omits
+    // it, defaulting to 0 — a true no-op.
+    async handleMimicPotato(userDetails, cachedSkipSources = null, hoardAdjustment = 0) {
         let userBankStored = userDetails.bankStored;
         let userTotalLosses = userDetails.totalLosses;
 
@@ -813,7 +869,7 @@ class WorkFactory {
         // elevate the way Poison does) on BOTH branches below (a kill has no lockout of its
         // own either), so without this it could still roll a skip and auto-chain into
         // another /work call.
-        const workTimer = await dynamoHandler.calculateWorkTimerValue(userDetails, Work.WORK_TIMER_SECONDS, false);
+        const workTimer = await resolveWorkTimer(userDetails, Work.WORK_TIMER_SECONDS, false, cachedSkipSources);
 
         // Surfaced on the embed (see embedFactory.createMimicPotatoEmbed) so the reduction
         // is actually visible to the player, not just felt indirectly.
@@ -852,7 +908,10 @@ class WorkFactory {
             workScenarioCounts.mimicKilled += 1;
 
             const hoard = await dynamoHandler.getStatDatabase('mimic_hoard') || { hoardPotatoes: 0 };
-            const currentHoard = hoard.hoardPotatoes || 0;
+            // + hoardAdjustment — see this function's own top comment on why a prior kill
+            // THIS SAME CHAIN has to be reflected here even though it hasn't actually been
+            // written to the DB yet.
+            const currentHoard = (hoard.hoardPotatoes || 0) + hoardAdjustment;
             const hoardPayout = Math.floor(currentHoard * MimicSlaying.HOARD_PAYOUT_PERCENT);
             const hoardRemaining = currentHoard - hoardPayout;
 
@@ -863,14 +922,18 @@ class WorkFactory {
             updateFields.potatoes = userPotatoes;
             updateFields.totalEarnings = userTotalEarnings;
 
-            // Skip the no-op ADD entirely on a freshly-emptied (or never-yet-fed) hoard —
-            // same "no point writing a 0 ADD" precedent the loss branch below already
-            // follows.
-            if (hoardPayout > 0) {
-                await dynamoHandler.addStatFields('mimic_hoard', { hoardPotatoes: -hoardPayout });
-            }
-
-            await dynamoHandler.updateUserFields(userId, updateFields, { workCount: 1 });
+            // _workChainDelta — see handleMetalPotato's own comment on this convention.
+            // mimicHoardDelta is carried alongside setFields/addFields rather than folded
+            // into setFields itself — it's a write against the SHARED mimic_hoard stat
+            // record (dynamoHandler.addStatFields), not this player's own record, so the
+            // chain loop has to apply it through a different call entirely. Skipped (0,
+            // the same "no point writing a 0 ADD" precedent the loss branch below already
+            // follows) on a freshly-emptied/never-yet-fed hoard.
+            userDetails._workChainDelta = {
+                setFields: updateFields,
+                addFields: { workCount: 1 },
+                mimicHoardDelta: hoardPayout > 0 ? -hoardPayout : 0,
+            };
 
             return { potatoesLost: 0, mitigationInfo, killedMimic: true, hoardPayout, hoardRemaining };
         }
@@ -880,21 +943,21 @@ class WorkFactory {
         updateFields.bankStored = userBankStored;
         updateFields.totalLosses = userTotalLosses;
 
+        // _workChainDelta — see handleMetalPotato's own comment on this convention.
         // Grows the shared hoard by exactly what THIS player actually lost (the mitigated
         // loss really taken from their bank, not the raw pre-mitigation roll) — a player
         // with nothing banked loses nothing (see this function's own long-standing comment
-        // above), so there's no point writing a 0 ADD for them either.
-        if (potatoesLost !== 0) {
-            await dynamoHandler.addStatFields('mimic_hoard', { hoardPotatoes: Math.abs(potatoesLost) });
-        }
-
-        await dynamoHandler.updateUserFields(userId, updateFields, { workCount: 1 });
+        // above), so there's no point including a 0 ADD for them either.
+        userDetails._workChainDelta = {
+            setFields: updateFields,
+            addFields: { workCount: 1 },
+            mimicHoardDelta: potatoesLost !== 0 ? Math.abs(potatoesLost) : 0,
+        };
 
         return { potatoesLost, mitigationInfo, killedMimic: false };
     }
 
-    async handleGoldenPotato(userDetails, workGainAmount, multiplier, catchUpBonus = 0) {
-        const userId = userDetails.userId;
+    async handleGoldenPotato(userDetails, workGainAmount, multiplier, catchUpBonus = 0, cachedSkipSources = null) {
         let userPotatoes = userDetails.potatoes;
         let userTotalEarnings = userDetails.totalEarnings;
         let userMultiplier = userDetails.workMultiplierAmount;
@@ -916,21 +979,26 @@ class WorkFactory {
         // server-wide) can no longer touch Golden Potato's payout at all; only the luck roll
         // and effectiveMultiplier vary it now, same as before, just without the server-wealth
         // term in the mix.
-        const potatoesGained = await calculateGainAmount(Work.MAX_GOLDEN_POTATO, Work.MAX_GOLDEN_POTATO, multiplier, effectiveMultiplier, userDetails);
+        const { gainAmount: potatoesGained, houseTax } = await calculateGainAmount(Work.MAX_GOLDEN_POTATO, Work.MAX_GOLDEN_POTATO, multiplier, effectiveMultiplier, userDetails, true);
         userPotatoes += potatoesGained
         userTotalEarnings += potatoesGained
 
         let workScenarioCounts = userDetails.workScenarioCounts;
         workScenarioCounts.golden += 1;
 
-        const workTimer = await dynamoHandler.calculateWorkTimerValue(userDetails, Work.WORK_TIMER_SECONDS);
+        const workTimer = await resolveWorkTimer(userDetails, Work.WORK_TIMER_SECONDS, true, cachedSkipSources);
 
-        await dynamoHandler.updateUserFields(userId, {
-            potatoes: userPotatoes,
-            totalEarnings: userTotalEarnings,
-            workScenarioCounts: workScenarioCounts,
-            workTimer: workTimer
-        }, { workCount: 1 });
+        // _workChainDelta — see handleMetalPotato's own comment on this convention.
+        userDetails._workChainDelta = {
+            setFields: {
+                potatoes: userPotatoes,
+                totalEarnings: userTotalEarnings,
+                workScenarioCounts: workScenarioCounts,
+                workTimer: workTimer
+            },
+            addFields: { workCount: 1 },
+            houseTax,
+        };
 
         return potatoesGained;
     }
@@ -940,8 +1008,7 @@ class WorkFactory {
     // festival shop's own redeemVoucher calls this directly, guaranteeing the outcome
     // instead of leaving it to a real /work roll) — a normal /work call never passes this
     // option, so its own behavior is unchanged byte-for-byte.
-    async handleLargePotato(userDetails, workGainAmount, multiplier, catchUpBonus = 0, { trackProgress = true } = {}) {
-        const userId = userDetails.userId;
+    async handleLargePotato(userDetails, workGainAmount, multiplier, catchUpBonus = 0, { trackProgress = true, cachedSkipSources = null } = {}) {
         let userPotatoes = userDetails.potatoes;
         let userTotalEarnings = userDetails.totalEarnings;
         let userMultiplier = userDetails.workMultiplierAmount;
@@ -955,7 +1022,7 @@ class WorkFactory {
         const potionMultiplier = getPotionWorkMulti(userDetails, userMultiplier);
         const effectiveMultiplier = applyCatchUp(userMultiplier + guildMultiplier + mercenaryMultiplier + companionMultiplier + rebirthMultiplier + worldBuffMultiplier + potionMultiplier, catchUpBonus);
 
-        const potatoesGained = await calculateGainAmount(workGainAmount * 10, Work.MAX_LARGE_POTATO, multiplier, effectiveMultiplier, userDetails);
+        const { gainAmount: potatoesGained, houseTax } = await calculateGainAmount(workGainAmount * 10, Work.MAX_LARGE_POTATO, multiplier, effectiveMultiplier, userDetails, true);
         userPotatoes += potatoesGained
         userTotalEarnings += potatoesGained
 
@@ -966,17 +1033,17 @@ class WorkFactory {
             let workScenarioCounts = userDetails.workScenarioCounts;
             workScenarioCounts.large += 1;
             setFields.workScenarioCounts = workScenarioCounts;
-            setFields.workTimer = await dynamoHandler.calculateWorkTimerValue(userDetails, Work.WORK_TIMER_SECONDS);
+            setFields.workTimer = await resolveWorkTimer(userDetails, Work.WORK_TIMER_SECONDS, true, cachedSkipSources);
             addFields.workCount = 1;
         }
 
-        await dynamoHandler.updateUserFields(userId, setFields, addFields);
+        // _workChainDelta — see handleMetalPotato's own comment on this convention.
+        userDetails._workChainDelta = { setFields, addFields, houseTax };
 
         return potatoesGained;
     }
 
-    async handleRegularWork(userDetails, workGainAmount, multiplier, catchUpBonus = 0) {
-        const userId = userDetails.userId;
+    async handleRegularWork(userDetails, workGainAmount, multiplier, catchUpBonus = 0, cachedSkipSources = null) {
         let userPotatoes = userDetails.potatoes;
         let userTotalEarnings = userDetails.totalEarnings;
         let userMultiplier = userDetails.workMultiplierAmount;
@@ -990,21 +1057,26 @@ class WorkFactory {
         const potionMultiplier = getPotionWorkMulti(userDetails, userMultiplier);
         const effectiveMultiplier = applyCatchUp(userMultiplier + guildMultiplier + mercenaryMultiplier + companionMultiplier + rebirthMultiplier + worldBuffMultiplier + potionMultiplier, catchUpBonus);
 
-        const potatoesGained = await calculateGainAmount(workGainAmount, Work.MAX_BASE_WORK_GAIN, multiplier, effectiveMultiplier, userDetails);
+        const { gainAmount: potatoesGained, houseTax } = await calculateGainAmount(workGainAmount, Work.MAX_BASE_WORK_GAIN, multiplier, effectiveMultiplier, userDetails, true);
         userPotatoes += potatoesGained
         userTotalEarnings += potatoesGained
 
         let workScenarioCounts = userDetails.workScenarioCounts;
         workScenarioCounts.regular += 1;
 
-        const workTimer = await dynamoHandler.calculateWorkTimerValue(userDetails, Work.WORK_TIMER_SECONDS);
+        const workTimer = await resolveWorkTimer(userDetails, Work.WORK_TIMER_SECONDS, true, cachedSkipSources);
 
-        await dynamoHandler.updateUserFields(userId, {
-            potatoes: userPotatoes,
-            totalEarnings: userTotalEarnings,
-            workScenarioCounts: workScenarioCounts,
-            workTimer: workTimer
-        }, { workCount: 1 });
+        // _workChainDelta — see handleMetalPotato's own comment on this convention.
+        userDetails._workChainDelta = {
+            setFields: {
+                potatoes: userPotatoes,
+                totalEarnings: userTotalEarnings,
+                workScenarioCounts: workScenarioCounts,
+                workTimer: workTimer
+            },
+            addFields: { workCount: 1 },
+            houseTax,
+        };
 
         return potatoesGained;
     }
@@ -1140,7 +1212,18 @@ const sweetPotatoRewards = [
 // than stripped from all ~7 callers across workFactory.js/mercenaryFactory.js purely to
 // minimize this change's blast radius; a future perk needing a per-user adjustment here
 // has a ready-made hook.
-async function calculateGainAmount(currentGain, maxGain, multiplier, userMultiplier, userDetails = null) {
+// deferTax (new, optional, default false, 2026-10-03 /work chain write-count rewrite) —
+// every PRE-EXISTING caller (robNpc.js/mercenaryFactory.js's Heist payout, takeBounty.js,
+// and every call site inside this file before this rewrite) never passes it, so they keep
+// the exact old behavior byte-for-byte: the house's 5% cut is credited immediately, right
+// here, and the function returns the bare taxed gain number. Only /work's own scenario
+// handlers (below) pass deferTax: true now — they're accumulating their OWN house-tax
+// share into userDetails._workChainDelta instead of writing it immediately, so performWork's
+// chain loop can fold every link's house share into ONE addUserDatabase call for the whole
+// chain rather than one per link (see each handler's own _workChainDelta comment). When
+// deferTax is true this returns { gainAmount, houseTax } instead of the bare number — the
+// caller is responsible for actually crediting houseTax to the house account itself.
+async function calculateGainAmount(currentGain, maxGain, multiplier, userMultiplier, userDetails = null, deferTax = false) {
     let gainAmount = maxGain < currentGain ? maxGain : currentGain;
     // Balance-testing carve-out (see TAX_EXEMPT_TEST_USER_ID's own comment in constants.js)
     // — this one flat 5% cut is the ONLY tax /work and /rob-npc (Heist) ever pay (both
@@ -1149,14 +1232,18 @@ async function calculateGainAmount(currentGain, maxGain, multiplier, userMultipl
     // uncredited — the point is raw formula output for testing, not free extra money.
     const isTaxExempt = userDetails?.userId === TAX_EXEMPT_TEST_USER_ID;
     gainAmount = Math.floor(gainAmount * multiplier * userMultiplier * (isTaxExempt ? 1 : .95));
-    if (!isTaxExempt) {
-        // Same 5%-cut pattern as /bank, /guild-bank, and /rob's fine — but unlike those, this
-        // one has no reply embed of its own to show it in (calculateGainAmount just returns a
-        // number to whichever /work handler called it), so there's nothing to display it in.
-        const houseShare = Math.floor(gainAmount / .95 * .05);
-        await dynamoHandler.addUserDatabase(awsConfigurations.clientId, 'potatoes', houseShare);
+    if (isTaxExempt) {
+        return deferTax ? { gainAmount, houseTax: 0 } : gainAmount;
     }
 
+    // Same 5%-cut pattern as /bank, /guild-bank, and /rob's fine — but unlike those, this
+    // one has no reply embed of its own to show it in (calculateGainAmount just returns a
+    // number to whichever /work handler called it), so there's nothing to display it in.
+    const houseTax = Math.floor(gainAmount / .95 * .05);
+    if (deferTax) {
+        return { gainAmount, houseTax };
+    }
+    await dynamoHandler.addUserDatabase(awsConfigurations.clientId, 'potatoes', houseTax);
     return gainAmount
 }
 

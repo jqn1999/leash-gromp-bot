@@ -250,14 +250,20 @@ describe('Encounter Vouchers — a pure bonus payout, never touching workCount/c
         expect(shopWrite[1].festivalShop.purchasedSlots).toEqual([]);
     });
 
+    // 2026-10-03 /work chain write-count rewrite — handleSweetPotato no longer writes to
+    // the DB itself; it stashes its delta onto userDetails._workChainDelta instead (see
+    // workFactory.js's own comment on that convention) for whichever caller actually
+    // persists it (work.js's chain loop for a real /work call, this file's own single
+    // write for a voucher redemption).
     test('a real /work-equivalent call (trackProgress default true) still sets workTimer/workScenarioCounts/workCount — the voucher path is the only exception', async () => {
         const workFactory = require('../workFactory');
         const wf = new workFactory.WorkFactory();
         dynamoHandler.calculateWorkTimerValue.mockResolvedValue(123456);
+        const userDetails = baseUser();
 
-        await wf.handleSweetPotato(baseUser());
+        await wf.handleSweetPotato(userDetails);
 
-        const [, setFields, addFields] = dynamoHandler.updateUserFields.mock.calls[0];
+        const { setFields, addFields } = userDetails._workChainDelta;
         expect(setFields.workTimer).toBe(123456);
         expect(setFields.workScenarioCounts.sweet).toBe(1);
         expect(addFields.workCount).toBe(1);
@@ -313,14 +319,17 @@ describe('Encounter Vouchers — a pure bonus payout, never touching workCount/c
         expect(shopWrite[1].festivalTokens).toBe(1000 - 30);
     });
 
+    // 2026-10-03 /work chain write-count rewrite — see the Sweet Potato test above's own
+    // comment on this same convention.
     test('a real handleLargePotato call (trackProgress default true) still sets workTimer/workScenarioCounts/workCount', async () => {
         const workFactory = require('../workFactory');
         const wf = new workFactory.WorkFactory();
         dynamoHandler.calculateWorkTimerValue.mockResolvedValue(123456);
+        const userDetails = baseUser();
 
-        await wf.handleLargePotato(baseUser(), 1000, 1, 0);
+        await wf.handleLargePotato(userDetails, 1000, 1, 0);
 
-        const [, setFields, addFields] = dynamoHandler.updateUserFields.mock.calls[0];
+        const { setFields, addFields } = userDetails._workChainDelta;
         expect(setFields.workTimer).toBe(123456);
         expect(setFields.workScenarioCounts.large).toBe(1);
         expect(addFields.workCount).toBe(1);
