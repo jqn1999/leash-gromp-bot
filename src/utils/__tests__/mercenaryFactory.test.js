@@ -497,6 +497,7 @@ describe('resolveBountyAttempt', () => {
             const user = baseUser({ workMultiplierAmount: 90 }); // power=90*1.05(sprout not equipped, so just base)... plain 90
             const randomSpy = jest.spyOn(Math, 'random')
                 .mockReturnValueOnce(0)    // tier roll: 0 -> lands on the first (lowest-difficulty) eligible tier in cumulative order
+                .mockReturnValueOnce(0.99) // Metal Potato Meddley trigger miss (0.99 >= 1% chance)
                 .mockReturnValueOnce(0)    // win check
                 .mockReturnValueOnce(0)    // scenario index
                 .mockReturnValueOnce(0)    // reward rangeRoll
@@ -537,6 +538,146 @@ describe('resolveBountyAttempt', () => {
                 randomSpy.mockRestore();
             }
             expect(result.tier).toBeGreaterThan(6); // comfortably into the upper half of the ladder at this power
+        });
+    });
+
+    // Metal Potato Meddley (2026-10-03) — Bounty's own analog of Guild Raid's flat 1% Metal
+    // King roll, 'regular' mode only. Band-driven numbers are literal copies of Raid's own
+    // Regular/Elite/Legendary Metal King constants, keyed by whichever band (I/II/III) the
+    // already-rolled tier landed in — see Bounty.METAL_POTATO_MEDDLEY's own comment.
+    describe('Metal Potato Meddley', () => {
+        test('never triggers in baby mode, even when every roll would otherwise hit it', async () => {
+            const user = baseUser({ workMultiplierAmount: 90 });
+            // No tier roll at all in baby mode (always Bounty.TIERS[0]) — win check, scenario
+            // index, reward rangeRoll, stat-reward miss, yukon miss, same 5-call sequence baby
+            // mode always used before this feature existed.
+            const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0);
+            let result;
+            try {
+                result = await mercenaryFactory.resolveBountyAttempt(user, 'baby');
+            } finally {
+                randomSpy.mockRestore();
+            }
+            expect(result.isMetalPotatoMeddley).toBe(false);
+            expect(result.tier).toBe(Bounty.TIERS[0].tier);
+        });
+
+        test('Band I numbers (tier roll lands 1-4): difficulty 2000, +10,000,000 potatoes, permanent flat stat grants, no stat-reward/Yukon roll', async () => {
+            const user = baseUser({ workMultiplierAmount: 90 }); // power=90, Bounty.TIERS[0].tier=1 -> Band I
+            const randomSpy = jest.spyOn(Math, 'random')
+                .mockReturnValueOnce(0)     // tier roll -> Tier 1 (Band I)
+                .mockReturnValueOnce(0.005) // Metal Potato Meddley trigger HIT (< 1%)
+                .mockReturnValueOnce(0)     // win check: successChance = min(90/2000, .95) = .045, 0 < .045 -> win
+                .mockReturnValueOnce(0.5);  // reward rangeRoll -> 1.0 (midpoint of .8-1.2)
+            let result;
+            try {
+                result = await mercenaryFactory.resolveBountyAttempt(user, 'regular');
+            } finally {
+                randomSpy.mockRestore();
+            }
+            expect(result.isMetalPotatoMeddley).toBe(true);
+            expect(result.won).toBe(true);
+            expect(result.scenario).toBeNull();
+            expect(result.currency).toBe('potato');
+            expect(result.successChance).toBeCloseTo(Math.min(90 / 2000, Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE));
+            expect(result.rewardAmount).toBe(Math.round(10000000 * 1.0 * 1.00)); // rank 1 -> 1.00x
+            expect(result.statReward).toEqual([
+                { type: 'workMultiplierAmount', amount: 2.0 },
+                { type: 'passiveAmount', amount: 1000000 },
+                { type: 'bankCapacity', amount: 10000000 }
+            ]);
+        });
+
+        test('Band II numbers (tier roll lands 5-8): difficulty 6000, +30,000,000 potatoes, matching permanent grants', async () => {
+            const user = baseUser({ workMultiplierAmount: 200 });
+            const randomSpy = jest.spyOn(Math, 'random')
+                .mockReturnValueOnce(0.5)   // tier roll -> Tier 7 at power 200 (Band II, verified via raidFactory.rollWeightedTier)
+                .mockReturnValueOnce(0.005) // Metal Potato Meddley trigger HIT
+                .mockReturnValueOnce(0)     // win check: successChance = min(200/6000, .95) ≈ .0333, 0 < that -> win
+                .mockReturnValueOnce(0.5);  // reward rangeRoll -> 1.0
+            let result;
+            try {
+                result = await mercenaryFactory.resolveBountyAttempt(user, 'regular');
+            } finally {
+                randomSpy.mockRestore();
+            }
+            expect(mercenaryFactory.getBandLetter(result.tier)).toBe('II');
+            expect(result.isMetalPotatoMeddley).toBe(true);
+            expect(result.won).toBe(true);
+            expect(result.successChance).toBeCloseTo(Math.min(200 / 6000, Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE));
+            expect(result.rewardAmount).toBe(Math.round(30000000 * 1.0 * 1.00));
+            expect(result.statReward).toEqual([
+                { type: 'workMultiplierAmount', amount: 6.0 },
+                { type: 'passiveAmount', amount: 3000000 },
+                { type: 'bankCapacity', amount: 30000000 }
+            ]);
+        });
+
+        test('Band III numbers (tier roll lands 9-12): difficulty 12000, +60,000,000 potatoes, matching permanent grants, reward scaled by Mercenary Rank', async () => {
+            const maxRankTier = MercenaryRank.THRESHOLDS[MercenaryRank.THRESHOLDS.length - 1];
+            const user = baseUser({ workMultiplierAmount: 2000, mercenaryBountyWinCount: maxRankTier.winsRequired }); // max rank -> rewardMultiplier 5.00x
+            const randomSpy = jest.spyOn(Math, 'random')
+                .mockReturnValueOnce(0.5)   // tier roll -> Tier 12 at power 2000 (Band III, verified via raidFactory.rollWeightedTier)
+                .mockReturnValueOnce(0.005) // Metal Potato Meddley trigger HIT
+                .mockReturnValueOnce(0)     // win check: successChance = min(2000/12000, .95) ≈ .1667, 0 < that -> win
+                .mockReturnValueOnce(0.5);  // reward rangeRoll -> 1.0
+            let result;
+            try {
+                result = await mercenaryFactory.resolveBountyAttempt(user, 'regular');
+            } finally {
+                randomSpy.mockRestore();
+            }
+            expect(mercenaryFactory.getBandLetter(result.tier)).toBe('III');
+            expect(result.isMetalPotatoMeddley).toBe(true);
+            expect(result.won).toBe(true);
+            expect(result.successChance).toBeCloseTo(Math.min(2000 / 12000, Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE));
+            expect(result.rewardAmount).toBe(Math.round(60000000 * 1.0 * maxRankTier.rewardMultiplier));
+            expect(result.statReward).toEqual([
+                { type: 'workMultiplierAmount', amount: 12.0 },
+                { type: 'passiveAmount', amount: 6000000 },
+                { type: 'bankCapacity', amount: 60000000 }
+            ]);
+        });
+
+        test('a Meddley loss always costs 0 potatoes, overriding the normal tier penalty entirely, and grants no stats', async () => {
+            const user = baseUser({ workMultiplierAmount: 90 });
+            const randomSpy = jest.spyOn(Math, 'random')
+                .mockReturnValueOnce(0)     // tier roll -> Tier 1 (Band I)
+                .mockReturnValueOnce(0.005) // Metal Potato Meddley trigger HIT
+                .mockReturnValueOnce(0.999999); // win check fails: successChance ≈ .045, well below this roll -> loss
+            let result;
+            try {
+                result = await mercenaryFactory.resolveBountyAttempt(user, 'regular');
+            } finally {
+                randomSpy.mockRestore();
+            }
+            expect(result.isMetalPotatoMeddley).toBe(true);
+            expect(result.won).toBe(false);
+            expect(result.penaltyAmount).toBe(0);
+            expect(result.rewardAmount).toBe(0);
+            expect(result.statReward).toBeNull();
+        });
+
+        test('the 1% trigger roll only fires in regular mode and is independent of the already-rolled tier/band', async () => {
+            const user = baseUser({ workMultiplierAmount: 90 });
+            // Meddley trigger MISSES (0.5 >= .01) -> falls through to a completely normal
+            // Tier 1 attempt, same shape/length of random-call sequence this ladder always used.
+            const randomSpy = jest.spyOn(Math, 'random')
+                .mockReturnValueOnce(0)    // tier roll -> Tier 1
+                .mockReturnValueOnce(0.5)  // Metal Potato Meddley trigger MISS
+                .mockReturnValueOnce(0)    // win check
+                .mockReturnValueOnce(0)    // scenario index
+                .mockReturnValueOnce(0)    // reward rangeRoll
+                .mockReturnValueOnce(0.99) // stat-reward miss
+                .mockReturnValueOnce(0.99); // yukon miss
+            let result;
+            try {
+                result = await mercenaryFactory.resolveBountyAttempt(user, 'regular');
+            } finally {
+                randomSpy.mockRestore();
+            }
+            expect(result.isMetalPotatoMeddley).toBe(false);
+            expect(result.scenario).not.toBeNull();
         });
     });
 });

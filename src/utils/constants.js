@@ -3541,7 +3541,40 @@ const Bounty = {
     // Raid.REGULAR_STAT_RAID_COST's negative convention.
     STAT_BOUNTY_COST: 300000,          // potatoes, charged whether the attempt wins or loses
     STAT_BOUNTY_SUCCESS_CHANCE: 0.5,   // flat - see the comment above for why this doesn't scale
-    STAT_BOUNTY_REWARD: 0.2            // permanent +0.2 work multiplier on a win
+    STAT_BOUNTY_REWARD: 0.2,           // permanent +0.2 work multiplier on a win
+
+    // Metal Potato Meddley (2026-10-03, direct instruction) — Bounty's own analog of Guild
+    // Raid's flat 1% Metal King roll, 'regular' mode only (mercenaryFactory.resolveBountyAttempt
+    // gates this out of 'baby' mode entirely, mirroring Baby Raid's own exclusion from Metal
+    // King — a guaranteed-easy mode should never risk a rare jackpot encounter). Rolled AFTER
+    // the normal tier/band is already resolved; when it hits, the already-rolled band
+    // (I/II/III, via mercenaryFactory.getBandLetter — NO second band roll) selects which of
+    // the three entries below applies, replacing the normal tier's own difficulty/reward/
+    // penalty entirely for that one attempt.
+    //
+    // Every number below is a literal, independently-named COPY of Raid's own Regular/Elite/
+    // Legendary Metal King numbers (Raid.METAL_KING_*/ELITE_METAL_KING_*/LEGENDARY_METAL_KING_*),
+    // keyed by band instead of guild mode — deliberately NOT a live cross-reference to the Raid
+    // object, so this can be retuned later without silently affecting Guild Raid's Metal King
+    // (or vice versa), matching this codebase's own convention for cross-system "mirrors X"
+    // constants (see BountyStatReward's own reuse-vs-copy split for the same reasoning applied
+    // the other way). `reward`/`multiplierReward`/`passiveReward`/`capacityReward` are credited
+    // on a win via the same ×0.8-1.2 range roll Guild Raid's own Metal King branch uses (no
+    // `raidRewardMultiplier` term — Bounty has no guild-level reward multiplier concept) and
+    // ARE scaled by the mercenary's own `rankInfo.rewardMultiplier`, same as every other Bounty
+    // win's reward (the one departure from a pure Metal King copy — Guild Raid has no per-member
+    // rank multiplier to apply). The stat grants themselves are flat, unscaled, permanent adds —
+    // see raidFactory.handleStatSplit's own shape, reused here for a single mercenary instead of
+    // a roster. Penalty is always 0 on a loss regardless of band (METAL_POTATO_MEDDLEY_PENALTY),
+    // overriding Bounty's own climbing per-tier penalty entirely for this one roll — same
+    // "costs nothing win or lose" shape every Metal King bracket already has.
+    METAL_POTATO_MEDDLEY_CHANCE: 0.01,
+    METAL_POTATO_MEDDLEY_PENALTY: 0,
+    METAL_POTATO_MEDDLEY: {
+        I:   { difficulty: 2000,  reward: 10000000, multiplierReward: 2.0,  passiveReward: 1000000, capacityReward: 10000000 },  // = Raid.METAL_KING_*
+        II:  { difficulty: 6000,  reward: 30000000, multiplierReward: 6.0,  passiveReward: 3000000, capacityReward: 30000000 },  // = Raid.ELITE_METAL_KING_*
+        III: { difficulty: 12000, reward: 60000000, multiplierReward: 12.0, passiveReward: 6000000, capacityReward: 60000000 }, // = Raid.LEGENDARY_METAL_KING_*
+    }
 }
 
 // Flavor-text scenario tables, keyed by tier — mirrors regularWorkMobs'/raid mob arrays'
@@ -3729,6 +3762,21 @@ const StatBountyFlavor = [
         lose: "The lodge's masters size you up, take your potatoes as an entry fee anyway, and send you home the moment the real drills begin — some doors just aren't ready to open yet."
     }
 ]
+
+// Metal Potato Meddley (2026-10-03) — Bounty's own flat 1% jackpot encounter, Regular mode
+// only (see Bounty.METAL_POTATO_MEDDLEY_CHANCE's own comment for the full mechanical shape).
+// One shared name/description/successDescription/failureDescription regardless of which band
+// (I/II/III) it rolls into — mirrors metalKingRaidBoss's own shape exactly (that object also
+// doesn't vary its flavor text by Regular/Elite/Legendary, only the numbers behind it do).
+// Framed as kin to the Metal King rather than the King himself — a stray, lesser knot of
+// Metal Potatoes a lone mercenary might plausibly stumble into alone, where the King himself
+// is squarely a guild-sized undertaking.
+const metalPotatoMeddley = {
+    name: "Metal Potato Meddley",
+    description: "A stray knot of Metal Potatoes — kin to the Metal King himself, but with none of his crown or discipline — comes tumbling down the road, glinting and squabbling amongst themselves. Rowdy, fast, and answering to nobody, a Meddley is a gamble even a seasoned mercenary can't train for.",
+    successDescription: "The jumbled potatoes squabble over who gets first crack at fleeing, and the delay is all the opening you need. A quick, decisive strike scatters the lot of them — and in the chaos, one leaves behind a glittering trove, along with a lasting boon to your own strength.",
+    failureDescription: "The Meddley proves more coordinated than it looks, closing ranks the instant you move. By the time you find a gap, the whole shining cluster has clattered off down a side road and out of reach — no harm done, but no trove either."
+}
 
 // /rob-npc — a solo-only heist against a fictional target (no real player involved, a
 // newly-minted payout, not drawn from anyone's balance). No target to compare relative
@@ -5438,6 +5486,7 @@ module.exports = {
     BountyStatReward,
     GuildRaidStatReward,
     StatBountyFlavor,
+    metalPotatoMeddley,
     RobNpc,
     MercenaryCompanionDrop,
     Rival,
