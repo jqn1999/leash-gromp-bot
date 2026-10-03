@@ -20255,3 +20255,152 @@ exercised by this particular test's numbers anymore). Full suite confirmed green
 
 **Cross-repo note.** Same mechanic as the three entries above — not yet ported to
 `financial-project`.
+
+## Cooldown-skip chain cap left the cooldown "ready now" when the LAST possible link also skipped
+
+**Asked**: "For work bounty raid and Rob npc skip chance chaining, make sure if it chains 5 times
+even if the last one says it skips again and doesn't auto trigger, it should actually set the
+work cooldown to the usual 5 minutes instead of letting them use the command again."
+
+**Investigated first, since this is exactly the kind of report this repo's own history says to
+trace rather than guess from the description** — and it checked out byte-for-byte across all
+four commands that share this chaining mechanic (`/work`, `/take-bounty` x2 modes, `/rob-npc`,
+`/start-raid`). The cooldown-skip ROLL (whichever call actually sets `workTimer`/`bountyTimer`/
+`npcRobTimer`/`raidTimer` to "ready now" on a hit) has zero concept of `chainDepth` — it rolls
+fresh on every single call, chain link or not. The CHAIN-CAP CHECK (`chainDepth < MAX`) runs
+strictly after that write already landed, and used to only ever do one thing on a hit: recurse if
+under the cap, do nothing otherwise. "Do nothing otherwise" was the bug — if the cap was reached
+on a call whose own roll ALSO hit, the chain correctly stopped auto-continuing, but the cooldown
+field was left at "ready now" with nothing to ever overwrite it back to a real cooldown. The
+result embed genuinely said "skipped!" on that call (real, left alone, per the instruction's own
+"even if the last one says it skips again"), but the player could immediately run the command
+again themselves — a free extra attempt the cap was supposed to prevent.
+
+**Fix, identical shape in all four files**: `if (shouldChain && chainDepth < CAP) { recurse }`
+became `if (shouldChain) { if (chainDepth < CAP) { recurse } else { overwrite the cooldown field
+with a real full cooldown } }` — one extra `updateUserFields`/`updateGuildDatabase` call, using
+the exact same value convention each command's own ordinary miss/loss already writes (no new
+convention invented).
+- `src/commands/user/work.js` — `performWork`'s post-dispatch check; `workTimer: Date.now() +
+  Work.WORK_TIMER_SECONDS * 1000` on the cap-hit branch.
+- `src/commands/user/takeBounty.js` — both `runBountyAttempt` and `runStatBountyAttempt`;
+  `bountyTimer: Date.now()` (a last-action timestamp, not a future one — same convention the
+  ordinary miss/loss branch already uses).
+- `src/commands/user/robNpc.js` — `runNpcRobAttempt`; `npcRobTimer: Date.now()`, same convention.
+- `src/commands/guilds/startRaid.js` — `resolveRaid`; `raidTimer: Date.now() +
+  Raid.RAID_TIMER_SECONDS * 1000` (a future ready-at timestamp, matching `/work`'s own shape
+  rather than the bounty/heist last-action shape).
+
+**Tests.** One new regression test per command — new file `workCooldownSkipChainCap.test.js`
+(mocks `dynamoHandler.calculateWorkTimerValue` directly, mutating the same `userDetails`
+reference `performWork` holds, since `/work`'s own roll lives inside `workFactory.js`'s scenario
+handlers rather than inline); new cases appended to the existing `takeBountyCooldownSkip.test.js`/
+`robNpcCooldownSkip.test.js`/`startRaidCooldownSkip.test.js`. Each forces a GUARANTEED skip hit on
+every single link through `MAX_(BOUNTY_RAID_)COOLDOWN_SKIP_CHAIN_LENGTH + 1` total resolutions
+(deterministic, not relying on an astronomically unlikely real streak to the cap), then asserts:
+every real resolution's own write showed the genuine "ready now" skip, PLUS one extra final write
+resetting the cooldown to the real full duration — proving both halves of the fix (the chain still
+correctly stops, AND the cooldown is no longer left exploitable). Full suite: **123 suites (1
+fully skipped) / 2306 tests (18 skipped, 2288 passing)** — net +4 new tests, 0 broken.
+
+**Cross-repo note.** A backend enforcement bug with no player-visible formula/data-shape change —
+`financial-project`'s own ported Lambdas (`gromp-economy` covers `/work`/Bounty/Heist's web
+equivalents) would need the same fix if they independently implement this chain-cap logic; not
+yet audited in this session, flagged per CLAUDE.md's sibling-repo rule.
+
+## Metal Potato Meddley — a rare jackpot encounter for Mercenary Bounty
+
+**Asked**: a product/design pass (already scoped by the product owner and architect, grounded
+directly in the live `Raid` constants, confirmed by the project owner before implementation) —
+give Mercenary Bounty's own `/take-bounty mode:regular` an analog of Guild Raid's flat 1% Metal
+King roll: a rare, no-penalty, big-reward-plus-permanent-stats encounter, reusing whichever of
+Bounty's existing 3 bands (I/II/III) the normal tier roll had already landed in rather than
+rolling a fresh band, with the three bands' numbers a literal copy of Guild Raid's own Regular/
+Elite/Legendary Metal King constants.
+
+**What changed**:
+- `constants.js`'s `Bounty` block gained `METAL_POTATO_MEDDLEY_CHANCE` (0.01),
+  `METAL_POTATO_MEDDLEY_PENALTY` (0), and `METAL_POTATO_MEDDLEY` (an `{ I, II, III }` map of
+  `{ difficulty, reward, multiplierReward, passiveReward, capacityReward }`) — independently-
+  named numeric copies of `Raid.METAL_KING_*`/`ELITE_METAL_KING_*`/`LEGENDARY_METAL_KING_*`,
+  not live cross-references, so either system can be retuned later without silently affecting
+  the other (this codebase's own established convention for cross-system "mirrors X" constants).
+  Also added `metalPotatoMeddley` (name/description/successDescription/failureDescription),
+  mirroring `metalKingRaidBoss`'s exact shape — one flavor text regardless of band, voiced as a
+  lesser, stray cousin of the Metal King a lone mercenary could plausibly run into alone.
+- `mercenaryFactory.js`'s `resolveBountyAttempt` rolls the new 1% trigger right after the
+  normal tier/band is resolved, `'regular'` mode only (`mode === 'regular' && Math.random() <
+  Bounty.METAL_POTATO_MEDDLEY_CHANCE`) — Baby Bounty's hardcoded Tier 1 never reaches this
+  check at all, mirroring Metal King's own exclusion of Baby Raid. On a hit, the attempt's own
+  success chance/difficulty, reward, and stat grants are entirely replaced by the Meddley
+  band's own numbers (reward scaled by the same ×0.8-1.2 range roll and the mercenary's own
+  `rankInfo.rewardMultiplier`, verified consistent with how every other Bounty win's reward is
+  scaled before deciding to apply it here too); on a miss or in `'baby'` mode, the attempt
+  proceeds exactly as it always has. Loss penalty is always 0 regardless of band. The 3 stat
+  grants (`workMultiplierAmount`/`passiveAmount`/`bankCapacity`) are flat adds (mirroring
+  `raidFactory.handleStatSplit`'s shape, NOT Bounty's own percentage-of-current
+  `BountyStatReward` roll), returned in the exact `{ type, amount }` array shape
+  `takeBounty.js`'s existing `result.statReward` crediting loop already consumes — so no new
+  persistence code path was needed on the command side at all. `result.scenario` is `null` and
+  `result.currency` is always `'potato'` on this branch; no scenario roll happens (saves a
+  `Math.random()` call).
+- `embedFactory.js`'s `createBountyResultEmbed` branches on the new `result.isMetalPotatoMeddley`
+  flag to read `metalPotatoMeddley`'s own flavor instead of `scenario.winFlavor`/`loseFlavor`,
+  shows a distinct title and a "Nothing — this encounter costs nothing win or lose" no-penalty
+  message on a loss, and labels the stat-grant field "Metal Potato Meddley — Permanent Stat
+  Reward!" instead of Bounty's usual "Bounty Bonus" label — mirrors `createRaidEmbed`'s own
+  `metalKingRaidBoss` special-casing.
+- `bountyBoard.js`/`createBountyBoardEmbed` gained a dedicated "Metal Potato Meddley" preview
+  field showing all three bands' live success chance and reward/grant numbers (not a 13th row
+  in the 12-tier table, since it's an independent roll rather than a tier of its own), read
+  straight off the real `Bounty.METAL_POTATO_MEDDLEY` constants and reward-scaled by
+  `rankInfo.rewardMultiplier` the same way the tier table above it already is, so the preview
+  can't drift from the real roll logic — same principle `startRaid.js`'s `buildRaidPreview`
+  states for its own Metal King row.
+
+**Design reasoning — why these specific numbers.** Difficulty 2000/6000/12000 at bands
+I/II/III is a direct reuse of Raid's own Metal King difficulty at each matching guild mode,
+chosen (rather than deriving a fresh Bounty-specific number) because Bounty's solo
+`effectiveBountyPower` and a guild's aggregate `totalMultiplier` already occupy comparable
+ranges at matching content tiers (see `mercenary-bounties.md`'s own "Solo power reference
+points" table) — reusing the same difficulty lands solo odds in roughly the same ~17-24%
+ballpark a 4-person guild's own Metal King sees at each mode's own reference power, without a
+separate EV derivation. Reward/stat-grant numbers are likewise a direct copy rather than a
+Bounty-specific scale, with the sole deliberate departure being the added
+`rankInfo.rewardMultiplier` term on the potato reward (Guild Raid has no per-member rank
+multiplier to apply in the first place, so this isn't a case of "copy drifted" — it's the one
+genuinely new term this port needed).
+
+**Judgment call, flagged rather than silently decided**: a Meddley win deliberately does NOT
+additionally roll Bounty's own rare `BountyStatReward` chance or the Yukon drop roll — its
+guaranteed flat 3-stat grant is treated as the win's entire stat-reward story, not a stack on
+top of it. Guild Raid's own Metal King DOES still stack with the separate, later-added
+`GuildRaidStatReward` roll, but that roll is architecturally a blanket per-MODE bolt-on applied
+outside any specific bracket's own action function in `startRaid.js` — a materially different
+shape from Bounty's `rollBountyStatReward`, which already lives inside every regular-mode win
+branch keyed by band. Stacking Bounty's own already-rare per-band roll on top of the
+already-rare 1% Meddley trigger would be a meaningfully deeper jackpot-on-jackpot stack than
+anything explicitly approved, so this ships as mutually exclusive instead; revisit if a future
+pass wants Meddley to behave as a true drop-in replacement for Metal King's full stacking
+behavior.
+
+**Tests**: a new `describe('Metal Potato Meddley', ...)` block in `mercenaryFactory.test.js`
+(never triggers in `'baby'` mode even when every roll would otherwise hit it; each band's own
+difficulty/reward/grant numbers on a win; a loss always costs exactly 0 regardless of band; the
+trigger roll is independent of, and doesn't disturb, a normal miss's existing tier/scenario
+flow), a new `takeBountyMetalPotatoMeddley.test.js` exercising the full `/take-bounty` callback
+end to end (win credits net-of-Kingdom-Tax reward plus all three flat stat writes; a loss writes
+back the player's own unchanged `potatoes`, confirming the override of the normal tier penalty),
+and a new case in `bountyBoard.test.js` asserting the preview embed's 3-band field. Pre-existing
+`'regular'`-mode tests in `mercenaryFactory.test.js` and `takeBountyTax.test.js` that hardcoded
+an exact `Math.random()` mock sequence needed one new spliced-in "Meddley trigger miss" value
+(e.g. `0.99`) right after the tier-roll value, since the new trigger check consumes one
+additional `Math.random()` call on every `'regular'`-mode attempt regardless of hit or miss —
+tests using a constant `mockReturnValue(...)` for every call were unaffected. Full suite: 2293
+run / 18 skipped, all green after the splice.
+
+**Cross-repo note.** This changes a Bounty formula/data shape (`resolveBountyAttempt`'s result
+shape gained `isMetalPotatoMeddley`, and a new reward/stat-grant branch) that `financial-project`'s
+own `/gromp` page would need an equivalent for if it re-implements Mercenary Bounty's win/loss
+math server-side — not yet ported; flagged per this repo's own `CLAUDE.md` cross-repo-sync rule,
+not yet actioned in the same session.

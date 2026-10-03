@@ -1,5 +1,5 @@
 const { EmbedBuilder } = require("discord.js");
-const { GuildRoles, sweetPotato, taroTrader, goldenYam, Raid, shops, DailyQuest, Quests, GuildContract, CompanionRarity, CompanionLeveling, Companions, MimicryCompanion, HelpTopics, Work, REGRADE_CAPS, MercenaryRank, MercenaryBuff, Safehouse, Bounty, RobNpc, SpudKeep, Festival, goldenPotato, largePotato, metalPotatoSuccess, poisonPotato, Rival, GuildRival, AshcloveCompany, CompanionFusion, CinderrootTreasuryBonusPercent, CompanionMarket } = require("../utils/constants")
+const { GuildRoles, sweetPotato, taroTrader, goldenYam, Raid, shops, DailyQuest, Quests, GuildContract, CompanionRarity, CompanionLeveling, Companions, MimicryCompanion, HelpTopics, Work, REGRADE_CAPS, MercenaryRank, MercenaryBuff, Safehouse, Bounty, RobNpc, SpudKeep, Festival, goldenPotato, largePotato, metalPotatoSuccess, poisonPotato, Rival, GuildRival, AshcloveCompany, CompanionFusion, CinderrootTreasuryBonusPercent, CompanionMarket, metalPotatoMeddley } = require("../utils/constants")
 const { convertSecondstoMinutes } = require("../utils/helperCommands")
 const dynamoHandler = require("../utils/dynamoHandler");
 const companionFactory = require("../utils/companionFactory");
@@ -2723,7 +2723,7 @@ class EmbedFactory {
     // with `successChance` added — one line per tier rather than one embed field per
     // tier (12 separate fields would make this embed unwieldy the way /start-raid's own
     // 4-bracket-max preview never has to worry about).
-    createBountyBoardEmbed(userDisplayName, rankInfo, weightedTiers, cooldownRemainingSeconds) {
+    createBountyBoardEmbed(userDisplayName, rankInfo, weightedTiers, cooldownRemainingSeconds, meddleyBands = null) {
         const title = MERCENARY_RANK_TITLES[rankInfo.rank] || `Rank ${rankInfo.rank}`;
         // cooldownReductionPercent (constants.js's MercenaryRank.THRESHOLDS comment) — shown
         // here too, not just on the post-win result embed, so it's visible before taking a
@@ -2761,12 +2761,30 @@ class EmbedFactory {
                 value: `${(Bounty.STAT_BOUNTY_SUCCESS_CHANCE * 100).toFixed(0)}% chance for a permanent +${Bounty.STAT_BOUNTY_REWARD.toFixed(2)} work multiplier — costs ${Bounty.STAT_BOUNTY_COST.toLocaleString()} potatoes, charged whether you win or lose.`,
                 inline: false,
             },
-            {
-                name: 'Bounty Cooldown:',
-                value: cooldownRemainingSeconds > 0 ? `Ready in ${convertSecondstoMinutes(cooldownRemainingSeconds)}` : 'Ready now!',
-                inline: false,
-            }
         ];
+
+        // Metal Potato Meddley (2026-10-03) — a flat 1% roll on any Regular Bounty attempt,
+        // checked AFTER a tier/band is already resolved (not a 13th tier of its own), so it
+        // gets its own breakdown rather than a row in the tier table above. meddleyBands is
+        // null for any caller still on the pre-Meddley 4-arg signature (none currently exist,
+        // kept defensive anyway, same "optional trailing param" convention this file already
+        // uses elsewhere).
+        if (meddleyBands) {
+            const meddleyLines = meddleyBands.map(b =>
+                `Band ${b.band}: ${(b.successChance * 100).toFixed(1)}% success — ✅${b.reward.toLocaleString()} potatoes, +${b.multiplierReward.toFixed(1)} work multiplier, +${b.passiveReward.toLocaleString()} passive, +${b.capacityReward.toLocaleString()} bank capacity (all permanent) ❌ nothing, win or lose`
+            ).join('\n');
+            fields.push({
+                name: `Metal Potato Meddley (${(Bounty.METAL_POTATO_MEDDLEY_CHANCE * 100).toFixed(0)}% chance on any Regular Bounty, band matches whichever tier you roll):`,
+                value: meddleyLines,
+                inline: false,
+            });
+        }
+
+        fields.push({
+            name: 'Bounty Cooldown:',
+            value: cooldownRemainingSeconds > 0 ? `Ready in ${convertSecondstoMinutes(cooldownRemainingSeconds)}` : 'Ready now!',
+            inline: false,
+        });
 
         const embed = new EmbedBuilder()
             .setTitle(`${userDisplayName}'s Bounty Board`)
@@ -2813,13 +2831,20 @@ class EmbedFactory {
     // companionFactory.getAppliedCompanionXpGain, diffed right after the Bounty's own
     // levelActiveCompanion (Yukon-restricted) call — shown only when it actually applied.
     createBountyResultEmbed(userDisplayName, result, yukonAward = null, netRewardAmount = result.rewardAmount, taxAmount = 0, companionXpGained = 0, companionName = null, cooldownSkipSource = null, missedCooldownSkipChance = 0, readyNotoriety = null) {
-        const { tier, mode, won, successChance, scenario, rankInfo, currency, penaltyAmount, statReward } = result;
+        const { tier, mode, won, successChance, scenario, rankInfo, currency, penaltyAmount, statReward, isMetalPotatoMeddley } = result;
         const color = won ? 'Green' : 'Red';
         const fields = [];
 
+        // Metal Potato Meddley (2026-10-03) gets its own dedicated flavor (constants.js's
+        // metalPotatoMeddley), never BountyScenarios' per-band wanted-poster flavor — result.scenario
+        // is deliberately null on this branch (see mercenaryFactory.resolveBountyAttempt), same
+        // "distinct encounter, distinct flavor" shape createRaidEmbed's own metalKingRaidBoss
+        // special-casing already establishes for Guild Raid.
         fields.push({
             name: 'Result:',
-            value: won ? scenario.winFlavor : scenario.loseFlavor,
+            value: isMetalPotatoMeddley
+                ? (won ? metalPotatoMeddley.successDescription : metalPotatoMeddley.failureDescription)
+                : (won ? scenario.winFlavor : scenario.loseFlavor),
             inline: false,
         });
 
@@ -2843,6 +2868,15 @@ class EmbedFactory {
                     inline: true,
                 });
             }
+        } else if (isMetalPotatoMeddley) {
+            // Bounty.METAL_POTATO_MEDDLEY_PENALTY is always 0 — shown as an explicit
+            // no-penalty message rather than a flat "0 potatoes" line, mirroring Guild Raid's
+            // own Metal King preview text ("Nothing — this bracket costs nothing win or lose").
+            fields.push({
+                name: 'Potatoes Lost:',
+                value: `Nothing — this encounter costs nothing win or lose.`,
+                inline: true,
+            });
         } else {
             fields.push({
                 name: 'Potatoes Lost:',
@@ -2855,7 +2889,7 @@ class EmbedFactory {
             const statLabels = { workMultiplierAmount: 'Work Multiplier', passiveAmount: 'Passive Income', bankCapacity: 'Bank Capacity' };
             const statText = statReward.map(s => `+${s.amount.toLocaleString()} ${statLabels[s.type]}`).join('\n');
             fields.push({
-                name: '🏅 Bounty Bonus — Permanent Stat Reward!',
+                name: isMetalPotatoMeddley ? '🥈 Metal Potato Meddley — Permanent Stat Reward!' : '🏅 Bounty Bonus — Permanent Stat Reward!',
                 value: statText,
                 inline: false,
             });
@@ -2913,8 +2947,11 @@ class EmbedFactory {
         }
 
         const modeLabel = mode === 'baby' ? ' (Baby Bounty)' : '';
+        const title = isMetalPotatoMeddley
+            ? `${userDisplayName} stumbles into a Metal Potato Meddley! — Tier ${tier}`
+            : `${userDisplayName} takes on ${scenario.name} — Tier ${tier}${modeLabel}`;
         const embed = new EmbedBuilder()
-            .setTitle(`${userDisplayName} takes on ${scenario.name} — Tier ${tier}${modeLabel}`)
+            .setTitle(title)
             .setDescription(won ? 'Success!' : 'Failed.')
             .setColor(color)
             .setFooter({ text: "Made by Beggar" })

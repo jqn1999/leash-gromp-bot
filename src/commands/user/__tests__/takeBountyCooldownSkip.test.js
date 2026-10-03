@@ -10,7 +10,7 @@
 jest.mock('../../../utils/dynamoHandler');
 
 const dynamoHandler = require('../../../utils/dynamoHandler');
-const { Bounty } = require('../../../utils/constants');
+const { Bounty, Work } = require('../../../utils/constants');
 const { callback } = require('../takeBounty');
 
 const fakeClient = { user: { id: 'house-account' } };
@@ -175,5 +175,56 @@ describe('/take-bounty cooldown skip', () => {
         const resultEmbed = interaction.editReply.mock.calls[0][0].embeds[0];
         const skipField = resultEmbed.data.fields.find(f => f.name.includes('Mercenary Buff'));
         expect(skipField).toBeDefined();
+    });
+
+    // Chain-cap-hit-on-its-own-skip fix (2026-10-03, direct instruction: "if it chains 5
+    // times even if the last one says it skips again and doesn't auto trigger, it should
+    // actually set the work cooldown to the usual 5 minutes instead of letting them use the
+    // command again") — resolveBountyCooldownSkip backdates bountyTimer to "ready now" the
+    // instant a skip roll hits, with zero awareness of chainDepth; only runBountyAttempt's
+    // OWN post-resolution check knows the cap was reached. Before this fix, a skip roll
+    // landing on the very call that hits the cap left bountyTimer at "ready now" even though
+    // no further auto-chain happened — a free extra attempt via a manual re-run. Rolls a HIT
+    // on every single link through the cap, so the chain's LAST call is itself a hit that
+    // gets capped rather than terminating some other way (a miss/loss), isolating this exact
+    // bug from the already-covered "the chain just happens to end in a loss" case above.
+    test('a skip roll hitting on every single link all the way to the chain cap overwrites bountyTimer to a real cooldown instead of leaving it ready-now', async () => {
+        const user = baseUser({ mercenaryBountyWinCount: 15 }); // Rank 2, cooldownReductionPercent 0.06
+        dynamoHandler.findUser.mockResolvedValue(user);
+        const interaction = fakeInteraction({ mode: 'baby' });
+
+        // One win-and-skip-hit resolution: win check(0), scenario index(0), reward
+        // rangeRoll(0), stat-reward miss(.99), yukon miss(.99), skip roll HIT(0),
+        // pickSkipSource(.5) — the exact same 7-value sequence the "skip roll hitting"
+        // test above uses for its own first (hit) resolution. Repeated once per link,
+        // MAX_BOUNTY_RAID_COOLDOWN_SKIP_CHAIN_LENGTH + 1 times total (chainDepth runs
+        // 0..5 inclusive before the cap check at chainDepth===5 stops it).
+        const perHitRoll = [0, 0, 0, 0.99, 0.99, 0, 0.5];
+        const totalLinks = Work.MAX_BOUNTY_RAID_COOLDOWN_SKIP_CHAIN_LENGTH + 1;
+        const allRolls = Array(totalLinks).fill(perHitRoll).flat();
+        const randomSpy = jest.spyOn(Math, 'random');
+        allRolls.forEach(v => randomSpy.mockReturnValueOnce(v));
+        try {
+            await callback(fakeClient, interaction);
+        } finally {
+            randomSpy.mockRestore();
+        }
+
+        const bountyWrites = dynamoHandler.updateUserFields.mock.calls.filter(([, setAttrs]) => 'bountyTimer' in setAttrs);
+        // One write per real resolution (totalLinks) PLUS the chain-cap fix's own explicit
+        // overwrite write once the last link's hit couldn't actually chain further.
+        expect(bountyWrites).toHaveLength(totalLinks + 1);
+
+        // Every one of the totalLinks real resolutions backdated bountyTimer (ready now) —
+        // the result embed on all of them genuinely said "skipped!", exactly as the user's
+        // own instruction acknowledged ("even if the last one says it skips again").
+        for (let i = 0; i < totalLinks; i++) {
+            expect(bountyWrites[i][1].bountyTimer).toBeLessThanOrEqual(Date.now() - Bounty.BOUNTY_TIMER_SECONDS * 1000 + 100);
+        }
+        // The fix's own final write is a REAL full cooldown, not backdated — this is what
+        // actually stops a manual re-run from working immediately.
+        const finalWrite = bountyWrites[bountyWrites.length - 1][1];
+        expect(finalWrite.bountyTimer).toBeGreaterThanOrEqual(Date.now() - 100);
+        expect(finalWrite.bountyTimer).toBeLessThan(Date.now() - Bounty.BOUNTY_TIMER_SECONDS * 1000 + 100 + Bounty.BOUNTY_TIMER_SECONDS * 1000);
     });
 });

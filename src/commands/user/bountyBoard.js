@@ -54,10 +54,29 @@ module.exports = {
             successChance: Math.min(effectiveBountyPower / t.difficulty, Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE)
         }));
 
+        // Metal Potato Meddley (2026-10-03) — a flat 1% roll on any Regular Bounty attempt,
+        // never reflected in weightedTiers' own odds column (it's an independent roll checked
+        // AFTER a tier/band is already resolved, not a 13th tier of its own — see
+        // mercenaryFactory.resolveBountyAttempt). Shown here as its own 3-band breakdown
+        // (reusing whichever band the normal tier roll would've landed in), reward scaled by
+        // rankInfo.rewardMultiplier same as every tier row above, read straight off
+        // Bounty.METAL_POTATO_MEDDLEY so this preview can't drift from the real roll logic.
+        const meddleyBands = ['I', 'II', 'III'].map(band => {
+            const b = Bounty.METAL_POTATO_MEDDLEY[band];
+            return {
+                band,
+                successChance: Math.min(effectiveBountyPower / b.difficulty, Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE),
+                reward: Math.round(b.reward * rankInfo.rewardMultiplier),
+                multiplierReward: b.multiplierReward,
+                passiveReward: b.passiveReward,
+                capacityReward: b.capacityReward,
+            };
+        });
+
         const timeSinceLastBountyInSeconds = Math.floor((Date.now() - userDetails.bountyTimer) / 1000);
         const cooldownRemainingSeconds = Math.max(0, Bounty.BOUNTY_TIMER_SECONDS - timeSinceLastBountyInSeconds);
 
-        const embed = embedFactory.createBountyBoardEmbed(userDisplayName, rankInfo, weightedTiers, cooldownRemainingSeconds);
+        const embed = embedFactory.createBountyBoardEmbed(userDisplayName, rankInfo, weightedTiers, cooldownRemainingSeconds, meddleyBands);
         interaction.editReply({ embeds: [embed] });
     }
 }

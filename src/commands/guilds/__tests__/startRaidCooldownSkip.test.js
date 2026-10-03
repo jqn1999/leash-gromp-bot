@@ -36,7 +36,7 @@ jest.mock('../../../utils/raidFactory', () => {
 const dynamoHandler = require('../../../utils/dynamoHandler');
 const { runStartRaidFlow, getRaidCooldownSkipSources } = require('../startRaid');
 const { getRaidLevelInfo } = require('../../../utils/raidFactory');
-const { Raid, SpudKeep, GuildCompanionScaling } = require('../../../utils/constants');
+const { Raid, SpudKeep, GuildCompanionScaling, Work } = require('../../../utils/constants');
 
 const cinderroot = { id: 'cinderroot', acquiredAt: 1, acquiredRaidTier: 'regular' };
 
@@ -222,6 +222,48 @@ describe('/start-raid cooldown skip', () => {
         const firstResultEmbed = lastEditReplyCall[0].embeds[0];
         const cooldownField = firstResultEmbed.data.fields.find(f => f.name.includes('Cinderroot'));
         expect(cooldownField).toBeDefined();
+    });
+
+    // Chain-cap-hit-on-its-own-skip fix (2026-10-03, direct instruction — see
+    // takeBountyCooldownSkip.test.js's identical test for the full writeup; same bug, same
+    // fix, this is Guild Raid's own copy). Before this fix, a skip roll landing on the call
+    // that hits the chain cap left raidTimer at "ready now" (Date.now()) with no further
+    // auto-chain — a free extra raid via a manual re-run.
+    test('a skip roll hitting on every single link all the way to the chain cap overwrites raidTimer to a real cooldown instead of leaving it ready-now', async () => {
+        strongRosterSetup();
+        const guild = guildFixture({ guildCompanion: cinderroot }); // only source: Cinderroot's own level-1 term (5%)
+        dynamoHandler.findGuildById.mockResolvedValue(guild);
+        dynamoHandler.getActiveSpudKeepCooldownBuff.mockResolvedValue(undefined);
+
+        const FIXED_NOW = 1_000_000_000_000;
+        const dateSpy = jest.spyOn(Date, 'now').mockReturnValue(FIXED_NOW);
+
+        // One win-and-skip-hit resolution: raidScenarioRoll(.5), randomMultiplier(.5), mob
+        // pick(.5), success check(.1, WIN), skip roll HIT(.001, < Cinderroot's 5%),
+        // pickSkipSource(.5) — the same 6-value sequence the "skip roll hitting" test above
+        // uses for its own first (hit) resolution.
+        const perHitRoll = [0.5, 0.5, 0.5, 0.1, 0.001, 0.5];
+        const totalLinks = Work.MAX_BOUNTY_RAID_COOLDOWN_SKIP_CHAIN_LENGTH + 1;
+        const allRolls = Array(totalLinks).fill(perHitRoll).flat();
+        const randomSpy = jest.spyOn(Math, 'random');
+        allRolls.forEach(v => randomSpy.mockReturnValueOnce(v));
+
+        const interaction = fakeInteraction();
+        await runStartRaidFlow(interaction, 'baby');
+
+        randomSpy.mockRestore();
+        dateSpy.mockRestore();
+
+        const raidTimerCalls = dynamoHandler.updateGuildDatabase.mock.calls.filter(([, field]) => field === 'raidTimer');
+        // One write per real resolution (totalLinks) PLUS the chain-cap fix's own explicit
+        // overwrite write once the last link's hit couldn't actually chain further.
+        expect(raidTimerCalls).toHaveLength(totalLinks + 1);
+
+        for (let i = 0; i < totalLinks; i++) {
+            expect(raidTimerCalls[i][2]).toBe(FIXED_NOW);
+        }
+        // The fix's own final write is a REAL full cooldown, not "ready now".
+        expect(raidTimerCalls[raidTimerCalls.length - 1][2]).toBe(FIXED_NOW + Raid.RAID_TIMER_SECONDS * 1000);
     });
 });
 

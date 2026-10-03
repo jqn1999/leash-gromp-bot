@@ -284,7 +284,10 @@ var workScenarios = [
 // is always a new followUp message, and any failure mid-chain (a DB hiccup on the
 // re-fetch below, or the near-impossible case of the cooldown somehow not being ready)
 // just quietly ends the chain there instead of surfacing an error after what already
-// looked like a normal, complete result to the player.
+// looked like a normal, complete result to the player. When the cap itself is what stops
+// the chain (this call's own roll skipped too, but chainDepth is already at the limit),
+// workTimer gets explicitly overwritten back to a real cooldown at the bottom of this
+// function — see that block's own comment for why (2026-10-03 fix).
 async function performWork(interaction, userId, username, userDisplayName, workGainAmount, isChainedReply, chainDepth) {
     const userDetails = await dynamoHandler.findUser(userId, username);
     if (!userDetails) {
@@ -495,8 +498,21 @@ async function performWork(interaction, userId, username, userDisplayName, workG
         }
     }
 
-    if (userDetails._cooldownSkippedByCompanion && chainDepth < Work.MAX_COOLDOWN_SKIP_CHAIN_LENGTH) {
-        await performWork(interaction, userId, username, userDisplayName, workGainAmount, true, chainDepth + 1);
+    if (userDetails._cooldownSkippedByCompanion) {
+        if (chainDepth < Work.MAX_COOLDOWN_SKIP_CHAIN_LENGTH) {
+            await performWork(interaction, userId, username, userDisplayName, workGainAmount, true, chainDepth + 1);
+        } else {
+            // Chain cap hit (2026-10-03, direct instruction) — this call's OWN roll also
+            // skipped, so whichever scenario handler just ran already wrote workTimer as
+            // "available now" via dynamoHandler.calculateWorkTimerValue, which has no
+            // concept of chain depth and rolls fresh every single call regardless of how
+            // deep the chain already is. Left alone, the player could just run /work again
+            // themselves immediately for a free extra roll beyond the chain cap — the
+            // result embed still says "skipped!" (that part of this call was real), but the
+            // cooldown gets overwritten to the real, full Work.WORK_TIMER_SECONDS here so
+            // there's no actual extra action available.
+            await dynamoHandler.updateUserFields(userId, { workTimer: Date.now() + Work.WORK_TIMER_SECONDS * 1000 });
+        }
     }
 }
 

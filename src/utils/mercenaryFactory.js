@@ -155,11 +155,29 @@ async function resolveBountyAttempt(userDetails, mode) {
     const { tier: tierNum, difficulty, reward: rewardBase, penalty: penaltyBase, starchReward: starchRewardBase } = tierEntry;
     const bandLetter = getBandLetter(tierNum);
 
-    const successChance = Math.min(effectiveBountyPower / difficulty, Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE);
+    // Metal Potato Meddley (2026-10-03, direct instruction) — Bounty's own analog of Guild
+    // Raid's flat 1% Metal King roll. 'regular' mode only, same as Metal King itself excludes
+    // Baby Raid — rolled AFTER the tier/band above, reusing whichever band the already-rolled
+    // tier landed in (NO second band roll) rather than rolling anything fresh. See
+    // Bounty.METAL_POTATO_MEDDLEY's own comment in constants.js for the full band-reward
+    // derivation (a literal numeric copy of Raid's own Regular/Elite/Legendary Metal King
+    // numbers, keyed by band instead of guild mode).
+    const isMetalPotatoMeddley = mode === 'regular' && Math.random() < Bounty.METAL_POTATO_MEDDLEY_CHANCE;
+    const meddleyBand = isMetalPotatoMeddley ? Bounty.METAL_POTATO_MEDDLEY[bandLetter] : null;
+
+    // A Meddley attempt rolls its own success chance against its OWN (much higher) band
+    // difficulty, same shared Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE cap every Bounty tier
+    // already uses — Metal King's own three brackets each cap against their OWN mode's
+    // maximum rate, but Bounty has only ever had the one (Regular-mode-equivalent) rate, so
+    // there's nothing to branch on here.
+    const effectiveDifficulty = isMetalPotatoMeddley ? meddleyBand.difficulty : difficulty;
+    const successChance = Math.min(effectiveBountyPower / effectiveDifficulty, Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE);
     const won = Math.random() < successChance;
 
-    const scenarioPool = BountyScenarios[bandLetter];
-    const scenario = scenarioPool[Math.floor(Math.random() * scenarioPool.length)];
+    // Meddley has its own dedicated flavor (constants.js's metalPotatoMeddley, mirrors
+    // metalKingRaidBoss's shape exactly) instead of BountyScenarios' per-band wanted-poster
+    // flavor — no scenario roll (and no Math.random() call) happens on this branch.
+    const scenario = isMetalPotatoMeddley ? null : BountyScenarios[bandLetter][Math.floor(Math.random() * BountyScenarios[bandLetter].length)];
 
     const result = {
         tier: tierNum,
@@ -168,8 +186,11 @@ async function resolveBountyAttempt(userDetails, mode) {
         successChance,
         scenario,
         rankInfo,
-        currency: won ? scenario.currency : 'potato', // a loss always denominates in potatoes — the physical
-                                                        // risk of the attempt itself, not a mirror of the scenario
+        isMetalPotatoMeddley,
+        // Meddley's own reward/penalty always denominate in potatoes (mirrors Metal King,
+        // which has no starch-reward concept at all) — a normal loss already always does too,
+        // so only a normal WIN needs the scenario's own currency pick.
+        currency: (!isMetalPotatoMeddley && won) ? scenario.currency : 'potato',
         rewardAmount: 0,
         penaltyAmount: 0,
         statReward: null,
@@ -177,22 +198,47 @@ async function resolveBountyAttempt(userDetails, mode) {
     };
 
     if (won) {
-        const yukonRewardBonus = companionFactory.getActivePerkValue(userDetails, "bountyRewardPercent");
+        if (isMetalPotatoMeddley) {
+            // Direct numeric copy of Guild Raid's own Metal King win math (same ×0.8-1.2
+            // range roll, no raidRewardMultiplier term — Bounty has no guild-level reward
+            // multiplier concept), ADDITIONALLY scaled by the mercenary's own
+            // rankInfo.rewardMultiplier for consistency with every other Bounty win's reward
+            // (the one deliberate departure from a pure Metal King copy — Guild Raid has no
+            // per-member rank multiplier to apply in the first place). Deliberately skips the
+            // rare rollBountyStatReward roll and the Yukon drop roll below — Meddley's own
+            // guaranteed flat stat grant (mirroring raidFactory.handleStatSplit's shape, one
+            // mercenary instead of a roster) IS this win's whole stat-reward story, not an
+            // addition on top of it.
+            const rangeRoll = getRandomFromInterval(.8, 1.2);
+            result.rewardAmount = Math.round(meddleyBand.reward * rangeRoll * rankInfo.rewardMultiplier);
+            result.statReward = [
+                { type: 'workMultiplierAmount', amount: meddleyBand.multiplierReward },
+                { type: 'passiveAmount', amount: meddleyBand.passiveReward },
+                { type: 'bankCapacity', amount: meddleyBand.capacityReward }
+            ];
+        } else {
+            const yukonRewardBonus = companionFactory.getActivePerkValue(userDetails, "bountyRewardPercent");
 
-        // Both currencies share the exact same roll shape now (2026-09-21, direct
-        // instruction — see Bounty.STARCH_REFERENCE_PRICE's own comment in constants.js):
-        // this tier's own fixed base (rewardBase potatoes, or starchRewardBase starches —
-        // rewardBase's own value already converted to an equivalent starch count at the
-        // 13,000-potato reference price) times the same .8-1.2 range roll, rank multiplier,
-        // and Yukon bonus. Neither currency depends on the WINNER's own workMultiplierAmount
-        // any more — true parity between the two at every tier/rank/power level, not just
-        // at one reference point.
-        const rangeRoll = getRandomFromInterval(.8, 1.2);
-        const base = scenario.currency === 'potato' ? rewardBase : starchRewardBase;
-        result.rewardAmount = Math.round(base * rangeRoll * rankInfo.rewardMultiplier * (1 + yukonRewardBonus));
+            // Both currencies share the exact same roll shape now (2026-09-21, direct
+            // instruction — see Bounty.STARCH_REFERENCE_PRICE's own comment in constants.js):
+            // this tier's own fixed base (rewardBase potatoes, or starchRewardBase starches —
+            // rewardBase's own value already converted to an equivalent starch count at the
+            // 13,000-potato reference price) times the same .8-1.2 range roll, rank multiplier,
+            // and Yukon bonus. Neither currency depends on the WINNER's own workMultiplierAmount
+            // any more — true parity between the two at every tier/rank/power level, not just
+            // at one reference point.
+            const rangeRoll = getRandomFromInterval(.8, 1.2);
+            const base = scenario.currency === 'potato' ? rewardBase : starchRewardBase;
+            result.rewardAmount = Math.round(base * rangeRoll * rankInfo.rewardMultiplier * (1 + yukonRewardBonus));
 
-        result.statReward = rollBountyStatReward(bandLetter, userDetails);
-        result.yukonHit = Math.random() < MercenaryCompanionDrop.YUKON_CHANCE[bandLetter];
+            result.statReward = rollBountyStatReward(bandLetter, userDetails);
+            result.yukonHit = Math.random() < MercenaryCompanionDrop.YUKON_CHANCE[bandLetter];
+        }
+    } else if (isMetalPotatoMeddley) {
+        // Bounty.METAL_POTATO_MEDDLEY_PENALTY (always 0) — overrides Bounty's own climbing
+        // per-tier penalty entirely for this one roll, mirroring every Metal King bracket's
+        // own "costs nothing win or lose" shape.
+        result.penaltyAmount = Bounty.METAL_POTATO_MEDDLEY_PENALTY;
     } else {
         // penaltyBase (Bounty.TIERS' own `penalty` field) already has the old
         // SOLO_BOUNTY_REWARD_SHARE (0.15) folded directly into its stored value (see

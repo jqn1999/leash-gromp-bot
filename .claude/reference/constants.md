@@ -136,6 +136,23 @@ replacing the retired `Bounty.STARCH_TIER_MULTIPLIER`, which scaled starch rewar
 WINNER's own power instead of being tier-fixed like the potato side). Full derivation:
 [systems/mercenary-bounties.md](../systems/mercenary-bounties.md#the-12-tier-bounty-ladder-bountytiers-2026-08-28-rework).
 
+### `Bounty.METAL_POTATO_MEDDLEY` (2026-10-03, Bounty's own Metal King analog)
+
+A flat 1% roll (`Bounty.METAL_POTATO_MEDDLEY_CHANCE`), `'regular'` mode only, checked AFTER
+`Bounty.TIERS`' own tier/band roll — reuses whichever band (I/II/III) the tier roll already
+landed in rather than rolling a fresh one. `Bounty.METAL_POTATO_MEDDLEY` is an `{ I, II, III }`
+map of `{ difficulty, reward, multiplierReward, passiveReward, capacityReward }`, each entry a
+literal, independently-named numeric copy of `Raid.METAL_KING_*`/`ELITE_METAL_KING_*`/
+`LEGENDARY_METAL_KING_*` respectively (band I↔Regular, II↔Elite, III↔Legendary) — not a live
+cross-reference, so either side can be retuned without affecting the other.
+`Bounty.METAL_POTATO_MEDDLEY_PENALTY` is always 0, overriding `Bounty.TIERS`' own climbing
+per-tier penalty for this one roll, mirroring every Metal King bracket's "costs nothing win or
+lose" shape. Reward is scaled by the same ×0.8-1.2 range roll Metal King itself uses, ADDITIONALLY
+by the mercenary's own `rankInfo.rewardMultiplier` (the one departure from a pure copy — Guild
+Raid has no per-member rank multiplier to apply). Stat grants are flat adds (mirrors
+`raidFactory.handleStatSplit`'s shape, not Bounty's own percentage-of-current `BountyStatReward`
+roll). Full derivation: [systems/mercenary-bounties.md](../systems/mercenary-bounties.md#metal-potato-meddley-take-bounty-moderegular-2026-10-03).
+
 ### `Raid.RAID_TIER_WEIGHT_SHARPNESS` (3, 2026-08-27 dynamic tier weighting)
 
 The exponent in `raidFactory.js`'s `getDynamicTierWeights`/`getWeightedScenarios`:
