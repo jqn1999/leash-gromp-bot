@@ -371,8 +371,18 @@ async function runBountyAttempt(client, interaction, userId, username, userDispl
         }
     }
 
-    if (shouldChain && chainDepth < Work.MAX_BOUNTY_RAID_COOLDOWN_SKIP_CHAIN_LENGTH) {
-        await runBountyAttempt(client, interaction, userId, username, userDisplayName, mode, true, chainDepth + 1);
+    if (shouldChain) {
+        if (chainDepth < Work.MAX_BOUNTY_RAID_COOLDOWN_SKIP_CHAIN_LENGTH) {
+            await runBountyAttempt(client, interaction, userId, username, userDisplayName, mode, true, chainDepth + 1);
+        } else {
+            // Chain cap hit (2026-10-03, direct instruction) — this call's OWN roll also
+            // skipped, so resolveBountyCooldownSkip already backdated bountyTimer to
+            // "ready now" above, with no concept of chain depth. Left alone, the player
+            // could run /take-bounty again themselves immediately for a free extra attempt
+            // past the cap. Overwrite with a real full cooldown — bountyTimer = Date.now()
+            // is the same "time since" value every ordinary miss/loss already writes.
+            await dynamoHandler.updateUserFields(userId, { bountyTimer: Date.now() });
+        }
     }
 }
 
@@ -489,7 +499,14 @@ async function runStatBountyAttempt(client, interaction, userId, username, userD
         }
     }
 
-    if (shouldChain && chainDepth < Work.MAX_BOUNTY_RAID_COOLDOWN_SKIP_CHAIN_LENGTH) {
-        await runBountyAttempt(client, interaction, userId, username, userDisplayName, 'stat', true, chainDepth + 1);
+    if (shouldChain) {
+        if (chainDepth < Work.MAX_BOUNTY_RAID_COOLDOWN_SKIP_CHAIN_LENGTH) {
+            await runBountyAttempt(client, interaction, userId, username, userDisplayName, 'stat', true, chainDepth + 1);
+        } else {
+            // Chain cap hit — see runBountyAttempt's own identical block's comment above
+            // for the full reasoning (this is its Stat Bounty twin, same
+            // resolveBountyCooldownSkip-backdated-bountyTimer bug/fix).
+            await dynamoHandler.updateUserFields(userId, { bountyTimer: Date.now() });
+        }
     }
 }

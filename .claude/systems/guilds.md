@@ -425,9 +425,18 @@ the full mechanic. Per explicit follow-up instruction ("on a loss there is no co
 auto trigger"), **none of these four sources are even consulted for a skip roll on a loss** — a
 loss always resets the full `Raid.RAID_TIMER_SECONDS`, no exceptions. A hit backdates `raidTimer`
 to `Date.now()` (ready immediately, not a partial discount) and auto-chains one more raid attempt
-at the SAME `raid-select` mode, capped at `Work.MAX_COOLDOWN_SKIP_CHAIN_LENGTH` — implemented by
-`startRaid.js`'s `resolveRaid`, which recurses exactly like `/work`'s `performWork`/`takeBounty.js`'s
-`runBountyAttempt`.
+at the SAME `raid-select` mode, capped at `Work.MAX_BOUNTY_RAID_COOLDOWN_SKIP_CHAIN_LENGTH`
+(corrected here 2026-10-03 — this previously named the wrong constant, `Work.MAX_COOLDOWN_SKIP_
+CHAIN_LENGTH`, which is actually `/work`'s own separate cap; both happen to be 5 today, which is
+exactly how the mistake went unnoticed) — implemented by `startRaid.js`'s `resolveRaid`, which
+recurses exactly like `/work`'s `performWork`/`takeBounty.js`'s `runBountyAttempt`.
+
+**Chain-cap-hit-on-its-own-skip fix (2026-10-03)** — `resolveRaid`'s own chain-continuation check
+used to do nothing when the cap was reached on a call whose roll ALSO hit, leaving `raidTimer` at
+`Date.now()` ("ready now") with no further auto-chain to use it — a free extra raid via a manual
+`/start-raid` re-run. Fixed by overwriting `raidTimer` back to `Date.now() + Raid.RAID_TIMER_
+SECONDS * 1000` on that one branch. See [economy-and-work.md](economy-and-work.md)'s own dated
+entry for the full writeup — same bug, same fix, shared across all four chaining commands.
 
 **Why `resolveRaid`'s per-link `findUser`/guild reads can't be consolidated into one read-at-start**
 (2026-09-20 architect pass, scoping only — see `.claude/roadmap.md`'s dated entry): unlike the three

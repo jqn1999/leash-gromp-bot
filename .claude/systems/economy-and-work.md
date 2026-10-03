@@ -1218,3 +1218,58 @@ user still pays the 5%/gets 950 from 1000; the exempt id gets the full 1000, no
 `addUserDatabase` call at all). `takeBountyTax.test.js` gained a case confirming the exempt id
 skips both the house AND pot credit even with a live Spud Keep holder, keeping the full gross
 reward. Full suite: **1767/1767** across 95 suites.
+
+## Cooldown-skip chain cap: a hit on the LAST possible link left the cooldown "ready now" instead of resetting it (2026-10-03 fix, all 4 chaining commands)
+
+**Asked** (direct instruction): "For work bounty raid and Rob npc skip chance chaining, make
+sure if it chains 5 times even if the last one says it skips again and doesn't auto trigger, it
+should actually set the work cooldown to the usual 5 minutes instead of letting them use the
+command again."
+
+**Root cause, shared byte-for-byte across all four chaining commands** (`/work`'s `performWork`
+here, `/take-bounty`'s `runBountyAttempt`/`runStatBountyAttempt` and `/rob-npc`'s
+`runNpcRobAttempt` in [mercenary-bounties.md](mercenary-bounties.md), `/start-raid`'s
+`resolveRaid` in [guilds.md](guilds.md)): the cooldown-skip ROLL and the chain-cap CHECK are two
+separate steps, and only the second one knows about `chainDepth`. The roll
+(`dynamoHandler.calculateWorkTimerValue` for `/work`; `resolveBountyCooldownSkip`/the inline
+block in `runNpcRobAttempt`/`resolveRaidCooldown` for the other three) always writes its own
+"ready now" cooldown value the instant it rolls a hit, with zero awareness of how deep the chain
+already is — it just rolls fresh on every single call. The chain-cap check
+(`chainDepth < Work.MAX_COOLDOWN_SKIP_CHAIN_LENGTH` / `...MAX_BOUNTY_RAID_COOLDOWN_SKIP_CHAIN_
+LENGTH`) runs AFTER that write already landed, and used to only ever do one thing on a hit:
+recurse if under the cap. If the cap was reached on a call whose OWN roll ALSO hit — the exact
+"chains 5 times and the 5th [technically 6th, 0-indexed] also says it skips" case the instruction
+describes — the chain correctly stopped recursing, but the cooldown field was left at "available
+right now," since nothing ever overwrote it. The result embed genuinely said "skipped!" (that
+part was real, and deliberately left alone — see the instruction's own "even if the last one
+says it skips again"), but the player could then immediately run the command again themselves for
+a free extra attempt the chain cap was supposed to prevent.
+
+**Fix, identical shape in all four files**: the `if (shouldChain && chainDepth < CAP)` check
+became `if (shouldChain) { if (chainDepth < CAP) { recurse } else { overwrite the cooldown field
+with the REAL full cooldown } }`. The overwrite write uses exactly the same value/convention each
+command's own ordinary miss/loss case already writes (`/work`'s `workTimer`: `Date.now() +
+Work.WORK_TIMER_SECONDS * 1000`; `/take-bounty`'s `bountyTimer`/`/rob-npc`'s `npcRobTimer`:
+`Date.now()`, since both store a last-ACTION timestamp rather than a future ready-at one;
+`/start-raid`'s `raidTimer`: `Date.now() + Raid.RAID_TIMER_SECONDS * 1000`, a future ready-at
+timestamp like `/work`'s) — a plain extra `dynamoHandler.updateUserFields`/`updateGuildDatabase`
+call, not a new code path.
+
+**Tests.** One new regression test per command (`workCooldownSkipChainCap.test.js`, new file;
+new cases appended to `takeBountyCooldownSkip.test.js`/`robNpcCooldownSkip.test.js`/
+`startRaidCooldownSkip.test.js`), each forcing a GUARANTEED skip hit on every single link
+through `MAX_(BOUNTY_RAID_)COOLDOWN_SKIP_CHAIN_LENGTH + 1` total resolutions (rather than relying
+on an astronomically unlikely real streak), then asserting: every real resolution's own write
+backdated/showed "ready now" (proving the result embeds were genuinely truthful about skipping),
+PLUS one extra final write resetting the cooldown to the real full duration. `/work`'s own test
+mocks `dynamoHandler.calculateWorkTimerValue` directly (mutating the same `userDetails` reference
+`performWork` holds, mirroring the real implementation's own side-effect shape) since `/work`'s
+skip roll lives inside `workFactory.js`'s scenario handlers, not inline in `work.js` the way the
+other three commands roll inline. Full suite: **123 suites (1 fully skipped) / 2306 tests (18
+skipped, 2288 passing)** — net +4 new tests, 0 broken.
+
+**Cross-repo note**: this is a backend cooldown-enforcement bug fix with no player-visible
+formula/data-shape change `financial-project`'s own ported Lambdas (`gromp-economy` for
+`/work`/Bounty/Heist's web equivalents) would need to mirror if those web paths independently
+implement the same chain-cap logic — not yet audited in this session; flagged per this repo's
+CLAUDE.md sibling-repo rule.

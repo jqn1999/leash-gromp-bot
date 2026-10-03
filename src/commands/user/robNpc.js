@@ -286,7 +286,17 @@ async function runNpcRobAttempt(interaction, userId, username, userDisplayName, 
         }
     }
 
-    if (shouldChain && chainDepth < Work.MAX_BOUNTY_RAID_COOLDOWN_SKIP_CHAIN_LENGTH) {
-        await runNpcRobAttempt(interaction, userId, username, userDisplayName, heistTierKey, true, chainDepth + 1);
+    if (shouldChain) {
+        if (chainDepth < Work.MAX_BOUNTY_RAID_COOLDOWN_SKIP_CHAIN_LENGTH) {
+            await runNpcRobAttempt(interaction, userId, username, userDisplayName, heistTierKey, true, chainDepth + 1);
+        } else {
+            // Chain cap hit (2026-10-03, direct instruction) — this call's OWN roll also
+            // skipped, so npcRobTimer was already backdated to "ready now" above, with no
+            // concept of chain depth. Left alone, the player could run /rob-npc again
+            // themselves immediately for a free extra Heist past the cap. Overwrite with a
+            // real full cooldown — npcRobTimer = Date.now() is the same "time since" value
+            // every ordinary whiff/loss already writes.
+            await dynamoHandler.updateUserFields(userId, { npcRobTimer: Date.now() });
+        }
     }
 }

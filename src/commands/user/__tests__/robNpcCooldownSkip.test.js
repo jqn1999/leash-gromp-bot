@@ -7,7 +7,7 @@
 jest.mock('../../../utils/dynamoHandler');
 
 const dynamoHandler = require('../../../utils/dynamoHandler');
-const { RobNpc } = require('../../../utils/constants');
+const { RobNpc, Work } = require('../../../utils/constants');
 const { callback } = require('../robNpc');
 
 function fakeInteraction(optionValues = {}) {
@@ -126,5 +126,40 @@ describe('/rob-npc cooldown skip', () => {
         expect(heistWrites[0][1].npcRobTimer).toBeLessThanOrEqual(Date.now() - RobNpc.NPC_ROB_TIMER_SECONDS * 1000 + 100);
         expect(heistWrites[1][1].npcRobTimer).toBeGreaterThanOrEqual(Date.now() - 100);
         expect(interaction.followUp).toHaveBeenCalled();
+    });
+
+    // Chain-cap-hit-on-its-own-skip fix (2026-10-03, direct instruction — see
+    // takeBountyCooldownSkip.test.js's identical test for the full writeup; same bug, same
+    // fix, this is /rob-npc's own copy). Before this fix, a skip roll landing on the call
+    // that hits the chain cap left npcRobTimer at "ready now" with no further auto-chain —
+    // a free extra Heist via a manual re-run.
+    test('a skip roll hitting on every single link all the way to the chain cap overwrites npcRobTimer to a real cooldown instead of leaving it ready-now', async () => {
+        dynamoHandler.findUser.mockResolvedValue(baseUser({ mercenaryBountyWinCount: 15 })); // Rank 2, cooldownReductionPercent 0.06
+        const interaction = fakeInteraction({ 'heist-type': 'market_stall' });
+
+        // One win-and-skip-hit resolution: reward roll(0), win check(0), skip roll HIT(0),
+        // pickSkipSource(.5) — the same 4-value sequence the "skip roll hitting" test above
+        // uses for its own first (hit) resolution.
+        const perHitRoll = [0, 0, 0, 0.5];
+        const totalLinks = Work.MAX_BOUNTY_RAID_COOLDOWN_SKIP_CHAIN_LENGTH + 1;
+        const allRolls = Array(totalLinks).fill(perHitRoll).flat();
+        const randomSpy = jest.spyOn(Math, 'random');
+        allRolls.forEach(v => randomSpy.mockReturnValueOnce(v));
+        try {
+            await callback({}, interaction);
+        } finally {
+            randomSpy.mockRestore();
+        }
+
+        const heistWrites = dynamoHandler.updateUserFields.mock.calls.filter(([, setAttrs]) => 'npcRobTimer' in setAttrs);
+        // One write per real resolution (totalLinks) PLUS the chain-cap fix's own explicit
+        // overwrite write once the last link's hit couldn't actually chain further.
+        expect(heistWrites).toHaveLength(totalLinks + 1);
+
+        for (let i = 0; i < totalLinks; i++) {
+            expect(heistWrites[i][1].npcRobTimer).toBeLessThanOrEqual(Date.now() - RobNpc.NPC_ROB_TIMER_SECONDS * 1000 + 100);
+        }
+        const finalWrite = heistWrites[heistWrites.length - 1][1];
+        expect(finalWrite.npcRobTimer).toBeGreaterThanOrEqual(Date.now() - 100);
     });
 });

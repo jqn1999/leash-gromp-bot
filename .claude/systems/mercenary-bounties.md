@@ -1654,6 +1654,14 @@ skip 5 times instead of 10"; Guild Raid's own `startRaid.js` chain shares this s
 caps now coincidentally match at 5 — still two independent constants, not merged into one, since
 `/work` and Bounty/Heist/Guild Raid have been asked to change on separate occasions so far.
 
+**Chain-cap-hit-on-its-own-skip fix (2026-10-03)** — `runBountyAttempt`/`runStatBountyAttempt`/
+`runNpcRobAttempt`'s own chain-continuation check used to do nothing when the cap was reached on
+a call whose roll ALSO hit, leaving `bountyTimer`/`npcRobTimer` backdated to "ready now" with no
+further auto-chain to use it — a free extra attempt via a manual re-run. Fixed by overwriting the
+cooldown field back to a real full cooldown on that one branch. See
+[economy-and-work.md](economy-and-work.md)'s own dated entry for the full writeup — same bug,
+same fix, shared across all four chaining commands including `/start-raid` (`guilds.md`).
+
 **Why `cooldownReductionPercent`'s 2026-09-07 max (38%) stayed more modest than
 `rewardMultiplier`/`rivalSuccessBonus`'s own jumps**: this value feeds `combineSkipChance`
 alongside Spud Keep's own cooldown buff (`SpudKeep.COOLDOWN_BUFF_MAX_VALUE`, up to 40% at a

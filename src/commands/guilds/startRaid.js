@@ -1832,8 +1832,18 @@ async function resolveRaid(interaction, raidSelection, isChainedReply, chainDept
     // runNpcRobAttempt chain check exactly, including the shared (not /work's own)
     // Work.MAX_BOUNTY_RAID_COOLDOWN_SKIP_CHAIN_LENGTH cap (5, lowered from the shared 10
     // 2026-09-29 — see that constant's own comment in constants.js).
-    if (shouldChain && chainDepth < Work.MAX_BOUNTY_RAID_COOLDOWN_SKIP_CHAIN_LENGTH) {
-        await resolveRaid(interaction, raidSelection, true, chainDepth + 1);
+    if (shouldChain) {
+        if (chainDepth < Work.MAX_BOUNTY_RAID_COOLDOWN_SKIP_CHAIN_LENGTH) {
+            await resolveRaid(interaction, raidSelection, true, chainDepth + 1);
+        } else {
+            // Chain cap hit (2026-10-03, direct instruction) — this call's OWN roll also
+            // skipped, so finalNextRaidAvailableAt was already set to Date.now() ("ready
+            // now") just above, with resolveRaidCooldown having no concept of chain depth.
+            // Left alone, the guild could just run /start-raid again immediately for a
+            // free extra raid past the cap. Overwrite with the real full cooldown — same
+            // future "ready-at" timestamp every ordinary loss/miss already writes.
+            await dynamoHandler.updateGuildDatabase(guildId, 'raidTimer', Date.now() + Raid.RAID_TIMER_SECONDS * 1000);
+        }
     }
 }
 
