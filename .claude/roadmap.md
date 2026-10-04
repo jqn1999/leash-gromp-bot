@@ -20404,3 +20404,350 @@ shape gained `isMetalPotatoMeddley`, and a new reward/stat-grant branch) that `f
 own `/gromp` page would need an equivalent for if it re-implements Mercenary Bounty's win/loss
 math server-side — not yet ported; flagged per this repo's own `CLAUDE.md` cross-repo-sync rule,
 not yet actioned in the same session.
+
+## `/work`'s cooldown-skip chain rewritten to one write per chain instead of one write per link
+
+**Asked**: a chain of up to `Work.MAX_COOLDOWN_SKIP_CHAIN_LENGTH + 1` (6) `/work` resolutions was
+firing a separate `dynamoHandler.updateUserFields` call per link (plus a separate re-fetch, a
+separate companion-leveling write, and separate achievement/quest/festival/guild-contract checks,
+also once per link) — direct instruction to collapse the whole chain down to exactly ONE write for
+this player's own record, "the full rewrite option, not the scoped-down safe win," after being
+shown both and the buff-staleness tradeoff this entails.
+
+**What changed, mechanically.** All 11 `workFactory.js` scenario handlers
+(`handleGoldenPotato`/`handlePoisonPotato`/`handleLargePotato`/`handleMetalPotato`/
+`handleSweetPotato`/`handleCompanionEncounter`/`handleTaroTrader`/`handleAncientPotato`/
+`handleMimicPotato`/`handleGoldenYam`/`handleRegularWork`) no longer call
+`dynamoHandler.updateUserFields` (or any other write) themselves. Each one now computes its
+reward exactly as before and stashes the write it WOULD have made onto
+`userDetails._workChainDelta` — `{ setFields, addFields, houseTax?, mimicHoardDelta?,
+guildRaidTimerGuildId? }` — a transient, non-persisted flag mirroring this file's/work.js's own
+existing `_cooldownSkippedByCompanion`/`_cooldownSkipChance`/`_companionXpGained` convention,
+rather than reshaping every handler's own return VALUE (which stayed byte-for-byte the same type
+it always was — a bare number for Regular/Large/Taro/Golden Yam, the same result object shape for
+everything else) — so every existing caller of a handler's return value (embed-building code,
+`festivalShop.js`'s voucher display, admin.js) needed zero changes. The three extra non-write-
+value writes the handlers used to fire inline also moved onto this same delta:
+`handleMimicPotato`'s `addStatFields('mimic_hoard', ...)` (as `mimicHoardDelta`, a signed amount),
+`handleAncientPotato`'s `updateGuildDatabase(guildId, 'raidTimer', ...)` (as
+`guildRaidTimerGuildId`), and `calculateGainAmount`'s unconditional house-tax `addUserDatabase`
+call — the last one gated behind a new `deferTax` param (default `false`, so every OTHER existing
+caller — `/rob-npc`'s Heist payout, `/take-bounty`, everywhere else this shared function is used —
+keeps its old immediate-write behavior completely unchanged; only the 6 workFactory.js call sites
+that needed deferring pass `deferTax: true` and get `{ gainAmount, houseTax }` back instead of a
+bare number).
+
+`work.js`'s `performWork` is no longer recursive. It used to be one call per link, each one
+re-`findUser`-ing fresh state and recursing into the next link on a skip. It's now a single
+`while` loop over the whole chain: each iteration rolls a scenario, calls that scenario's new
+`resolve` function (a sibling to the existing `action` closure — `resolve` computes the delta and
+builds the embed/big-event payloads WITHOUT writing or sending either; `action` wraps `resolve`
+and still writes+sends immediately for itself, so `admin.js`'s `/admin-work` — which calls
+`scenario.action` directly, once, with no concept of a chain — needed zero changes), merges that
+link's delta into a chain-wide accumulator via `Object.assign` (last-link-wins per field, same
+outcome a sequence of real DB `set`s would give), and applies the SAME delta onto the in-memory
+`userDetails` object so the next link's own math (and the once-per-chain checks after the loop)
+see this link's real result — replacing the old "re-fetch after each link's write" pattern with
+no re-fetch at all. The loop ends when a link doesn't skip, or when the chain cap is hit; either
+way, exactly one `dynamoHandler.updateUserFields` call follows, carrying every link's accumulated
+`setFields`/summed `workCount` add. The 2026-10-03 chain-cap-reset fix (the entry two above this
+one) is preserved exactly — if the cap is hit on a link that ITSELF skipped, `workTimer` gets
+overwritten to a real full `Work.WORK_TIMER_SECONDS` cooldown — just folded into this one write
+instead of a separate extra one. The non-write-count-affecting consolidation (achievements,
+quests, festival quests, guild contract, the "biggest single payout" personal-best record, and
+companion leveling) was folded in the same pass, now running once per chain against the chain's
+real pre-chain/post-chain baseline instead of once per link.
+
+**Tradeoff #1 — buff staleness within a chain, KNOWINGLY ACCEPTED, not an oversight.** Before
+this rewrite (the 2026-09-20 architect pass), `dynamoHandler.calculateWorkTimerValue` fetched its
+five cooldown-skip sources (companion/World-Boss/guild/Spud-Keep/mercenary-buff) FRESH from the DB
+on every single call — including every link of a chain — specifically so a companion swap, a
+guild buff changing, or Spud Keep's holder changing mid-chain would be picked up by the very next
+link, not wait for the player's next manual `/work`. `calculateWorkTimerValue` gained a 4th,
+optional `cachedSources` param (default `null`, so every call site that doesn't pass it — which is
+every one of them except this rewrite's own — behaves identically to before); `performWork` now
+calls `dynamoHandler.getWorkCooldownSkipSources(userDetails)` exactly ONCE, at the very top of the
+chain, and hands that SAME array to every link's own `calculateWorkTimerValue` call for the rest
+of that chain via each handler's own new trailing `cachedSkipSources` param (threaded through a
+small `resolveWorkTimer` helper in `workFactory.js`, mirrored as `resolveWorkTimerForMetalFailure`
+in `work.js` for Metal's own inline sub-roll failure branch, that reproduces the EXACT original
+2-or-3-arg call shape whenever no cache is supplied — so every pre-existing direct unit test of a
+handler, `admin.js`, and `festivalFactory.js`'s voucher redemption all still call it exactly as
+they always did). **What's lost**: a buff change mid-chain is no longer picked up by links 2
+through N of that SAME chain — it only takes effect starting that player's NEXT `/work` call. In
+practice this only ever matters for the (already rare) case of a multi-link skip chain
+overlapping the (already rare) moment some other system changes one of those five sources — but
+it's real, not theoretical, and is now pinned by an actual test
+(`workChainWriteCount.test.js`'s "buff-staleness tradeoff" block: asserts
+`getWorkCooldownSkipSources` is called exactly once for a forced multi-link chain, and that a
+buff whose own value climbs to "always skip" on every call AFTER the first is never actually
+picked up — the chain still ends after one link because it only ever consulted that first,
+frozen read).
+
+**Tradeoff #2 — the whole chain is now atomic, a direct and unavoidable consequence of
+"exactly one write," not a separate choice.** Before this rewrite, each link wrote AND announced
+(sent its result embed) immediately, so a crash on link 3 of a chain still left links 1-2's real
+rewards persisted and their embeds already sent — only link 3 itself was lost. Now, nothing is
+written OR announced until the single end-of-chain write succeeds (this fell out of restructuring
+`performWork`'s own auto-recovery `try`/`catch`, originally scoped around one link's dispatch, to
+now wrap the WHOLE loop plus that one write — moving it anywhere narrower would reintroduce
+partial writes this rewrite's own target rules out). A crash anywhere in the loop, before that
+write, now discards the WHOLE chain's computed-but-unpersisted result, not just whichever link
+crashed — the player is still told plainly that nothing was lost and `/work` is immediately
+available again (`workAutoRecovery.test.js` still passes unmodified), and that's now actually true
+for the entire chain rather than just whichever link happened to fail. Flagged here explicitly
+since it's a genuine behavior change beyond tradeoff #1, even though it follows directly from the
+literal "exactly one write" target rather than being an independent design decision.
+
+**A real bug caught and fixed during this rewrite, not part of the original plan.**
+`calculateWorkTimerValue` only ever SETS `userDetails._cooldownSkippedByCompanion` on a skip
+HIT — it never clears it on a miss, which was always safe under the old architecture (every link
+got a brand-new `userDetails` object off its own fresh `findUser`). The new loop reuses the SAME
+`userDetails` object across every link, so without an explicit reset at the top of each
+iteration, a miss on link N would have silently inherited link N-1's still-true flag on that same
+object — wrongly chaining forever (caught by the new `workChainWriteCount.test.js`'s own 5-link
+regression test initially producing 6 links instead of 5 before this one-line fix: `userDetails.
+_cooldownSkippedByCompanion = null;` at the top of the loop body, before each link runs). A
+second, smaller gap of the same shape existed for `userDetails.workCount` specifically — it's an
+ADD expression, never folded into `aggregatedSetFields`/`userDetails` by the main merge loop, so
+the once-per-chain achievement/quest checks after the loop would have seen a stale pre-chain
+`workCount` instead of this chain's real final value (the old per-link re-fetch used to give
+achievement/quest checks the REAL post-write value for free) — fixed by mirroring
+`aggregatedWorkCount` onto `userDetails.workCount` right after the chain's one write succeeds.
+
+**Other call sites touched to keep working at all, not just to hit the write-count target.**
+`festivalFactory.js`'s Encounter Voucher redemption (`attemptPurchaseFestivalSlot`) calls
+`handleSweetPotato`/`handleMetalPotato`/`handleLargePotato` directly, outside any `/work` chain,
+and used to rely on those handlers' own immediate write landing as a SECOND, disjoint-fields write
+alongside its own festivalTokens/festivalShop write. With the handlers no longer writing
+anything, `attemptPurchaseFestivalSlot` now reads the voucher's own `_workChainDelta` and merges
+its `setFields` into the SAME single write (and separately credits any `houseTax` the voucher's
+own `calculateGainAmount` call produced, previously silently applied via that now-removed second
+write) — a side benefit of one fewer write for a voucher purchase too, though that wasn't the
+point of touching this file.
+
+**Tests.** `workFactory.test.js`'s existing coverage for every one of the 11 handlers was
+mechanically migrated from asserting on `dynamoHandler.updateUserFields.mock.calls[N]` to
+asserting on the returned `userDetails._workChainDelta` instead (same assertions, same outcomes,
+just reading the delta instead of a DB-mock call — including the guild/hoard/house-tax-specific
+assertions, which now check `delta.guildRaidTimerGuildId`/`delta.mimicHoardDelta`/`delta.houseTax`
+and separately assert the OLD immediate DB calls no longer happen at all).
+`workCooldownSkipChainCap.test.js` was rewritten (its own write-COUNT assertions were specifically
+about the old per-link-write shape this rewrite replaced by design — the OUTCOME it locks in,
+a real full-duration cooldown surviving the cap-hit-on-its-own-skip case, is unchanged and
+re-asserted against the new single write). `festivalFactory.test.js`'s two direct-handler-call
+tests got the same delta-based migration. A new `workChainWriteCount.test.js` adds the two tests
+this rewrite's own plan specifically called for: a forced, deterministic 5-link skip chain
+asserting `updateUserFields` is called exactly once with the full 5-link accumulated outcome
+(potatoes/totalEarnings/workScenarioCounts/workCount/house-tax all equal to 5x one link's own
+deterministic gain, plus the right 5-message embed sequence, editReply once then followUp x4),
+and the buff-staleness pin described under tradeoff #1 above. `companionHuntBlocksWork.test.js`
+needed `followUp` added to its bare-bones fake interaction — a real (non-blocked) chain can now
+legitimately reach a first-work-style achievement unlock once `userDetails.workCount` correctly
+reflects the chain's real result (see the workCount bug fix above), which that test's interaction
+stub had never previously needed to support. Full suite: **125 of 126 suites (1 pre-existing,
+unrelated skip) / 2318 tests (18 pre-existing, unrelated skips, 2300 passing)** — net +3 new
+tests, 0 broken.
+
+**Cross-repo note.** This is a pure backend write-count/architecture change with no player-visible
+formula, odds, reward amount, or message content change (every outcome is byte-for-byte what the
+old per-link-write version would have produced) — `financial-project`'s own `/gromp` page has no
+equivalent write-count concern to port, since its own Lambdas aren't built around this same
+recursive-chain shape. Not flagged for porting.
+
+## `/take-bounty` and `/rob-npc` cooldown-skip chains given the same one-write-per-chain rewrite; `/start-raid` deliberately left untouched (2026-10-03, direct instruction, same-day follow-up to the `/work` rewrite above)
+
+Asked: apply the exact same "one write per chain, not per link" rewrite just shipped for
+`/work` to the other three chaining commands — `/take-bounty` (both its regular-ladder and
+Stat Bounty submodes), `/rob-npc`, and `/start-raid`.
+
+**Found first: a dated conflict for exactly one of the three, acted on per the instruction's
+own guardrail.** This repo already had a 2026-09-20 architect pass (its own entry just above
+this one, "Design (scoping only, not implemented): cooldown-skip chain read/write
+consolidation") scoping this EXACT idea across all four chaining commands at once, well
+before the `/work` rewrite happened. That pass rated `/work` "(c) Not safe / not worth it as
+a full rewrite" too — overridden for `/work` only by the user's own direct, explicit choice
+(shown both the full rewrite and a scoped-down safe win, picked the full rewrite) — but it
+rated `/take-bounty`/`/rob-npc` **"(a) Safe and worth doing"/"best target(s)"** and
+`/start-raid` **"(c) Not safe / not worth it,"** for reasons specific to each: Bounty/Heist
+already funneled every link into one `updateUserFields` call with almost entirely in-memory
+or slow-changing cooldown-skip sources, while `/start-raid`'s shared state (roster, buffs,
+bank, level, companion) is genuinely multi-actor — another guild member can change it mid-
+chain — and the 2026-09-18 `claimGuildRaidSlot` race guard is a live, load-bearing PER-LINK
+conditional write a chain-start-only consolidation would reopen a real double-raid race for.
+Per this task's own explicit instruction ("don't assume the user wants the full-rewrite path
+for these three just because they chose it for `/work`"), this was surfaced rather than
+resolved unilaterally: `/take-bounty` and `/rob-npc` were rewritten (the prior pass already
+endorsed both as safe); `/start-raid` was left completely untouched, reported back for
+explicit confirmation instead of guessing the user wanted the same override they made for
+`/work`.
+
+**What each command's own write-fragmentation looked like before this pass:**
+- **`/take-bounty`** (`runBountyAttempt`/`runStatBountyAttempt`, `takeBounty.js`): already
+  funneled potatoes/totalEarnings/totalLosses/starches/companions/bountyTimer into ONE
+  `dynamoHandler.updateUserFields(setAttributes, addAttributes)` call per link — NOT the
+  `workFactory.js`-style "every handler writes directly" pattern `/work` had, confirmed by
+  reading `mercenaryFactory.js` directly rather than assuming. The real per-link
+  fragmentation was: (a) a SECOND, separate `updateUserFields` buried inside
+  `raidFactory.handleStatSplit` on the rare permanent stat-reward roll (its own fresh
+  `findUser` + write for a 1-person "raidList"), and (b) the Kingdom Tax's house/Spud-Keep-
+  pot credit (`addUserDatabase`/`spudKeepFactory.creditSpudKeepPot`) firing immediately per
+  winning link instead of once per chain. The function was also fully recursive
+  (`isChainedReply`/`chainDepth` params), re-running the achievement/quest/festival-quest
+  check (with its own fresh `findUser` re-fetch) after every single link.
+- **`/rob-npc`** (`runNpcRobAttempt`, `robNpc.js`): same profile, same verdict — one
+  `updateUserFields` per link already, plus `raidFactory.handleStatSplit`'s own separate
+  write on the rare Royal Treasury stat-grant roll, plus the identical per-link achievement/
+  quest/festival-quest re-check. ONE additional, genuinely hidden write was found here that
+  the architect pass's own "already safe" read didn't catch (see below).
+- **`/start-raid`** (`resolveRaid`, `startRaid.js`): not touched at all this pass — see the
+  flag above. Its own write-fragmentation (`addToBankOrPurse`/`removeFromBankOrPurse`/
+  `dynamoHandler.updateGuildDatabase`/`raidFactory.handleStatSplit` called directly inside
+  each of its 14+ scenario closures, guild-scoped) is exactly as the architect pass already
+  described it — confirmed still accurate, not re-derived, since nothing there changed.
+
+**A real hidden write caught in `/rob-npc` specifically, by verifying rather than trusting
+`mercenaryFactory.js`'s own module comments** (per this task's own explicit instruction to
+verify, not assume): `resolveBountyAttempt`/`resolveStatBounty` were genuinely pure
+computation with no DB writes, exactly as claimed. `resolveNpcRob` was NOT — its winning-
+branch payout routes through `workFactory.calculateGainAmount`, the same shared /work-
+formula helper every `workFactory.js` handler uses, which defaults to an IMMEDIATE
+`dynamoHandler.addUserDatabase` house-tax write unless told otherwise (the `deferTax` param
+`/work`'s own rewrite added) — `resolveNpcRob` was calling it with the default (`false`), so
+every winning Heist link was still firing a second, un-consolidated write the architect
+pass's own "already in-memory, one small write" read never actually surfaced (that pass
+analyzed the COOLDOWN-SKIP sources, not the reward-payout call path). Fixed at the source:
+`resolveNpcRob` now passes `deferTax: true` and returns `{ amount, houseTax }` instead of
+writing it itself; `robNpc.js`'s own chain loop accumulates `houseTax` across every link and
+fires ONE `addUserDatabase` call for the whole chain, the same way `/take-bounty`'s own
+(already-deferred) Kingdom Tax now works.
+
+**Shape of the rewrite, both commands**: `runBountyAttempt`/`runNpcRobAttempt` are no longer
+recursive — each is a single `while` loop internal to one top-level call, mutating an
+in-memory `userDetails` object as the chain progresses (so later links see earlier links'
+real state) and accumulating `aggregatedSetFields`/`aggregatedAddFields`, firing exactly one
+`dynamoHandler.updateUserFields` at the very end. The rare stat-reward roll (both commands)
+is applied in-memory via a small mirrored `applyStatRewardGrant` helper (same math
+`raidFactory.handleStatSplit` already uses, no write of its own) instead of calling that
+shared helper per link. Achievement/Quest/Festival Quest checks now run once at the end
+against the chain's final state vs. a pre-chain snapshot, same consolidation `/work`'s
+rewrite already used, safe for the same "monotonic threshold check" reason.
+
+**Two tradeoffs carried forward IDENTICALLY from `/work`'s own rewrite, not re-litigated —
+see `.claude/systems/mercenary-bounties.md`'s own dated entry for the full writeup:**
+1. Cooldown-skip-source staleness within a chain — but LAZILY fetched (at most once per
+   chain, only once a link actually wins), not an unconditional upfront read the way
+   `/work`'s `cachedSkipSources` is, specifically to preserve a real, already-tested
+   cost-saving behavior neither command had before this rewrite could regress: an all-loss/
+   all-whiff chain must still never query Spud Keep's cooldown buff doc at all, since neither
+   command ever rolls a skip on a loss in the first place.
+2. Chain atomicity — nothing is written or announced until the one end-of-chain write
+   succeeds; both loops gained a `/work`-style try/catch "nothing was lost, run it again"
+   recovery message neither command had before (a genuinely new failure mode this
+   architecture change introduces, not just newly described).
+
+**A real bug caught and fixed mid-rewrite, unrelated to the write-count target**:
+`bountyTimer`/`npcRobTimer` store the timestamp of the LAST attempt (compared against the
+cooldown length elapsed), NOT a "next available" absolute timestamp the way `/work`'s
+`workTimer` is — so the chain-cap-hit fix's own "overwrite to a real full cooldown" branch
+needs `Date.now()` for these two commands, not `Date.now() + cooldownSeconds * 1000` the way
+`/work`'s equivalent fix uses. An early draft copied `/work`'s own formula verbatim into both
+files; `takeBountyCooldownSkip.test.js`'s/`robNpcCooldownSkip.test.js`'s own pre-existing
+chain-cap regression tests (pinning the exact post-cap timer value) caught it immediately.
+
+**Tests.** `takeBountyCooldownSkip.test.js`/`robNpcCooldownSkip.test.js`'s own multi-link
+chain assertions (previously counting N separate `updateUserFields` calls) were rewritten to
+assert the new single-write outcome instead, same final timer value and message sequence.
+`takeBountyStatMode.test.js`/`takeBountyMetalPotatoMeddley.test.js`/
+`rivalNotorietyAccrual.test.js` needed a smaller, unrelated fix: several assertions computed
+their expected value by reading the mocked `user` object's own fields back out AFTER calling
+the command — safe under the old architecture (which never mutated the caller's own
+`userDetails` object in place), broken by this rewrite's deliberate in-memory mutation (same
+reasoning `/work`'s rewrite already established) — fixed by capturing needed pre-call values
+into local consts first. Two new dedicated write-count regression files,
+`takeBountyChainWriteCount.test.js` (both Bounty submodes) and `robNpcChainWriteCount.test.js`,
+mirror `workChainWriteCount.test.js`'s own template exactly: a forced multi-link chain,
+exactly one `updateUserFields` call, the fully accumulated outcome independently re-derived
+from the real constants/formulas rather than copied from the implementation, and the right
+message sequence. Full suite: **127 of 128 suites (1 pre-existing, unrelated skip) / 2321
+tests (18 pre-existing, unrelated skips, 2303 passing)** — up from the `/work` rewrite's own
+125/126 and 2318 baseline by this pass's own 2 new test files/3 new tests, 0 broken.
+
+**Cross-repo note.** Same as `/work`'s own entry above — a pure backend write-count/
+architecture change, byte-for-byte identical player-visible outcomes, nothing for
+`financial-project` to port.
+
+**`/start-raid` status: not implemented this pass, awaiting explicit confirmation.** See the
+flag above for the full reasoning (multi-actor guild state + the live `claimGuildRaidSlot`
+race guard). Nothing in `src/` under `startRaid.js`/`raidFactory.js` was touched by this
+pass.
+
+**Follow-up, same day: Metal Potato Meddley extended to Stat Bounty.** A separate, smaller
+ask landed in the same session/branch — folded into this entry rather than given its own,
+per direct instruction ("don't create a third, separate roadmap entry for an instruction
+this small"). Applies the identical regular-ladder-Meddley transformation to `/take-bounty
+mode:stat`: the same flat 1% roll (`Bounty.METAL_POTATO_MEDDLEY_CHANCE`), checked
+independently on every attempt (including every link of Stat Bounty's own cooldown-skip
+chain), reusing Bounty's own Band I numbers DOUBLED (not Band II/III — Stat Bounty has no
+tier concept to select a band from, and never scaled up to Elite/Legendary-equivalent
+stakes, mirroring Guild Stat Raid's own Metal King bracket reusing ITS regular-mode numbers).
+Success chance switches from the flat, power-independent 50% roll to the normal power-ratio
+formula (`effectiveBountyPower / 2000`), capped at `Raid.MAXIMUM_STAT_RAID_SUCCESS_RATE`
+(also 50%, but via the formula every Guild Stat Raid bracket uses, not a coincidence worth
+skipping the real mechanism for) instead of the regular ladder's own 95% cap — confirmed by a
+dedicated test that forces power high enough to prove the CAP is actually being exercised,
+not just a 50%-vs-50% coincidence. On a hit: costs nothing at all (bypasses
+`STAT_BOUNTY_COST`'s normal win-or-lose charge entirely), pays potatoes AND all three
+permanent stat grants (not just the single `workMultiplierAmount` grant a normal win pays) —
+20,000,000 potatoes, +4.0 work multiplier, +2,000,000 passive income, +20,000,000 bank
+capacity at today's numbers, derived via `* 2` at the point of use rather than a duplicated
+constant. `mercenaryFactory.resolveStatBounty` moved from synchronous to `async` as part of
+this (it needs the same `computeEffectiveBountyPower` helper `resolveBountyAttempt` already
+used, factored out of that function so the two formulas can't drift) — every existing direct
+caller/test needed an `await` added, and every pre-existing Stat Bounty test's `Math.random()`
+sequence needed one new leading "Meddley trigger miss" value spliced in, the exact same
+mechanical shift the original regular-ladder Meddley rollout required of ITS own pre-existing
+tests. New tests: a `resolveStatBounty Metal Potato Meddley` describe block in
+`mercenaryFactory.test.js` (hit formula/numbers, the cap-at-high-power proof, a 0-cost loss, a
+miss falling through to the normal roll), plus end-to-end hit/loss tests in
+`takeBountyStatMode.test.js` through the real command `callback`. Full suite: **127 of 128
+suites (1 pre-existing skip) / 2327 tests (18 pre-existing skips, 2309 passing)**.
+
+## Metal Potato Meddley rescaled to 45% of its guild-derived difficulty/reward — solo mercs have no team-power multiplier (2026-10-04, direct instruction: "scale the difficulty and potato reward to 45% for the merc potato meddley since they're solo")
+
+Every Meddley band's `difficulty`/`reward` in `Bounty.METAL_POTATO_MEDDLEY` were literal copies of
+Guild Raid's own Regular/Elite/Legendary Metal King numbers (see the feature's own original
+roadmap entry above) — a straight 1:1 reuse, unadjusted for the fact that a solo mercenary's
+`effectiveBountyPower` has no 4-person team-power multiplier the way a guild raider's
+`totalMultiplier` does (~2.18x at a 4-person equal-power roster, `raidFactory.js`'s
+`getEffectiveRaidPowerBreakdown` — rank-weighted decay summing to 2.0x, times a 9% headcount
+bonus at 4 members). Reusing Guild's raw difficulty verbatim meant a solo player needed
+meaningfully MORE raw personal power than an equivalent guild raider to reach the same odds on
+what was supposed to be the directly-comparable solo encounter — not the intended parity.
+
+**Changed** (`Bounty.METAL_POTATO_MEDDLEY` in `src/utils/constants.js`): `difficulty` and
+`reward` scaled to 45% of their previous (guild-derived) values, per band:
+- Band I: 2000 → 900 difficulty, 10,000,000 → 4,500,000 reward
+- Band II: 6000 → 2700 difficulty, 30,000,000 → 13,500,000 reward
+- Band III: 12000 → 5400 difficulty, 60,000,000 → 27,000,000 reward
+
+`multiplierReward`/`passiveReward`/`capacityReward` (the permanent stat grants) are UNCHANGED —
+the instruction named only difficulty and potato reward, not the permanent grants. Stat Bounty's
+own Meddley (added the same day, see the entry above) derives its numbers from Band I doubled at
+the point of use rather than its own duplicated constant, so it automatically follows this
+rescale too: difficulty 2000 → 900 (still capped at `Raid.MAXIMUM_STAT_RAID_SUCCESS_RATE`, 50%,
+not the regular ladder's 95%), reward 20,000,000 → 9,000,000 — no separate edit needed there,
+confirmed by the pre-existing "derive, don't duplicate" comment on that doubling still holding.
+
+**Tests updated** (5 pre-existing assertions pinned the old guild-derived numbers, all fixed to
+assert the new rescaled values and their resulting success chances): the three Band I/II/III hit
+tests and the Stat Bounty hit test in `mercenaryFactory.test.js`, and the end-to-end Stat Bounty
+Meddley test in `takeBountyStatMode.test.js`. No new tests needed — same formulas, same code
+paths, only the constants moved. Full suite re-run clean: **127 of 128 suites (1 pre-existing
+skip) / 2327 tests (18 pre-existing skips, 2309 passing)** — identical pass count to before this
+change, confirming nothing else depended on the old literal values.
+
+Not yet ported to `financial-project` as of this entry — same constants need the identical 45%
+rescale applied wherever that port's own `Bounty.METAL_POTATO_MEDDLEY` copy lives (`gromp-
+mercenary/handler.ts`), whether that currently sits on `master` (if the regular-ladder port
+already merged) or on the in-progress chain-write-batching branch.

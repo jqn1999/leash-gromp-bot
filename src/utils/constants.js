@@ -3552,28 +3552,43 @@ const Bounty = {
     // the three entries below applies, replacing the normal tier's own difficulty/reward/
     // penalty entirely for that one attempt.
     //
-    // Every number below is a literal, independently-named COPY of Raid's own Regular/Elite/
-    // Legendary Metal King numbers (Raid.METAL_KING_*/ELITE_METAL_KING_*/LEGENDARY_METAL_KING_*),
-    // keyed by band instead of guild mode — deliberately NOT a live cross-reference to the Raid
-    // object, so this can be retuned later without silently affecting Guild Raid's Metal King
-    // (or vice versa), matching this codebase's own convention for cross-system "mirrors X"
+    // Every number below STARTED as a literal, independently-named COPY of Raid's own Regular/
+    // Elite/Legendary Metal King numbers (Raid.METAL_KING_*/ELITE_METAL_KING_*/LEGENDARY_METAL_
+    // KING_*), keyed by band instead of guild mode — deliberately NOT a live cross-reference to
+    // the Raid object, so this can be retuned later without silently affecting Guild Raid's Metal
+    // King (or vice versa), matching this codebase's own convention for cross-system "mirrors X"
     // constants (see BountyStatReward's own reuse-vs-copy split for the same reasoning applied
-    // the other way). `reward`/`multiplierReward`/`passiveReward`/`capacityReward` are credited
-    // on a win via the same ×0.8-1.2 range roll Guild Raid's own Metal King branch uses (no
-    // `raidRewardMultiplier` term — Bounty has no guild-level reward multiplier concept) and
-    // ARE scaled by the mercenary's own `rankInfo.rewardMultiplier`, same as every other Bounty
-    // win's reward (the one departure from a pure Metal King copy — Guild Raid has no per-member
-    // rank multiplier to apply). The stat grants themselves are flat, unscaled, permanent adds —
-    // see raidFactory.handleStatSplit's own shape, reused here for a single mercenary instead of
-    // a roster. Penalty is always 0 on a loss regardless of band (METAL_POTATO_MEDDLEY_PENALTY),
-    // overriding Bounty's own climbing per-tier penalty entirely for this one roll — same
-    // "costs nothing win or lose" shape every Metal King bracket already has.
+    // the other way).
+    //
+    // Rescaled to 45% of those guild-derived values, 2026-10-04, direct instruction ("scale the
+    // difficulty and potato reward to 45%... since they're solo") — a solo mercenary has no
+    // 4-person team-power multiplier (~2.18x at a 4-person roster, see raidFactory.js's own
+    // getEffectiveRaidPowerBreakdown) the way a guild raider does, so reusing Guild's raw
+    // difficulty verbatim made this meaningfully harder to reach for a solo player than the
+    // equivalent guild bracket is for a guild member at comparable individual power. ONLY
+    // difficulty and reward moved — multiplierReward/passiveReward/capacityReward (the permanent
+    // stat grants) are UNTOUCHED, same values as before this pass. Stat Bounty's own Meddley
+    // (mercenaryFactory.resolveStatBounty) derives from Band I here doubled at point of use, so
+    // it automatically follows this rescale too (difficulty 900, reward 9,000,000) without a
+    // separate edit — same "derive, don't duplicate" reasoning this constant's own doubling
+    // already relied on.
+    //
+    // `reward`/`multiplierReward`/`passiveReward`/`capacityReward` are credited on a win via the
+    // same ×0.8-1.2 range roll Guild Raid's own Metal King branch uses (no `raidRewardMultiplier`
+    // term — Bounty has no guild-level reward multiplier concept) and ARE scaled by the
+    // mercenary's own `rankInfo.rewardMultiplier`, same as every other Bounty win's reward (the
+    // one departure from a pure Metal King copy — Guild Raid has no per-member rank multiplier to
+    // apply). The stat grants themselves are flat, unscaled, permanent adds — see raidFactory.
+    // handleStatSplit's own shape, reused here for a single mercenary instead of a roster.
+    // Penalty is always 0 on a loss regardless of band (METAL_POTATO_MEDDLEY_PENALTY), overriding
+    // Bounty's own climbing per-tier penalty entirely for this one roll — same "costs nothing win
+    // or lose" shape every Metal King bracket already has.
     METAL_POTATO_MEDDLEY_CHANCE: 0.01,
     METAL_POTATO_MEDDLEY_PENALTY: 0,
     METAL_POTATO_MEDDLEY: {
-        I:   { difficulty: 2000,  reward: 10000000, multiplierReward: 2.0,  passiveReward: 1000000, capacityReward: 10000000 },  // = Raid.METAL_KING_*
-        II:  { difficulty: 6000,  reward: 30000000, multiplierReward: 6.0,  passiveReward: 3000000, capacityReward: 30000000 },  // = Raid.ELITE_METAL_KING_*
-        III: { difficulty: 12000, reward: 60000000, multiplierReward: 12.0, passiveReward: 6000000, capacityReward: 60000000 }, // = Raid.LEGENDARY_METAL_KING_*
+        I:   { difficulty: 900,  reward: 4500000,  multiplierReward: 2.0,  passiveReward: 1000000, capacityReward: 10000000 },  // 45% of Raid.METAL_KING_* difficulty/reward
+        II:  { difficulty: 2700, reward: 13500000, multiplierReward: 6.0,  passiveReward: 3000000, capacityReward: 30000000 },  // 45% of Raid.ELITE_METAL_KING_* difficulty/reward
+        III: { difficulty: 5400, reward: 27000000, multiplierReward: 12.0, passiveReward: 6000000, capacityReward: 60000000 }, // 45% of Raid.LEGENDARY_METAL_KING_* difficulty/reward
     }
 }
 

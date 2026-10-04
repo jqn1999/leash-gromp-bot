@@ -1,5 +1,5 @@
 const dynamoHandler = require("../../utils/dynamoHandler");
-const { Work, regularWorkMobs, largePotato, poisonPotato, goldenPotato, sweetPotato, taroTrader, metalPotatoSuccess, metalPotatoFailure, ancientPotato, mimicPotato, goldenYam } = require("../../utils/constants");
+const { Work, regularWorkMobs, largePotato, poisonPotato, goldenPotato, sweetPotato, taroTrader, metalPotatoSuccess, metalPotatoFailure, ancientPotato, mimicPotato, goldenYam, awsConfigurations } = require("../../utils/constants");
 const { convertSecondstoMinutes, getUserInteractionDetails, getRandomFromInterval } = require("../../utils/helperCommands")
 const { WorkFactory, getEffectiveScenarioChances } = require("../../utils/workFactory");
 const companionFactory = require("../../utils/companionFactory");
@@ -73,258 +73,258 @@ function setWorkScenarios(workChances) {
     }
 }
 
-var workScenarios = [
-    {
-        action: async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction, catchUpBonus, forcedCompanionId, isChainedReply = false) => {
-            potatoesGained = await workFactory.handleGoldenPotato(userDetails, workGainAmount, multiplier, catchUpBonus);
-            embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, goldenPotato, userDetails._cooldownSkippedByCompanion, userDetails._companionXpGained, companionFactory.getActiveCompanion(userDetails)?.name, userDetails._cooldownSkipChance);
-            await sendWorkResult(interaction, embed, isChainedReply);
-            await bigEventsChannel.postBigEvent({
-                title: bigEventsChannel.BIG_EVENT_WORK_TITLES.golden,
-                description: `**${userDisplayName}** hit ${bigEventsChannel.BIG_EVENT_WORK_LABELS.golden} while working!`,
-                fields: [bigEventsChannel.playerField(userDisplayName, userDetails.equippedTitle), bigEventsChannel.rewardField(potatoesGained)],
-                color: bigEventsChannel.SCENARIO_COLOR.golden,
-            });
-            return potatoesGained;
-        },
-        chance: .001,
-        type: WORK_SCENARIO_INDICES.GOLDEN
-    },
-    {
-        action: async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction, catchUpBonus, forcedCompanionId, isChainedReply = false) => {
-            // Poison Potato is a loss — catch-up intentionally does not apply, see workFactory.js
-            const poisonResult = await workFactory.handlePoisonPotato(userDetails, workGainAmount, multiplier);
-            embed = embedFactory.createPoisonPotatoEmbed(userDisplayName, newWorkCount, poisonResult, poisonPotato, userDetails._cooldownSkippedByCompanion, userDetails._companionXpGained, companionFactory.getActiveCompanion(userDetails)?.name, userDetails._cooldownSkipChance);
-            await sendWorkResult(interaction, embed, isChainedReply);
-            return poisonResult.potatoesGained;
-        },
-        chance: .011,
-        type: WORK_SCENARIO_INDICES.POISON
-    },
-    {
-        action: async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction, catchUpBonus, forcedCompanionId, isChainedReply = false) => {
-            potatoesGained = await workFactory.handleLargePotato(userDetails, workGainAmount, multiplier, catchUpBonus);
-            embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, largePotato, userDetails._cooldownSkippedByCompanion, userDetails._companionXpGained, companionFactory.getActiveCompanion(userDetails)?.name, userDetails._cooldownSkipChance);
-            await sendWorkResult(interaction, embed, isChainedReply);
-            return potatoesGained;
-        },
-        chance: .051,
-        type: WORK_SCENARIO_INDICES.LARGE
-    },
-    {
-        action: async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction, catchUpBonus, forcedCompanionId, isChainedReply = false) => {
-            const userId = userDetails.userId;
-            const metalSuccessRoll = Math.random();
-            let potatoesGained;
-            if (metalSuccessRoll < Work.METAL_SUCCESS_CHANCE) {
-                const metalResult = await workFactory.handleMetalPotato(userDetails, workGainAmount, multiplier, catchUpBonus);
-                potatoesGained = metalResult.potatoesGained;
-                embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, metalPotatoSuccess, userDetails._cooldownSkippedByCompanion, userDetails._companionXpGained, companionFactory.getActiveCompanion(userDetails)?.name, userDetails._cooldownSkipChance, metalResult.statGrant);
-                await bigEventsChannel.postBigEvent({
-                    title: bigEventsChannel.BIG_EVENT_WORK_TITLES.metalSuccess,
-                    description: `**${userDisplayName}** hit ${bigEventsChannel.BIG_EVENT_WORK_LABELS.metalSuccess} while working!`,
-                    fields: [bigEventsChannel.playerField(userDisplayName, userDetails.equippedTitle), bigEventsChannel.rewardField(potatoesGained)],
-                    color: bigEventsChannel.SCENARIO_COLOR.metalSuccess,
-                });
-            } else {
-                potatoesGained = 0;
+// cachedSkipSources (new, 2026-10-03 /work chain write-count rewrite) — mirrors the SAME
+// param workFactory.js's own handlers now accept, see dynamoHandler.calculateWorkTimerValue's
+// comment on cachedSources for the full reasoning. Metal Potato's own 10%-sub-roll failure
+// branch is written directly in this file (not inside a workFactory.js handler), so it
+// needs its own tiny copy of the same "reproduce the exact original 2-or-3-arg call shape
+// unless a real cache was supplied" logic workFactory.js's resolveWorkTimer already uses —
+// mirrored here rather than shared, same "mirrored, not shared" convention this codebase's
+// other small cross-file-duplicated helpers already follow (see workFactory.js's own
+// getNextShopTier/getCurrentWeekTag comments).
+function resolveWorkTimerForMetalFailure(userDetails, cooldownTime, cachedSkipSources) {
+    return cachedSkipSources
+        ? dynamoHandler.calculateWorkTimerValue(userDetails, cooldownTime, true, cachedSkipSources)
+        : dynamoHandler.calculateWorkTimerValue(userDetails, cooldownTime);
+}
 
-                let workScenarioCounts = userDetails.workScenarioCounts;
-                workScenarioCounts.metalFailure += 1;
-
-                const workTimer = await dynamoHandler.calculateWorkTimerValue(userDetails, Work.WORK_TIMER_SECONDS);
-                await dynamoHandler.updateUserFields(userId, { workScenarioCounts, workTimer });
-
-                embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, metalPotatoFailure, userDetails._cooldownSkippedByCompanion, userDetails._companionXpGained, companionFactory.getActiveCompanion(userDetails)?.name, userDetails._cooldownSkipChance);
+// makeAction (new, 2026-10-03 /work chain write-count rewrite) wraps a scenario's own
+// `resolve` (below) into the externally-visible, SELF-CONTAINED single-resolution contract
+// every scenario's `action` has always offered — reused unchanged, still writing and
+// sending immediately, by admin.js's /admin-work (which calls `scenario.action` directly,
+// once, with no concept of a chain at all) and by this file's own exported `workScenarios`
+// for anything else that might reuse it the same way. `resolve` itself (what performWork's
+// own chain loop below calls instead) does the SAME computation but returns its write as a
+// delta instead of performing it, and returns its embed/big-event payloads instead of
+// sending them — see each scenario's own `resolve` for why this split exists at all.
+function makeAction(resolve) {
+    return async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction, catchUpBonus, forcedCompanionId, isChainedReply = false) => {
+        const { potatoesGained, embed, bigEvents = [], delta } = await resolve(userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, catchUpBonus, forcedCompanionId, {});
+        if (delta) {
+            await dynamoHandler.updateUserFields(userDetails.userId, delta.setFields || {}, delta.addFields || {});
+            if (delta.houseTax) {
+                await dynamoHandler.addUserDatabase(awsConfigurations.clientId, 'potatoes', delta.houseTax);
             }
-            await sendWorkResult(interaction, embed, isChainedReply);
-            return potatoesGained;
-        },
-        chance: .061,
-        type: WORK_SCENARIO_INDICES.METAL
-    },
-    {
-        action: async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction, catchUpBonus, forcedCompanionId, isChainedReply = false) => {
-            const sweetResult = await workFactory.handleSweetPotato(userDetails);
-            potatoesGained = 0;
-            embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, sweetPotato, userDetails._cooldownSkippedByCompanion, userDetails._companionXpGained, companionFactory.getActiveCompanion(userDetails)?.name, userDetails._cooldownSkipChance, sweetResult.statGrant);
-            await sendWorkResult(interaction, embed, isChainedReply);
-            return potatoesGained;
-        },
-        chance: .081,
-        type: WORK_SCENARIO_INDICES.SWEET
-    },
-    {
-        // Every scenario shares this exact signature (even though only this one reads
-        // forcedCompanionId) so performWork's single dispatch call site can pass the same
-        // positional args to whichever scenario the roll matched. forcedCompanionId is a
-        // trailing optional arg only /admin-work ever passes — every real /work call
-        // (chained or not) omits it, leaving it undefined and falling through to the
-        // normal roll inside handleCompanionEncounter.
-        action: async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction, catchUpBonus, forcedCompanionId, isChainedReply = false) => {
-            const companionResult = await workFactory.handleCompanionEncounter(userDetails, forcedCompanionId);
-            embed = embedFactory.createCompanionEncounterEmbed(userDisplayName, newWorkCount, companionResult, userDetails._cooldownSkippedByCompanion, userDetails._companionXpGained, companionFactory.getActiveCompanion(userDetails)?.name, userDetails._cooldownSkipChance);
-            await sendWorkResult(interaction, embed, isChainedReply);
-            if (bigEventsChannel.isBigEventCompanion(companionResult.companion)) {
-                await bigEventsChannel.postBigEvent({
-                    title: '🎉 Rare Companion!',
-                    description: `**${userDisplayName}** crossed paths with a rare companion while working!`,
-                    fields: [
-                        bigEventsChannel.playerField(userDisplayName, userDetails.equippedTitle),
-                        bigEventsChannel.companionField(companionResult.companion),
-                        bigEventsChannel.sourceField('Found while Working'),
-                    ],
-                    color: bigEventsChannel.RARE_COMPANION_COLOR,
-                });
+            if (delta.mimicHoardDelta) {
+                await dynamoHandler.addStatFields('mimic_hoard', { hoardPotatoes: delta.mimicHoardDelta });
             }
-            // A companion encounter (new or duplicate) never pays potatoes anymore — a
-            // duplicate grants a spare instead (see handleCompanionEncounter) — so this
-            // always returns 0 rather than an undefined companionResult.potatoesGained,
-            // which would otherwise poison performWork's totalPayout accumulation with NaN.
-            return 0;
-        },
-        chance: .096,
-        type: WORK_SCENARIO_INDICES.COMPANION
-    },
-    {
-        action: async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction, catchUpBonus, forcedCompanionId, isChainedReply = false) => {
-            starchesGained = await workFactory.handleTaroTrader(userDetails, catchUpBonus);
-            embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, starchesGained, taroTrader, userDetails._cooldownSkippedByCompanion, userDetails._companionXpGained, companionFactory.getActiveCompanion(userDetails)?.name, userDetails._cooldownSkipChance);
-            await sendWorkResult(interaction, embed, isChainedReply);
-            return starchesGained;
-        },
-        chance: .116,
-        type: WORK_SCENARIO_INDICES.TARO
-    },
-    {
-        action: async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction, catchUpBonus, forcedCompanionId, isChainedReply = false) => {
-            const ancientResult = await workFactory.handleAncientPotato(userDetails, workGainAmount, multiplier, catchUpBonus);
-            embed = embedFactory.createAncientPotatoEmbed(userDisplayName, newWorkCount, ancientResult, ancientPotato, userDetails._cooldownSkippedByCompanion, userDetails._companionXpGained, companionFactory.getActiveCompanion(userDetails)?.name, userDetails._cooldownSkipChance);
-            await sendWorkResult(interaction, embed, isChainedReply);
-            // Ancient Potato has 3 mutually-exclusive outcomes (regrade / shop upgrade /
-            // straight potato payout, see handleAncientPotato) — potatoesGained is only
-            // ever nonzero on the third, so the announcement has to branch the same way
-            // the embed already does rather than always quoting a potato amount.
-            const ancientPrize = ancientResult.regradedStatName
-                ? `a free ${ancientResult.regradedStatName} regrade`
-                : ancientResult.shopUpgradedStatName
-                    ? `a free ${ancientResult.shopUpgradedStatName} shop upgrade`
-                    : `${ancientResult.potatoesGained.toLocaleString()} potatoes`;
-            // Ancient Potato's own reward is 3 mutually-exclusive outcomes, not always a
-            // potato amount (see the comment above) — the Reward field branches the same way
-            // rather than reusing ancientPrize's own mid-sentence "a free..." phrasing as-is.
-            const ancientRewardFieldValue = ancientResult.regradedStatName
-                ? `Free ${ancientResult.regradedStatName} Regrade`
-                : ancientResult.shopUpgradedStatName
-                    ? `Free ${ancientResult.shopUpgradedStatName} Shop Upgrade`
-                    : `${ancientResult.potatoesGained.toLocaleString()} potatoes`;
-            await bigEventsChannel.postBigEvent({
-                title: bigEventsChannel.BIG_EVENT_WORK_TITLES.ancient,
-                description: `**${userDisplayName}** hit ${bigEventsChannel.BIG_EVENT_WORK_LABELS.ancient} while working!`,
-                fields: [bigEventsChannel.playerField(userDisplayName, userDetails.equippedTitle), { name: 'Reward', value: ancientRewardFieldValue, inline: true }],
-                color: bigEventsChannel.SCENARIO_COLOR.ancient,
-            });
-            return ancientResult.potatoesGained;
-        },
-        // Halved again 2026-08-29 — direct instruction ("lower ancient potato odds under
-        // golden potato"), kept in lockstep with eventFactory.js's workProbability/
-        // workChances (both the constructor's baseline arrays and setBaseWorkChances/
-        // setBaseWorkProbability's post-event reset copies), which overwrite this value
-        // via setWorkScenarios whenever a special event starts/ends.
-        chance: .1165,
-        type: WORK_SCENARIO_INDICES.ANCIENT
-    },
-    {
-        action: async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction, catchUpBonus, forcedCompanionId, isChainedReply = false) => {
-            const mimicResult = await workFactory.handleMimicPotato(userDetails);
-            potatoesGained = mimicResult.potatoesLost;
-            embed = embedFactory.createMimicPotatoEmbed(userDisplayName, newWorkCount, mimicResult, mimicPotato, userDetails._cooldownSkippedByCompanion, userDetails._companionXpGained, companionFactory.getActiveCompanion(userDetails)?.name, userDetails._cooldownSkipChance);
-            await sendWorkResult(interaction, embed, isChainedReply);
-            return potatoesGained;
-        },
-        chance: .1265, // shifted down to match Ancient's slice shrinking above — own slice width unchanged
-        type: WORK_SCENARIO_INDICES.MIMIC
-    },
-    {
-        action: async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction, catchUpBonus, forcedCompanionId, isChainedReply = false) => {
-            starchesGained = await workFactory.handleGoldenYam(userDetails, catchUpBonus);
-            embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, starchesGained, goldenYam, userDetails._cooldownSkippedByCompanion, userDetails._companionXpGained, companionFactory.getActiveCompanion(userDetails)?.name, userDetails._cooldownSkipChance);
-            await sendWorkResult(interaction, embed, isChainedReply);
-            await bigEventsChannel.postBigEvent({
-                title: bigEventsChannel.BIG_EVENT_WORK_TITLES.goldenYam,
-                description: `**${userDisplayName}** hit ${bigEventsChannel.BIG_EVENT_WORK_LABELS.goldenYam} while working!`,
-                fields: [bigEventsChannel.playerField(userDisplayName, userDetails.equippedTitle), bigEventsChannel.rewardField(starchesGained, 'starches')],
-                color: bigEventsChannel.SCENARIO_COLOR.goldenYam,
-            });
-            return starchesGained;
-        },
-        chance: .1275, // shifted down to match — own slice width unchanged
-        type: WORK_SCENARIO_INDICES.GOLDEN_YAM
-    },
-    {
-        action: async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction, catchUpBonus, forcedCompanionId, isChainedReply = false) => {
-            potatoesGained = await workFactory.handleRegularWork(userDetails, workGainAmount, multiplier, catchUpBonus);
-            const regularMob = chooseMobFromList(regularWorkMobs);
-            embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, regularMob, userDetails._cooldownSkippedByCompanion, userDetails._companionXpGained, companionFactory.getActiveCompanion(userDetails)?.name, userDetails._cooldownSkipChance);
-            await sendWorkResult(interaction, embed, isChainedReply);
-            return potatoesGained;
-        },
-        chance: 1,
-        type: WORK_SCENARIO_INDICES.REGULAR
+            if (delta.guildRaidTimerGuildId) {
+                await dynamoHandler.updateGuildDatabase(delta.guildRaidTimerGuildId, 'raidTimer', Date.now());
+            }
+        }
+        await sendWorkResult(interaction, embed, isChainedReply);
+        for (const payload of bigEvents) {
+            await bigEventsChannel.postBigEvent(payload);
+        }
+        return potatoesGained;
+    };
+}
+
+const resolveGolden = async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, catchUpBonus, forcedCompanionId, chainContext = {}) => {
+    const potatoesGained = await workFactory.handleGoldenPotato(userDetails, workGainAmount, multiplier, catchUpBonus, chainContext.cachedSkipSources);
+    const delta = userDetails._workChainDelta;
+    const embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, goldenPotato, userDetails._cooldownSkippedByCompanion, userDetails._companionXpGained, companionFactory.getActiveCompanion(userDetails)?.name, userDetails._cooldownSkipChance);
+    const bigEvents = [{
+        title: bigEventsChannel.BIG_EVENT_WORK_TITLES.golden,
+        description: `**${userDisplayName}** hit ${bigEventsChannel.BIG_EVENT_WORK_LABELS.golden} while working!`,
+        fields: [bigEventsChannel.playerField(userDisplayName, userDetails.equippedTitle), bigEventsChannel.rewardField(potatoesGained)],
+        color: bigEventsChannel.SCENARIO_COLOR.golden,
+    }];
+    return { potatoesGained, embed, bigEvents, delta };
+};
+
+const resolvePoison = async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, catchUpBonus, forcedCompanionId, chainContext = {}) => {
+    // Poison Potato is a loss — catch-up intentionally does not apply, see workFactory.js
+    const poisonResult = await workFactory.handlePoisonPotato(userDetails, workGainAmount, multiplier, chainContext.cachedSkipSources);
+    const delta = userDetails._workChainDelta;
+    const embed = embedFactory.createPoisonPotatoEmbed(userDisplayName, newWorkCount, poisonResult, poisonPotato, userDetails._cooldownSkippedByCompanion, userDetails._companionXpGained, companionFactory.getActiveCompanion(userDetails)?.name, userDetails._cooldownSkipChance);
+    return { potatoesGained: poisonResult.potatoesGained, embed, bigEvents: [], delta };
+};
+
+const resolveLarge = async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, catchUpBonus, forcedCompanionId, chainContext = {}) => {
+    const potatoesGained = await workFactory.handleLargePotato(userDetails, workGainAmount, multiplier, catchUpBonus, { cachedSkipSources: chainContext.cachedSkipSources });
+    const delta = userDetails._workChainDelta;
+    const embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, largePotato, userDetails._cooldownSkippedByCompanion, userDetails._companionXpGained, companionFactory.getActiveCompanion(userDetails)?.name, userDetails._cooldownSkipChance);
+    return { potatoesGained, embed, bigEvents: [], delta };
+};
+
+const resolveMetal = async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, catchUpBonus, forcedCompanionId, chainContext = {}) => {
+    const metalSuccessRoll = Math.random();
+    if (metalSuccessRoll < Work.METAL_SUCCESS_CHANCE) {
+        const metalResult = await workFactory.handleMetalPotato(userDetails, workGainAmount, multiplier, catchUpBonus, { cachedSkipSources: chainContext.cachedSkipSources });
+        const potatoesGained = metalResult.potatoesGained;
+        const delta = userDetails._workChainDelta;
+        const embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, metalPotatoSuccess, userDetails._cooldownSkippedByCompanion, userDetails._companionXpGained, companionFactory.getActiveCompanion(userDetails)?.name, userDetails._cooldownSkipChance, metalResult.statGrant);
+        const bigEvents = [{
+            title: bigEventsChannel.BIG_EVENT_WORK_TITLES.metalSuccess,
+            description: `**${userDisplayName}** hit ${bigEventsChannel.BIG_EVENT_WORK_LABELS.metalSuccess} while working!`,
+            fields: [bigEventsChannel.playerField(userDisplayName, userDetails.equippedTitle), bigEventsChannel.rewardField(potatoesGained)],
+            color: bigEventsChannel.SCENARIO_COLOR.metalSuccess,
+        }];
+        return { potatoesGained, embed, bigEvents, delta };
     }
+
+    const potatoesGained = 0;
+    let workScenarioCounts = userDetails.workScenarioCounts;
+    workScenarioCounts.metalFailure += 1;
+    const workTimer = await resolveWorkTimerForMetalFailure(userDetails, Work.WORK_TIMER_SECONDS, chainContext.cachedSkipSources);
+    const delta = { setFields: { workScenarioCounts, workTimer }, addFields: {} };
+    const embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, metalPotatoFailure, userDetails._cooldownSkippedByCompanion, userDetails._companionXpGained, companionFactory.getActiveCompanion(userDetails)?.name, userDetails._cooldownSkipChance);
+    return { potatoesGained, embed, bigEvents: [], delta };
+};
+
+const resolveSweet = async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, catchUpBonus, forcedCompanionId, chainContext = {}) => {
+    const sweetResult = await workFactory.handleSweetPotato(userDetails, { cachedSkipSources: chainContext.cachedSkipSources });
+    const potatoesGained = 0;
+    const delta = userDetails._workChainDelta;
+    const embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, sweetPotato, userDetails._cooldownSkippedByCompanion, userDetails._companionXpGained, companionFactory.getActiveCompanion(userDetails)?.name, userDetails._cooldownSkipChance, sweetResult.statGrant);
+    return { potatoesGained, embed, bigEvents: [], delta };
+};
+
+// forcedCompanionId lets /admin-work skip the roll and test a specific companion directly
+// — every real /work call (chained or not) omits it, leaving it undefined and falling
+// through to the normal roll inside handleCompanionEncounter.
+const resolveCompanion = async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, catchUpBonus, forcedCompanionId, chainContext = {}) => {
+    const companionResult = await workFactory.handleCompanionEncounter(userDetails, forcedCompanionId, chainContext.cachedSkipSources);
+    const delta = userDetails._workChainDelta;
+    const embed = embedFactory.createCompanionEncounterEmbed(userDisplayName, newWorkCount, companionResult, userDetails._cooldownSkippedByCompanion, userDetails._companionXpGained, companionFactory.getActiveCompanion(userDetails)?.name, userDetails._cooldownSkipChance);
+    const bigEvents = bigEventsChannel.isBigEventCompanion(companionResult.companion) ? [{
+        title: '🎉 Rare Companion!',
+        description: `**${userDisplayName}** crossed paths with a rare companion while working!`,
+        fields: [
+            bigEventsChannel.playerField(userDisplayName, userDetails.equippedTitle),
+            bigEventsChannel.companionField(companionResult.companion),
+            bigEventsChannel.sourceField('Found while Working'),
+        ],
+        color: bigEventsChannel.RARE_COMPANION_COLOR,
+    }] : [];
+    // A companion encounter (new or duplicate) never pays potatoes anymore — a duplicate
+    // grants a spare instead (see handleCompanionEncounter) — so this always returns 0
+    // rather than an undefined companionResult.potatoesGained, which would otherwise
+    // poison the chain's totalPayout accumulation with NaN.
+    return { potatoesGained: 0, embed, bigEvents, delta };
+};
+
+const resolveTaro = async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, catchUpBonus, forcedCompanionId, chainContext = {}) => {
+    const starchesGained = await workFactory.handleTaroTrader(userDetails, catchUpBonus, chainContext.cachedSkipSources);
+    const delta = userDetails._workChainDelta;
+    const embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, starchesGained, taroTrader, userDetails._cooldownSkippedByCompanion, userDetails._companionXpGained, companionFactory.getActiveCompanion(userDetails)?.name, userDetails._cooldownSkipChance);
+    return { potatoesGained: starchesGained, embed, bigEvents: [], delta };
+};
+
+const resolveAncient = async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, catchUpBonus, forcedCompanionId, chainContext = {}) => {
+    const ancientResult = await workFactory.handleAncientPotato(userDetails, workGainAmount, multiplier, catchUpBonus, chainContext.cachedSkipSources);
+    const delta = userDetails._workChainDelta;
+    const embed = embedFactory.createAncientPotatoEmbed(userDisplayName, newWorkCount, ancientResult, ancientPotato, userDetails._cooldownSkippedByCompanion, userDetails._companionXpGained, companionFactory.getActiveCompanion(userDetails)?.name, userDetails._cooldownSkipChance);
+    // Ancient Potato has 3 mutually-exclusive outcomes (regrade / shop upgrade / straight
+    // potato payout, see handleAncientPotato) — the Reward field branches the same way
+    // rather than always quoting a potato amount.
+    const ancientRewardFieldValue = ancientResult.regradedStatName
+        ? `Free ${ancientResult.regradedStatName} Regrade`
+        : ancientResult.shopUpgradedStatName
+            ? `Free ${ancientResult.shopUpgradedStatName} Shop Upgrade`
+            : `${ancientResult.potatoesGained.toLocaleString()} potatoes`;
+    const bigEvents = [{
+        title: bigEventsChannel.BIG_EVENT_WORK_TITLES.ancient,
+        description: `**${userDisplayName}** hit ${bigEventsChannel.BIG_EVENT_WORK_LABELS.ancient} while working!`,
+        fields: [bigEventsChannel.playerField(userDisplayName, userDetails.equippedTitle), { name: 'Reward', value: ancientRewardFieldValue, inline: true }],
+        color: bigEventsChannel.SCENARIO_COLOR.ancient,
+    }];
+    return { potatoesGained: ancientResult.potatoesGained, embed, bigEvents, delta };
+};
+
+const resolveMimic = async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, catchUpBonus, forcedCompanionId, chainContext = {}) => {
+    // mimicHoardDelta — see handleMimicPotato's own comment on hoardAdjustment for why this
+    // chain-accumulated, not-yet-written running total has to be fed back into every
+    // further Mimic link of the SAME chain.
+    const mimicResult = await workFactory.handleMimicPotato(userDetails, chainContext.cachedSkipSources, chainContext.mimicHoardDelta || 0);
+    const potatoesGained = mimicResult.potatoesLost;
+    const delta = userDetails._workChainDelta;
+    const embed = embedFactory.createMimicPotatoEmbed(userDisplayName, newWorkCount, mimicResult, mimicPotato, userDetails._cooldownSkippedByCompanion, userDetails._companionXpGained, companionFactory.getActiveCompanion(userDetails)?.name, userDetails._cooldownSkipChance);
+    return { potatoesGained, embed, bigEvents: [], delta };
+};
+
+const resolveGoldenYam = async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, catchUpBonus, forcedCompanionId, chainContext = {}) => {
+    const starchesGained = await workFactory.handleGoldenYam(userDetails, catchUpBonus, chainContext.cachedSkipSources);
+    const delta = userDetails._workChainDelta;
+    const embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, starchesGained, goldenYam, userDetails._cooldownSkippedByCompanion, userDetails._companionXpGained, companionFactory.getActiveCompanion(userDetails)?.name, userDetails._cooldownSkipChance);
+    const bigEvents = [{
+        title: bigEventsChannel.BIG_EVENT_WORK_TITLES.goldenYam,
+        description: `**${userDisplayName}** hit ${bigEventsChannel.BIG_EVENT_WORK_LABELS.goldenYam} while working!`,
+        fields: [bigEventsChannel.playerField(userDisplayName, userDetails.equippedTitle), bigEventsChannel.rewardField(starchesGained, 'starches')],
+        color: bigEventsChannel.SCENARIO_COLOR.goldenYam,
+    }];
+    return { potatoesGained: starchesGained, embed, bigEvents, delta };
+};
+
+const resolveRegular = async (userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, catchUpBonus, forcedCompanionId, chainContext = {}) => {
+    const potatoesGained = await workFactory.handleRegularWork(userDetails, workGainAmount, multiplier, catchUpBonus, chainContext.cachedSkipSources);
+    const delta = userDetails._workChainDelta;
+    const regularMob = chooseMobFromList(regularWorkMobs);
+    const embed = embedFactory.createWorkEmbed(userDisplayName, newWorkCount, potatoesGained, regularMob, userDetails._cooldownSkippedByCompanion, userDetails._companionXpGained, companionFactory.getActiveCompanion(userDetails)?.name, userDetails._cooldownSkipChance);
+    return { potatoesGained, embed, bigEvents: [], delta };
+};
+
+var workScenarios = [
+    { resolve: resolveGolden, action: makeAction(resolveGolden), chance: .001, type: WORK_SCENARIO_INDICES.GOLDEN },
+    { resolve: resolvePoison, action: makeAction(resolvePoison), chance: .011, type: WORK_SCENARIO_INDICES.POISON },
+    { resolve: resolveLarge, action: makeAction(resolveLarge), chance: .051, type: WORK_SCENARIO_INDICES.LARGE },
+    { resolve: resolveMetal, action: makeAction(resolveMetal), chance: .061, type: WORK_SCENARIO_INDICES.METAL },
+    { resolve: resolveSweet, action: makeAction(resolveSweet), chance: .081, type: WORK_SCENARIO_INDICES.SWEET },
+    { resolve: resolveCompanion, action: makeAction(resolveCompanion), chance: .096, type: WORK_SCENARIO_INDICES.COMPANION },
+    { resolve: resolveTaro, action: makeAction(resolveTaro), chance: .116, type: WORK_SCENARIO_INDICES.TARO },
+    // Halved again 2026-08-29 — direct instruction ("lower ancient potato odds under
+    // golden potato"), kept in lockstep with eventFactory.js's workProbability/
+    // workChances (both the constructor's baseline arrays and setBaseWorkChances/
+    // setBaseWorkProbability's post-event reset copies), which overwrite this value
+    // via setWorkScenarios whenever a special event starts/ends.
+    { resolve: resolveAncient, action: makeAction(resolveAncient), chance: .1165, type: WORK_SCENARIO_INDICES.ANCIENT },
+    { resolve: resolveMimic, action: makeAction(resolveMimic), chance: .1265, type: WORK_SCENARIO_INDICES.MIMIC }, // shifted down to match Ancient's slice shrinking above — own slice width unchanged
+    { resolve: resolveGoldenYam, action: makeAction(resolveGoldenYam), chance: .1275, type: WORK_SCENARIO_INDICES.GOLDEN_YAM }, // shifted down to match — own slice width unchanged
+    { resolve: resolveRegular, action: makeAction(resolveRegular), chance: 1, type: WORK_SCENARIO_INDICES.REGULAR }
 ]
 
-// One full /work resolution: cooldown check, scenario roll, stat writes, and the
-// achievement/quest/contract follow-ups. Recurses when the roll that just ran skipped
-// the cooldown (a companion's workCooldownSkipChance) — the player would just manually
-// run /work again immediately anyway for the exact same odds, so this only automates
-// that, capped at Work.MAX_COOLDOWN_SKIP_CHAIN_LENGTH purely as a safety valve (see its
-// comment in constants.js). isChainedReply=false only on the very first, user-invoked
-// call, which alone is allowed to edit the original deferred reply — every chained link
-// is always a new followUp message, and any failure mid-chain (a DB hiccup on the
-// re-fetch below, or the near-impossible case of the cooldown somehow not being ready)
-// just quietly ends the chain there instead of surfacing an error after what already
-// looked like a normal, complete result to the player. When the cap itself is what stops
-// the chain (this call's own roll skipped too, but chainDepth is already at the limit),
-// workTimer gets explicitly overwritten back to a real cooldown at the bottom of this
-// function — see that block's own comment for why (2026-10-03 fix).
-async function performWork(interaction, userId, username, userDisplayName, workGainAmount, isChainedReply, chainDepth) {
+// One full /work resolution, covering the ENTIRE cooldown-skip chain (1 to
+// Work.MAX_COOLDOWN_SKIP_CHAIN_LENGTH + 1 links) in one pass, rather than one performWork
+// call per link recursing into the next. Rewritten 2026-10-03 (direct instruction — the
+// full rewrite option, not the scoped-down safe win) to hit a specific target: this
+// player's own dynamoHandler.updateUserFields gets called exactly ONCE no matter how deep
+// the chain goes, instead of once per link. Every scenario handler in workFactory.js was
+// rewritten alongside this to match — they compute their reward and return it as a DELTA
+// (stamped onto userDetails._workChainDelta, see workFactory.js's own comment on that
+// convention) instead of writing to the DB themselves, so this loop can accumulate every
+// link's delta in memory and fire one real write at the very end.
+//
+// Two real, KNOWINGLY ACCEPTED correctness tradeoffs came out of this, not oversights:
+//
+// 1. Buff staleness within a chain — see dynamoHandler.calculateWorkTimerValue's own
+//    comment on cachedSources, and .claude/roadmap.md's dated entry for this rewrite, for
+//    the full writeup. In short: cachedSkipSources below is read ONCE at the top of this
+//    function and handed to every link's own cooldown-skip roll for the rest of this same
+//    chain, instead of each link re-fetching it fresh the way the 2026-09-20 architect pass
+//    originally guaranteed. A companion swap, guild buff change, or Spud Keep holder change
+//    mid-chain won't be picked up until this player's NEXT /work call.
+// 2. Atomicity across the whole chain — a direct, unavoidable consequence of "exactly one
+//    write," not a separate choice. Previously, each link wrote (and announced) its own
+//    result immediately, so a crash on link 3 of a chain still left links 1-2's real
+//    rewards persisted and their embeds already sent. Now, nothing is written OR announced
+//    until the single end-of-chain write succeeds — a crash anywhere in the loop below
+//    (before that write) discards the WHOLE chain's computed-but-unpersisted result, not
+//    just the link that crashed. In practice this only ever matters for a genuine crash
+//    (a thrown error, not a normal roll outcome) partway through an already-rare multi-link
+//    chain, and the auto-recovery message below still tells the player plainly that
+//    nothing was lost and /work is immediately available again — which is now actually
+//    true for the ENTIRE chain, not just whichever link happened to crash.
+async function performWork(interaction, userId, username, userDisplayName, workGainAmount) {
     const userDetails = await dynamoHandler.findUser(userId, username);
     if (!userDetails) {
-        if (!isChainedReply) {
-            interaction.editReply(`${userDisplayName} could not be looked up due to a database error, please try again!`);
-        } else {
-            console.log(`work.js chain link ${chainDepth} aborted: findUser returned null for ${userId}`);
-        }
+        interaction.editReply(`${userDisplayName} could not be looked up due to a database error, please try again!`);
         return;
     }
 
-    // Companion XP display (roadmap's "Companion 'Work Count' -> 'XP' Rename" entry) —
-    // /work's own companion-leveling write happens AFTER the result embed is already sent
-    // (see the re-fetch/levelActiveCompanion call further below), so the real grant amount
-    // isn't known yet at embed-build time the way it is for Bounty/Heist/Rob/Sell-Starch/
-    // Regrade. Mirrors this file's own existing _cooldownSkippedByCompanion pattern instead
-    // of threading a new formal parameter through every scenario closure: a non-persisted,
-    // in-memory-only flag stamped onto userDetails once here and read directly at each of
-    // the 12 createWorkEmbed/createPoisonPotatoEmbed/createCompanionEncounterEmbed/
-    // createAncientPotatoEmbed call sites below. /work's own grant is unconditional (no
-    // perk-type/companion-id gate, unlike the other 5 commands) but, since the Work-Only
-    // Companion Leveling Bonus (2026-09-11), no longer flat across every companion — see
-    // companionFactory.getWorkLevelingGrant. No scenario handler changes companions.active
-    // mid-call (Companion Encounter only appends a new UNEQUIPPED instance — see
-    // applyCompanionAward's own "does not auto-equip" comment), so resolving the active
-    // companion right here is already a reliable predictor of what that later write will
-    // grant.
-    const activeCompanionForXpDisplay = companionFactory.getActiveCompanion(userDetails);
-    userDetails._companionXpGained = activeCompanionForXpDisplay ? companionFactory.getWorkLevelingGrant(activeCompanionForXpDisplay) : 0;
-
     const timeUntilWorkAvailableInMS = userDetails.workTimer - Date.now();
     if (timeUntilWorkAvailableInMS > 0) {
-        if (!isChainedReply) {
-            interaction.editReply(`${userDisplayName}, you are unable to work and must wait ${convertSecondstoMinutes(Math.floor(timeUntilWorkAvailableInMS/1000))} before working again!`);
-        } else {
-            console.log(`work.js chain link ${chainDepth} aborted: cooldown unexpectedly not ready for ${userId}`);
-        }
+        interaction.editReply(`${userDisplayName}, you are unable to work and must wait ${convertSecondstoMinutes(Math.floor(timeUntilWorkAvailableInMS/1000))} before working again!`);
         return;
     };
 
@@ -333,63 +333,179 @@ async function performWork(interaction, userId, username, userDisplayName, workG
     // it can never tangle with workTimer's cooldown-skip/Poison-Potato-lockout machinery.
     const timeUntilHuntReturnsInMS = (userDetails.companionHunt?.returnsAt ?? 0) - Date.now();
     if (timeUntilHuntReturnsInMS > 0) {
-        if (!isChainedReply) {
-            interaction.editReply(`${userDisplayName}, you're out on a companion expedition and can't work until you're back — ${convertSecondstoMinutes(Math.ceil(timeUntilHuntReturnsInMS/1000))} remaining. Run /companion-hunt action:cancel to come back early instead.`);
-        } else {
-            console.log(`work.js chain link ${chainDepth} aborted: companion hunt unexpectedly still active for ${userId}`);
-        }
+        interaction.editReply(`${userDisplayName}, you're out on a companion expedition and can't work until you're back — ${convertSecondstoMinutes(Math.ceil(timeUntilHuntReturnsInMS/1000))} remaining. Run /companion-hunt action:cancel to come back early instead.`);
         return;
     };
 
+    // preChainUserDetails — a genuine deep snapshot of this player's state before ANY link
+    // of this chain ran, used as the "previous" baseline the once-per-chain quest/contract
+    // checks below need (see their own call sites). userDetails itself gets mutated in
+    // place as the chain progresses (see the loop below), so this has to be captured now,
+    // before that starts, not derived from userDetails later.
+    const preChainUserDetails = JSON.parse(JSON.stringify(userDetails));
+
+    // Chain-start buff cache (2026-10-03 rewrite) — see this function's own top comment and
+    // dynamoHandler.calculateWorkTimerValue's comment on cachedSources for the tradeoff.
+    const cachedSkipSources = await dynamoHandler.getWorkCooldownSkipSources(userDetails);
+
     const work = await dynamoHandler.getStatDatabase('work');
-    const newWorkCount = work.workCount + 1;
-    const workScenarioRoll = Math.random();
-    let potatoesGained;
-    let matchedScenarioType;
-    let multiplier = getRandomFromInterval(.8, 1.2);
-    const catchUpBonus = await dynamoHandler.getCatchUpBonus(userDetails);
-    // Prospector — see workFactory.js's getEffectiveScenarioChances for why this widens
-    // several scenarios' own slice per-request instead of mutating the shared
-    // workScenarios array (reused across every concurrent player's /work call — a
-    // per-request mutation there would race).
-    const prospectorMultiplierBonus = companionFactory.getActivePerkValue(userDetails, "specialEncounterMultiplierBonus");
-    const prospectorAdjustedChances = getEffectiveScenarioChances(workScenarios, prospectorMultiplierBonus);
-    // Seasonal Festivals' odds-boost piece (systems/seasonal-festivals.md) — a second,
-    // independent, DB-persisted multiplier composed ALONGSIDE (never merged into)
-    // EventFactory's own live hourly roll, since EventFactory itself is an in-memory-only
-    // singleton with no concept of a multi-day festival window. Read fresh on every /work
-    // call rather than cached, so a bot restart mid-festival loses nothing.
-    const activeFestival = await dynamoHandler.getActiveFestival();
-    const festivalOddsOverride = festivalFactory.isFestivalLive(activeFestival) ? activeFestival.oddsOverride : null;
-    const effectiveChances = festivalFactory.applyFestivalOddsOverride(prospectorAdjustedChances, festivalOddsOverride);
+
+    const aggregatedSetFields = {};
+    let aggregatedWorkCount = 0;
+    let houseTaxTotal = 0;
+    let mimicHoardDelta = 0;
+    let guildRaidTimerGuildId = null;
+    let totalPayoutDelta = 0;
+    let bestPayoutForRecord = 0;
+    const pendingMessages = [];
+    const pendingBigEvents = [];
+    let chainDepth = 0;
+    let cappedWithSkip = false;
+
     // Auto-recovery (2026-09-14, player-reported: "the embed didn't display" on a Mimic
-    // kill) — mirrors enter-tower.js's own "Auto-recovery" fix exactly. Previously nothing
-    // wrapped this dispatch at all: if a scenario's own action() threw for ANY reason
-    // (Mimic's own handleMimicPotato, or any other scenario), the whole /work call died
-    // silently — the deferred reply was never edited, so the player saw nothing at all,
-    // not even an error, and had no way to know their /work attempt didn't go through.
-    // Scoped to just this dispatch (not the whole performWork body) since everything AFTER
-    // it — achievement/quest checks — only runs once the scenario's own result embed has
-    // already been sent successfully, so a crash there is a much less severe, different
-    // failure mode (a missing follow-up, not a missing result) that doesn't match this
-    // report. Logging the real error (not just its message) captures a stack trace to
-    // actually root-cause a future recurrence, which static reading alone couldn't here.
+    // kill) — mirrors enter-tower.js's own "Auto-recovery" fix exactly. If any scenario's
+    // own resolve() throws for ANY reason, or the single end-of-chain write itself fails,
+    // nothing from this chain has been written or announced yet (see this function's own
+    // top comment, tradeoff #2) — the player is told plainly and can just run /work again.
     try {
-        for (let i = 0; i < workScenarios.length; i++) {
-            const scenario = workScenarios[i];
-            if (workScenarioRoll < effectiveChances[i].chance) {
-                potatoesGained = await scenario.action(userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, interaction, catchUpBonus, undefined, isChainedReply);
-                matchedScenarioType = scenario.type;
+        while (true) {
+            // Reset BEFORE this link runs, not just read after — dynamoHandler.
+            // calculateWorkTimerValue only ever SETS _cooldownSkippedByCompanion on a hit;
+            // it never clears it on a miss (that was always safe before this rewrite, since
+            // every link used to get a brand-new userDetails object off its own fresh
+            // findUser). This loop now reuses the SAME userDetails object across every link
+            // of the chain, so without this reset a miss on link N would silently inherit
+            // link N-1's still-true flag from this same object and wrongly keep chaining
+            // (and wrongly show "skipped!" on this link's own embed) forever.
+            userDetails._cooldownSkippedByCompanion = null;
+
+            // Companion XP display (roadmap's "Companion 'Work Count' -> 'XP' Rename"
+            // entry) — recomputed fresh every link since a Companion Encounter earlier in
+            // THIS SAME chain could change which companion is active's leveling grant
+            // shows next. Mirrors this file's own existing _cooldownSkippedByCompanion
+            // pattern: a non-persisted, in-memory-only flag read directly at each embed
+            // call site instead of a formal parameter threaded through every scenario.
+            const activeCompanionForXpDisplay = companionFactory.getActiveCompanion(userDetails);
+            userDetails._companionXpGained = activeCompanionForXpDisplay ? companionFactory.getWorkLevelingGrant(activeCompanionForXpDisplay) : 0;
+
+            const newWorkCount = work.workCount + chainDepth + 1;
+            const workScenarioRoll = Math.random();
+            let multiplier = getRandomFromInterval(.8, 1.2);
+            const catchUpBonus = await dynamoHandler.getCatchUpBonus(userDetails);
+            // Prospector/Festival odds — read fresh every link, same as before this
+            // rewrite. Only the cooldown-SKIP sources (cachedSkipSources above) are
+            // chain-cached; which scenario gets rolled is untouched by that tradeoff.
+            const prospectorMultiplierBonus = companionFactory.getActivePerkValue(userDetails, "specialEncounterMultiplierBonus");
+            const prospectorAdjustedChances = getEffectiveScenarioChances(workScenarios, prospectorMultiplierBonus);
+            const activeFestival = await dynamoHandler.getActiveFestival();
+            const festivalOddsOverride = festivalFactory.isFestivalLive(activeFestival) ? activeFestival.oddsOverride : null;
+            const effectiveChances = festivalFactory.applyFestivalOddsOverride(prospectorAdjustedChances, festivalOddsOverride);
+
+            let linkResult = null;
+            let matchedScenarioType = null;
+            for (let i = 0; i < workScenarios.length; i++) {
+                const scenario = workScenarios[i];
+                if (workScenarioRoll < effectiveChances[i].chance) {
+                    linkResult = await scenario.resolve(userDetails, workGainAmount, multiplier, userDisplayName, newWorkCount, catchUpBonus, undefined, { cachedSkipSources, mimicHoardDelta });
+                    matchedScenarioType = scenario.type;
+                    break;
+                }
+            }
+
+            const { potatoesGained, embed, bigEvents = [], delta } = linkResult;
+
+            if (delta) {
+                Object.assign(aggregatedSetFields, delta.setFields || {});
+                if (delta.addFields?.workCount) {
+                    aggregatedWorkCount += delta.addFields.workCount;
+                }
+                if (delta.houseTax) {
+                    houseTaxTotal += delta.houseTax;
+                }
+                if (delta.mimicHoardDelta) {
+                    mimicHoardDelta += delta.mimicHoardDelta;
+                }
+                if (delta.guildRaidTimerGuildId) {
+                    guildRaidTimerGuildId = delta.guildRaidTimerGuildId;
+                }
+                // Mirrors this link's own write onto the in-memory userDetails immediately
+                // — every later link (and the once-per-chain checks after the loop) needs
+                // to see this link's real result, the same way a fresh re-fetch used to
+                // give the old, per-link-write architecture.
+                Object.assign(userDetails, delta.setFields || {});
+            }
+
+            pendingMessages.push({ embed, isChainedReply: chainDepth > 0 });
+            pendingBigEvents.push(...bigEvents);
+
+            totalPayoutDelta += potatoesGained;
+            // Personal-best "biggest single /work payout" (see POTATO_PAYOUT_SCENARIO_TYPES'
+            // own comment for why Poison/Taro/Sweet are excluded) — tracks the single
+            // biggest qualifying link in this chain; checked once, after the loop, against
+            // the stored record, same end state as checking it once per link would give.
+            if (POTATO_PAYOUT_SCENARIO_TYPES.includes(matchedScenarioType) && potatoesGained > bestPayoutForRecord) {
+                bestPayoutForRecord = potatoesGained;
+            }
+
+            // Companion leveling — every real /work resolution (including every link of an
+            // auto-chained skip) counts toward the ACTIVE instance's workCount. Applied
+            // in-memory on every link (the grant amount can change mid-chain if this very
+            // link was itself a Companion Encounter swapping in a new unequipped companion
+            // — though equipping still requires a deliberate /companion equip, so in
+            // practice this only ever changes which existing companion keeps leveling), but
+            // the actual write is folded into the one combined write below instead of one
+            // per link (item 4 of this rewrite's consolidation list).
+            if (userDetails.companions?.active) {
+                const activeCompanionForLeveling = companionFactory.getActiveCompanion(userDetails);
+                const workLevelingGrant = companionFactory.getWorkLevelingGrant(activeCompanionForLeveling);
+                userDetails.companions = companionFactory.levelActiveCompanion(userDetails.companions, workLevelingGrant);
+            }
+
+            if (!userDetails._cooldownSkippedByCompanion) {
                 break;
             }
+            if (chainDepth < Work.MAX_COOLDOWN_SKIP_CHAIN_LENGTH) {
+                chainDepth++;
+                continue;
+            }
+            // Chain cap hit (2026-10-03 fix, preserved behavior — see this function's own
+            // top comment) — this link's OWN roll also skipped, so its own delta.setFields
+            // above already carries workTimer as "available now." Left alone, the player
+            // could just run /work again themselves immediately for a free extra roll
+            // beyond the chain cap — the result embed still says "skipped!" (that part of
+            // this link was real), but workTimer gets overwritten back to a real, full
+            // Work.WORK_TIMER_SECONDS cooldown below, as part of the single end-of-chain
+            // write now, instead of a separate extra write.
+            cappedWithSkip = true;
+            break;
         }
+
+        if (cappedWithSkip) {
+            aggregatedSetFields.workTimer = Date.now() + Work.WORK_TIMER_SECONDS * 1000;
+        }
+        // companions — folds the in-memory leveling applied above into the SAME single
+        // write as every other field, rather than companionFactory's usual callers' own
+        // separate dynamoHandler.updateUserFields call for it (see this function's own top
+        // comment, item 4: this consolidation was explicitly pre-approved).
+        if (userDetails.companions) {
+            aggregatedSetFields.companions = userDetails.companions;
+        }
+
+        // The ONE write this entire chain (1 to MAX_COOLDOWN_SKIP_CHAIN_LENGTH + 1 links)
+        // produces for this player's own record — the literal target of this rewrite.
+        await dynamoHandler.updateUserFields(userId, aggregatedSetFields, { workCount: aggregatedWorkCount });
+        // workCount is an ADD expression, not a value this loop ever folded into
+        // aggregatedSetFields/userDetails directly — mirrored onto userDetails here so the
+        // once-per-chain achievement/quest/contract checks below see this chain's REAL final
+        // workCount (the same value a post-write re-fetch would have given the old,
+        // per-link architecture), not whatever stale value findUser returned at the top of
+        // this whole chain.
+        userDetails.workCount = (userDetails.workCount || 0) + aggregatedWorkCount;
     } catch (e) {
-        console.error(`/work scenario crashed for ${username} (${userId}), chainDepth ${chainDepth}:`, e);
+        console.error(`/work chain crashed for ${username} (${userId}), chainDepth ${chainDepth}:`, e);
         const recoveryMessage = `${userDisplayName}, your /work attempt hit an unexpected error and had to stop — sorry about that! Nothing was lost, so you can run /work again right away.`;
         try {
-            if (isChainedReply) {
-                await interaction.followUp({ content: recoveryMessage });
-            } else if (interaction.deferred || interaction.replied) {
+            if (interaction.deferred || interaction.replied) {
                 await interaction.editReply({ content: recoveryMessage, embeds: [], components: [] });
             } else {
                 await interaction.reply({ content: recoveryMessage });
@@ -399,119 +515,71 @@ async function performWork(interaction, userId, username, userDisplayName, workG
         }
         return;
     }
-    await dynamoHandler.updateStatDatabase('work', 'workCount', newWorkCount);
-    await dynamoHandler.updateStatDatabase('work', 'totalPayout', work.totalPayout + potatoesGained);
 
-    // Personal-best "biggest single /work payout" only tracks scenarios whose
-    // return value is actually a potato amount: Golden/Large/Metal(success)/Regular.
-    // Poison is excluded (a loss, always <= 0 anyway). Taro's gain is starches, a
-    // different currency, so it's out of scope for this potato-denominated record
-    // rather than folded in as if it were comparable. Sweet Potato is excluded for
-    // a sharper reason — its handler's return value isn't a gain amount at all,
-    // it's the array index (0-2) of which stat buff was rolled, so treating it as
-    // a potato figure would corrupt the record with a stray 0/1/2.
-    if (POTATO_PAYOUT_SCENARIO_TYPES.includes(matchedScenarioType) && potatoesGained > 0) {
-        await dynamoHandler.updateIfNewRecord(userId, 'biggestWorkPayout', potatoesGained);
+    // Every write below this point only runs once the chain's own write above has
+    // actually succeeded — see tradeoff #2 in this function's own top comment.
+    if (houseTaxTotal > 0) {
+        await dynamoHandler.addUserDatabase(awsConfigurations.clientId, 'potatoes', houseTaxTotal);
+    }
+    if (mimicHoardDelta !== 0) {
+        await dynamoHandler.addStatFields('mimic_hoard', { hoardPotatoes: mimicHoardDelta });
+    }
+    if (guildRaidTimerGuildId) {
+        await dynamoHandler.updateGuildDatabase(guildRaidTimerGuildId, 'raidTimer', Date.now());
     }
 
-    // Re-fetch since the scenario handlers wrote stat updates straight to the DB
-    // without mutating this in-memory userDetails object.
-    const updatedUserDetails = await dynamoHandler.findUser(userId, username);
-    if (updatedUserDetails) {
-        // Companion leveling — every real /work resolution (including auto-chained ones
-        // from a workCooldownSkipChance hit) counts toward the ACTIVE instance's
-        // workCount, a genuine time investment rather than a currency sink (see
-        // companionFactory.getCompanionLevel). Reads off updatedUserDetails, not the
-        // pre-scenario userDetails above, since the scenario that just ran may have
-        // already written its own companions object (a Wandering Companion pull appends a
-        // new owned instance, see companionFactory.applyCompanionAward) — incrementing off
-        // stale data here would silently clobber that write instead of building on it.
-        // companionFactory.levelActiveCompanion is the shared helper — also used by
-        // Bounty/Heist attempts now (roadmap #59) — that resolves the active INSTANCE (not
-        // companion id, since 2026-08-25's instance rework) and folds in the Max-Level
-        // capstone's tracking automatically. /work's own grant is 1 per call for every
-        // companion with a second leveling path elsewhere (/rob, /sell-starch, /regrade,
-        // /confront-rival, or passive ticking) — that 1 IS the baseline every other action's
-        // grant scales against (see companionFactory.getCooldownScaledWorkCountGrant) — but
-        // doubles to 2 for the 7 companions with NO second path at all (Work-Only Companion
-        // Leveling Bonus, 2026-09-11 direct instruction), since /work is the only way they
-        // level up. See companionFactory.getWorkLevelingGrant for the exact rule.
-        if (updatedUserDetails.companions?.active) {
-            const activeCompanionForLeveling = companionFactory.getActiveCompanion(updatedUserDetails);
-            const workLevelingGrant = companionFactory.getWorkLevelingGrant(activeCompanionForLeveling);
-            const trackedCompanions = companionFactory.levelActiveCompanion(updatedUserDetails.companions, workLevelingGrant);
-            await dynamoHandler.updateUserFields(userId, { companions: trackedCompanions });
-            // Mirrors this block's own DB write back onto the in-memory object immediately
-            // — the achievement check just below reads updatedUserDetails directly, and
-            // without this a companion crossing into max level here would never actually
-            // unlock first_max_level_companion/mythic_max_level_companion from ordinary
-            // /work play (same "build the post-write shape locally" shortcut
-            // companionScavengeCollect.js's own achievement check already takes).
-            updatedUserDetails.companions = trackedCompanions;
-        }
+    for (const { embed, isChainedReply } of pendingMessages) {
+        await sendWorkResult(interaction, embed, isChainedReply);
+    }
+    for (const payload of pendingBigEvents) {
+        await bigEventsChannel.postBigEvent(payload);
+    }
 
-        const newlyUnlocked = await achievementFactory.checkAndUnlock(updatedUserDetails);
-        if (newlyUnlocked.length > 0) {
-            const achievementEmbeds = embedFactory.createAchievementUnlockedEmbed(userDisplayName, newlyUnlocked);
-            interaction.followUp({ embeds: achievementEmbeds });
+    const linksRun = chainDepth + 1;
+    await dynamoHandler.updateStatDatabase('work', 'workCount', work.workCount + linksRun);
+    await dynamoHandler.updateStatDatabase('work', 'totalPayout', work.totalPayout + totalPayoutDelta);
 
-            // checkAndUnlock persists the new achievement list straight to the DB
-            // without mutating updatedUserDetails — mirror that here so
-            // updatedUserDetails.achievements stays accurate for the rest of this
-            // call (originally added so a quest keyed on achievements.length, "Weekly
-            // Milestone", saw the unlock immediately; that quest was retired 2026-08-30
-            // for permanently dead-ending veteran players once they'd unlocked
-            // everything, see constants.js's weekly_companion_3 — this merge is kept
-            // regardless as ordinary in-memory correctness).
-            updatedUserDetails.achievements = [
-                ...(updatedUserDetails.achievements || []),
-                ...newlyUnlocked.map(achievement => achievement.id)
-            ];
-        }
+    if (bestPayoutForRecord > 0) {
+        await dynamoHandler.updateIfNewRecord(userId, 'biggestWorkPayout', bestPayoutForRecord);
+    }
 
-        const questResult = await questFactory.checkAndClaimQuests(updatedUserDetails, userDetails);
-        if (questResult.completedQuests.length > 0) {
-            const questEmbed = embedFactory.createQuestCompleteEmbed(userDisplayName, questResult.completedQuests, updatedUserDetails.workMultiplierAmount);
-            interaction.followUp({ embeds: [questEmbed] });
-        }
+    // Achievements/Quests/Festival Quests/Guild Contract — consolidated to run ONCE for
+    // the whole chain (item 4 of this rewrite) rather than once per link, using userDetails'
+    // final post-chain state against preChainUserDetails' real pre-chain baseline. This is
+    // a non-write-count-affecting consolidation confirmed safe before this rewrite started:
+    // every one of these checks is itself a monotonic "did we newly cross a threshold"
+    // check, so running it once against the chain's full before/after span gives the exact
+    // same end state as running it once per link would have.
+    const newlyUnlocked = await achievementFactory.checkAndUnlock(userDetails);
+    if (newlyUnlocked.length > 0) {
+        const achievementEmbeds = embedFactory.createAchievementUnlockedEmbed(userDisplayName, newlyUnlocked);
+        interaction.followUp({ embeds: achievementEmbeds });
+        userDetails.achievements = [
+            ...(userDetails.achievements || []),
+            ...newlyUnlocked.map(achievement => achievement.id)
+        ];
+    }
 
-        // Seasonal Festivals' own objective track (systems/seasonal-festivals.md) — mirrors
-        // the Quest check immediately above exactly (same re-fetched updatedUserDetails,
-        // same pre-action userDetails baseline), gated internally on a live active_festival.
-        const festivalQuestResult = await festivalFactory.checkAndClaimFestivalQuests(updatedUserDetails, userDetails);
-        if (festivalQuestResult.completedObjectives.length > 0) {
-            const festivalQuestEmbed = embedFactory.createFestivalQuestCompleteEmbed(userDisplayName, festivalQuestResult.completedObjectives, festivalQuestResult.festivalId);
-            interaction.followUp({ embeds: [festivalQuestEmbed] });
-        }
+    const questResult = await questFactory.checkAndClaimQuests(userDetails, preChainUserDetails);
+    if (questResult.completedQuests.length > 0) {
+        const questEmbed = embedFactory.createQuestCompleteEmbed(userDisplayName, questResult.completedQuests, userDetails.workMultiplierAmount);
+        interaction.followUp({ embeds: [questEmbed] });
+    }
 
-        // Guild Contract is a guild-wide aggregate, not a per-user check — only
-        // relevant if this member is actually in a guild right now.
-        if (updatedUserDetails.guildId) {
-            const guild = await dynamoHandler.findGuildById(updatedUserDetails.guildId);
-            if (guild) {
-                const contractResult = await guildContractFactory.checkAndClaimContract(guild, updatedUserDetails, userDetails);
-                if (contractResult.completedNow) {
-                    const contractEmbed = embedFactory.createGuildContractCompleteEmbed(guild.guildName, contractResult.template, contractResult.bankCapacityReward);
-                    interaction.followUp({ embeds: [contractEmbed] });
-                }
+    const festivalQuestResult = await festivalFactory.checkAndClaimFestivalQuests(userDetails, preChainUserDetails);
+    if (festivalQuestResult.completedObjectives.length > 0) {
+        const festivalQuestEmbed = embedFactory.createFestivalQuestCompleteEmbed(userDisplayName, festivalQuestResult.completedObjectives, festivalQuestResult.festivalId);
+        interaction.followUp({ embeds: [festivalQuestEmbed] });
+    }
+
+    if (userDetails.guildId) {
+        const guild = await dynamoHandler.findGuildById(userDetails.guildId);
+        if (guild) {
+            const contractResult = await guildContractFactory.checkAndClaimContract(guild, userDetails, preChainUserDetails);
+            if (contractResult.completedNow) {
+                const contractEmbed = embedFactory.createGuildContractCompleteEmbed(guild.guildName, contractResult.template, contractResult.bankCapacityReward);
+                interaction.followUp({ embeds: [contractEmbed] });
             }
-        }
-    }
-
-    if (userDetails._cooldownSkippedByCompanion) {
-        if (chainDepth < Work.MAX_COOLDOWN_SKIP_CHAIN_LENGTH) {
-            await performWork(interaction, userId, username, userDisplayName, workGainAmount, true, chainDepth + 1);
-        } else {
-            // Chain cap hit (2026-10-03, direct instruction) — this call's OWN roll also
-            // skipped, so whichever scenario handler just ran already wrote workTimer as
-            // "available now" via dynamoHandler.calculateWorkTimerValue, which has no
-            // concept of chain depth and rolls fresh every single call regardless of how
-            // deep the chain already is. Left alone, the player could just run /work again
-            // themselves immediately for a free extra roll beyond the chain cap — the
-            // result embed still says "skipped!" (that part of this call was real), but the
-            // cooldown gets overwritten to the real, full Work.WORK_TIMER_SECONDS here so
-            // there's no actual extra action available.
-            await dynamoHandler.updateUserFields(userId, { workTimer: Date.now() + Work.WORK_TIMER_SECONDS * 1000 });
         }
     }
 }
@@ -531,6 +599,6 @@ module.exports = {
 
         const [userId, username, userDisplayName] = getUserInteractionDetails(interaction);
 
-        await performWork(interaction, userId, username, userDisplayName, workGainAmount, false, 0);
+        await performWork(interaction, userId, username, userDisplayName, workGainAmount);
     }
 }

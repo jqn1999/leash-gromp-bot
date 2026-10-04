@@ -63,6 +63,14 @@ beforeEach(() => {
 describe('/take-bounty — Metal Potato Meddley', () => {
     test('a Band I win credits the full Metal King-mirrored reward (net of Kingdom Tax) and grants all three permanent stats flat', async () => {
         const user = baseUser();
+        // Captured BEFORE the call — the chain loop mutates the SAME userDetails object
+        // dynamoHandler.findUser resolved to (2026-10-03 chain write-count rewrite, needed
+        // so later links of a chain see earlier links' own results), so `user` itself no
+        // longer reflects its pre-call values once callback() returns.
+        const originalPotatoes = user.potatoes;
+        const originalWorkMultiplierAmount = user.workMultiplierAmount;
+        const originalPassiveAmount = user.passiveAmount;
+        const originalBankCapacity = user.bankCapacity;
         dynamoHandler.findUser.mockResolvedValue(user);
         const interaction = fakeInteraction({ mode: 'regular' });
         const randomSpy = jest.spyOn(Math, 'random')
@@ -84,16 +92,16 @@ describe('/take-bounty — Metal Potato Meddley', () => {
 
         const potatoWrite = dynamoHandler.updateUserFields.mock.calls.find(([, setAttrs]) => setAttrs && 'potatoes' in setAttrs);
         expect(potatoWrite).toBeDefined();
-        expect(potatoWrite[1].potatoes).toBe(user.potatoes + netReward);
+        expect(potatoWrite[1].potatoes).toBe(originalPotatoes + netReward);
 
         const multiplierWrite = dynamoHandler.updateUserFields.mock.calls.find(([, setAttrs]) => setAttrs && 'workMultiplierAmount' in setAttrs);
-        expect(multiplierWrite[1].workMultiplierAmount).toBeCloseTo(user.workMultiplierAmount + Bounty.METAL_POTATO_MEDDLEY.I.multiplierReward);
+        expect(multiplierWrite[1].workMultiplierAmount).toBeCloseTo(originalWorkMultiplierAmount + Bounty.METAL_POTATO_MEDDLEY.I.multiplierReward);
 
         const passiveWrite = dynamoHandler.updateUserFields.mock.calls.find(([, setAttrs]) => setAttrs && 'passiveAmount' in setAttrs);
-        expect(passiveWrite[1].passiveAmount).toBe(user.passiveAmount + Bounty.METAL_POTATO_MEDDLEY.I.passiveReward);
+        expect(passiveWrite[1].passiveAmount).toBe(originalPassiveAmount + Bounty.METAL_POTATO_MEDDLEY.I.passiveReward);
 
         const capacityWrite = dynamoHandler.updateUserFields.mock.calls.find(([, setAttrs]) => setAttrs && 'bankCapacity' in setAttrs);
-        expect(capacityWrite[1].bankCapacity).toBe(user.bankCapacity + Bounty.METAL_POTATO_MEDDLEY.I.capacityReward);
+        expect(capacityWrite[1].bankCapacity).toBe(originalBankCapacity + Bounty.METAL_POTATO_MEDDLEY.I.capacityReward);
 
         const resultEmbed = interaction.editReply.mock.calls[interaction.editReply.mock.calls.length - 1][0].embeds[0];
         expect(resultEmbed.data.title).toContain('Metal Potato Meddley');

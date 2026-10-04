@@ -147,7 +147,11 @@ literal, independently-named numeric copy of `Raid.METAL_KING_*`/`ELITE_METAL_KI
 cross-reference, so either side can be retuned without affecting the other.
 `Bounty.METAL_POTATO_MEDDLEY_PENALTY` is always 0, overriding `Bounty.TIERS`' own climbing
 per-tier penalty for this one roll, mirroring every Metal King bracket's "costs nothing win or
-lose" shape. Reward is scaled by the same ×0.8-1.2 range roll Metal King itself uses, ADDITIONALLY
+lose" shape. **Rescaled to 45% of the guild-derived values, 2026-10-04** (difficulty/reward
+only, not the stat grants) — a solo mercenary has no 4-person team-power multiplier, so the
+original 1:1 Metal King reuse was meaningfully harder to reach solo than the guild equivalent
+at comparable individual power. Current values: I 900/4,500,000, II 2700/13,500,000, III
+5400/27,000,000 (difficulty/reward). Reward is scaled by the same ×0.8-1.2 range roll Metal King itself uses, ADDITIONALLY
 by the mercenary's own `rankInfo.rewardMultiplier` (the one departure from a pure copy — Guild
 Raid has no per-member rank multiplier to apply). Stat grants are flat adds (mirrors
 `raidFactory.handleStatSplit`'s shape, not Bounty's own percentage-of-current `BountyStatReward`

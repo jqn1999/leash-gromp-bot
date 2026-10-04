@@ -450,6 +450,17 @@ claim at chain-start would reopen the exact double-raid race that fix closed. No
 candidate; full reasoning in
 [economy-and-work.md#cooldown-skip-chain-per-link-db-cost-and-why-full-readwrite-consolidation-isnt-a-clean-win-everywhere](economy-and-work.md#cooldown-skip-chain-per-link-db-cost-and-why-full-readwrite-consolidation-isnt-a-clean-win-everywhere).
 
+**Re-confirmed, not re-derived (2026-10-03)** — when `/work`'s own one-write-per-chain rewrite
+(see [economy-and-work.md](economy-and-work.md#works-cooldown-skip-chain-rewritten-to-one-write-per-chain-instead-of-one-write-per-link-2026-10-03))
+was extended to `/take-bounty` and `/rob-npc` the same day (see
+[mercenary-bounties.md](mercenary-bounties.md#take-bounty-and-rob-npc-cooldown-skip-chains-rewritten-to-one-db-write-per-chain-not-per-link-2026-10-03)),
+`/start-raid` was explicitly scoped again against this exact section before deciding whether
+to include it — both reasons above (multi-actor guild state, the live `claimGuildRaidSlot`
+race guard) still hold unchanged, so `/start-raid` was deliberately left untouched rather than
+given the same rewrite, flagged back for explicit confirmation instead of applied
+unilaterally. Nothing in this file changed as a result — recorded here only so a future pass
+doesn't have to re-derive the same conclusion from scratch.
+
 Deliberately computed, not stored — a second write path to keep `level` in sync with `raidCount`
 would just reintroduce the same class of sync-drift bug that left the old fields dead in the first
 place. The multiplier scales **only the winning side** of a guild raid — every scenario closure in

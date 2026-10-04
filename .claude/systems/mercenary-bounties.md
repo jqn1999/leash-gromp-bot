@@ -790,7 +790,10 @@ work-multiplier grant instead. Routed **entirely separately** from `regular`/`ba
 tightly coupled to the 12-tier weighted-roll/currency-reward/Rival-notoriety/Yukon-drop
 machinery, none of which applies here. The mercenary-gate and cooldown-ready checks at the
 top of `runBountyAttempt` stay shared across all 3 modes; only past that point does Stat
-Bounty run its own dedicated `runStatBountyAttempt`.
+Bounty run its own dedicated chain loop (`resolveStatBountyChain`, renamed 2026-10-03 from
+`runStatBountyAttempt` when the whole command was rewritten to resolve its own cooldown-skip
+chain in one loop instead of recursing — see this file's own dated entry near the bottom for
+that rewrite; the responsibility split described below is otherwise unchanged by it).
 
 **Flat 50% chance, not a power-scaled formula.** Guild Stat Raid's own success chance
 (`calculateRaidSuccessChance(totalMultiplier, Raid.REGULAR_STAT_RAID_DIFFICULTY,
@@ -811,18 +814,24 @@ STAT_BOUNTY_SUCCESS_CHANCE: 0.5,   // flat — see the comment above for why thi
 STAT_BOUNTY_REWARD: 0.2            // permanent +0.2 work multiplier on a win
 ```
 
-**Flow** (`takeBounty.js`'s `runStatBountyAttempt`):
+**Flow** (`takeBounty.js`'s `resolveStatBountyChain`, one iteration/link of its own chain
+loop — see this file's own 2026-10-03 dated entry near the bottom for the chain-level
+rewrite):
 
 1. **Affordability check FIRST, before rolling anything** — `userDetails.potatoes <
    Bounty.STAT_BOUNTY_COST` rejects immediately with a plain message and makes **no writes
    at all**, mirroring how shop/upgrade purchases in this codebase reject upfront on
    insufficient funds (`guildBuy.js`'s `doesGuildHaveEnoughToPurchase`). Unlike `/rob`'s fine
    formula (a deliberate, already-decided penalty for a *different* mechanic that can put a
-   player negative), a Stat Bounty attempt a player can't afford simply never starts.
-2. `mercenaryFactory.resolveStatBounty(userDetails)` rolls the flat 50% and picks one of 3
-   flavor-text variants (`StatBountyFlavor`, `constants.js`) — computation only, no writes;
-   affordability is deliberately **not** this function's job (kept in `takeBounty.js` instead,
-   same responsibility split `resolveBountyAttempt`/`resolveNpcRob` already use for their own
+   player negative), a Stat Bounty attempt a player can't afford simply never starts — checked
+   against the normal cost regardless of whether the roll turns out to be a Meddley hit (see
+   this section's own Metal Potato Meddley subsection below).
+2. `mercenaryFactory.resolveStatBounty(userDetails)` — now `async` as of 2026-10-03 (it may
+   need to `await` a Meddley roll's own power computation) — rolls the independent 1% Meddley
+   check first, then either that branch or the flat 50% roll + one of 3 flavor-text variants
+   (`StatBountyFlavor`, `constants.js`) — computation only, no writes; affordability is
+   deliberately **not** this function's job (kept in `takeBounty.js` instead, same
+   responsibility split `resolveBountyAttempt`/`resolveNpcRob` already use for their own
    pure-computation role).
 3. `Bounty.STAT_BOUNTY_COST` is charged **unconditionally** — win or lose, same as Guild Stat
    Raid's own `removeFromBankOrPurse` call. Tracked as `totalLosses -= cost` (Bounty's own
@@ -891,9 +900,9 @@ later without silently affecting the other:
 METAL_POTATO_MEDDLEY_CHANCE: 0.01,
 METAL_POTATO_MEDDLEY_PENALTY: 0,
 METAL_POTATO_MEDDLEY: {
-    I:   { difficulty: 2000,  reward: 10000000, multiplierReward: 2.0,  passiveReward: 1000000, capacityReward: 10000000 },  // = Raid.METAL_KING_*
-    II:  { difficulty: 6000,  reward: 30000000, multiplierReward: 6.0,  passiveReward: 3000000, capacityReward: 30000000 },  // = Raid.ELITE_METAL_KING_*
-    III: { difficulty: 12000, reward: 60000000, multiplierReward: 12.0, passiveReward: 6000000, capacityReward: 60000000 }, // = Raid.LEGENDARY_METAL_KING_*
+    I:   { difficulty: 900,  reward: 4500000,  multiplierReward: 2.0,  passiveReward: 1000000, capacityReward: 10000000 },  // 45% of Raid.METAL_KING_* difficulty/reward
+    II:  { difficulty: 2700, reward: 13500000, multiplierReward: 6.0,  passiveReward: 3000000, capacityReward: 30000000 },  // 45% of Raid.ELITE_METAL_KING_* difficulty/reward
+    III: { difficulty: 5400, reward: 27000000, multiplierReward: 12.0, passiveReward: 6000000, capacityReward: 60000000 }, // 45% of Raid.LEGENDARY_METAL_KING_* difficulty/reward
 }
 ```
 
@@ -906,12 +915,16 @@ had the one Regular-mode-equivalent cap, unlike Metal King's three separate per-
 successChance = min(effectiveBountyPower / METAL_POTATO_MEDDLEY[band].difficulty, Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE)
 ```
 
-Difficulty 2000/6000/12000 at bands I/II/III was chosen to land solo odds in roughly the same
-~17-24% ballpark a 4-person guild's own Metal King sees at each mode's own reference power —
-a direct reuse of Metal King's own difficulty numbers accomplishes this without a separate
-derivation, since Bounty's solo `effectiveBountyPower` and a guild's aggregate
-`totalMultiplier` already occupy comparable ranges at matching content tiers (see the 12-Tier
-Bounty Ladder's own "Solo power reference points" table above).
+Difficulty/reward were originally a direct 1:1 copy of Guild Raid's own Metal King numbers
+(2000/6000/12000 and 10M/30M/60M), chosen to land solo odds in roughly the same ~17-24%
+ballpark a 4-person guild's own Metal King sees at each mode's own reference power. **Rescaled
+to 45% of those values, 2026-10-04**, direct instruction ("scale the difficulty and potato
+reward to 45%... since they're solo") — a solo mercenary's `effectiveBountyPower` has no
+4-person team-power multiplier (~2.18x at a 4-person equal-power roster) the way a guild's
+`totalMultiplier` does, so the original 1:1 reuse made this meaningfully harder to reach for a
+solo player at comparable individual power than the equivalent guild bracket is for a guild
+member. Only `difficulty`/`reward` moved; the permanent stat grants
+(`multiplierReward`/`passiveReward`/`capacityReward`) are untouched.
 
 **Reward on a win** — direct numeric copy of Guild Raid's own Metal King win math (same
 ×0.8-1.2 range roll, no `raidRewardMultiplier` term — Bounty has no guild-level reward
@@ -995,6 +1008,98 @@ in `mercenaryFactory.test.js` and `takeBountyTax.test.js` that hardcoded a `mock
 chain for 'regular' mode needed one more entry spliced in (a "Meddley trigger miss," e.g. 0.99)
 right after the tier-roll value; tests using a constant `mockReturnValue(...)` for every call
 were unaffected.
+
+### Metal Potato Meddley also applies to Stat Bounty (2026-10-03, direct instruction)
+
+Same flat 1% roll (`Bounty.METAL_POTATO_MEDDLEY_CHANCE`), checked independently on **every**
+Stat Bounty attempt — including every link of its own cooldown-skip chain (`resolveStatBounty`
+is called once per link inside `takeBounty.js`'s `resolveStatBountyChain`, same as the regular
+ladder's own Meddley rolls once per link of its chain). Folded into
+`mercenaryFactory.resolveStatBounty` itself (now `async` — it needs
+`computeEffectiveBountyPower`, below, which awaits the World Boss buff read), not a separate
+function, mirroring how the regular ladder's own Meddley check lives inside
+`resolveBountyAttempt` rather than a sibling.
+
+**Reuses Bounty's own Band I numbers, not Guild's Metal King numbers directly** — same
+`Bounty.METAL_POTATO_MEDDLEY.I` object the regular ladder's own Band I Meddley already reads,
+doubled at the point of use (`* 2`, not a second constant) — mirrors Guild Stat Raid's own
+Metal King bracket (`startRaid.js`'s `statRaidScenarios[0]`) reusing ITS OWN regular-mode
+Metal King numbers (also doubled) rather than Elite's/Legendary's. Stat Bounty has no
+tier/band concept to select II or III from in the first place, so Band I is the only
+candidate.
+
+**Success chance switches formulas entirely for this one roll** — Stat Bounty's own base
+roll is the flat, power-independent `Bounty.STAT_BOUNTY_SUCCESS_CHANCE` (50%), but a Meddley
+roll instead uses the normal raid-style power-ratio formula, capped at
+`Raid.MAXIMUM_STAT_RAID_SUCCESS_RATE` (also 50%, but for a structurally different reason —
+see below) rather than the regular ladder's own `Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE`
+(95%):
+
+```
+successChance = min(effectiveBountyPower / Bounty.METAL_POTATO_MEDDLEY.I.difficulty, Raid.MAXIMUM_STAT_RAID_SUCCESS_RATE)
+```
+
+This mirrors Guild Stat Raid's own Metal King bracket exactly — `calculateRaidSuccessChance(totalMultiplier, Raid.METAL_KING_DIFFICULTY, Raid.MAXIMUM_STAT_RAID_SUCCESS_RATE)` —
+which is the one Guild Raid bracket that caps against the LOWER `MAXIMUM_STAT_RAID_SUCCESS_RATE`
+even though it's nominally a Regular-mode-difficulty roll, because it lives inside Stat Raid's
+own scenario table, not Regular's. `effectiveBountyPower` is computed via the same
+`computeEffectiveBountyPower` helper `resolveBountyAttempt` uses (factored out 2026-10-03 so
+the two can't drift) — World Boss buff + Mercenary Rank + the mercenary's own `workMulti`
+Mercenary Buff selection, identical to the regular ladder's own figure.
+
+**Reward on a hit pays potatoes AND all three permanent stat grants — the one branch where
+Stat Bounty pays potatoes at all.** A normal Stat Bounty win only ever grants
+`Bounty.STAT_BOUNTY_REWARD` to `workMultiplierAmount`, nothing else; Meddley instead pays the
+full Band I bundle, doubled, through the same ×0.8-1.2 range roll and `rankInfo.rewardMultiplier`
+scaling every other Bounty win's reward already uses:
+
+```
+reward = round(Bounty.METAL_POTATO_MEDDLEY.I.reward * 2 * getRandomFromInterval(.8, 1.2) * rankInfo.rewardMultiplier)
+statReward = [
+    { type: 'workMultiplierAmount', amount: Bounty.METAL_POTATO_MEDDLEY.I.multiplierReward * 2 },
+    { type: 'passiveAmount', amount: Bounty.METAL_POTATO_MEDDLEY.I.passiveReward * 2 },
+    { type: 'bankCapacity', amount: Bounty.METAL_POTATO_MEDDLEY.I.capacityReward * 2 }
+]
+```
+
+At today's (45%-rescaled) Band I numbers that's 9,000,000 potatoes, +4.0 work multiplier,
++2,000,000 passive income, +20,000,000 bank capacity (before the range roll/rank multiplier
+scale the potato figure further) — the permanent grants stay the bigger single hit relative to
+the regular ladder's own Band I Meddley (the 2026-10-04 rescale only touched difficulty/reward,
+not the grants), intentional given Stat Bounty's own higher baseline stakes (a flat
+300,000-potato buy-in per attempt vs. the ladder's scaling-with-tier cost).
+
+**Costs nothing at all, win or lose** — bypasses `Bounty.STAT_BOUNTY_COST`'s normal
+win-or-lose charge entirely, same "costs nothing win or lose" shape every Metal King bracket
+already has (including the regular ladder's own Meddley). The upfront/per-link affordability
+gate in `resolveStatBountyChain` is deliberately left checking against the NORMAL cost
+regardless of what the roll turns out to be — a Meddley hit is only ever reachable by a
+mercenary who could have afforded the ordinary attempt anyway, a scoped judgment call (not
+explicitly specified either way) made to avoid opening a new "fish for a free jackpot with 0
+potatoes" grinding path for a destitute player.
+
+**Still increments `mercenaryBountyWinCount` on a win**, same as the regular ladder's own
+Meddley — a Meddley win still counts toward Mercenary Rank progress exactly like any other
+Bounty win.
+
+**Embed**: `createStatBountyResultEmbed` branches on `result.isMetalPotatoMeddley` the same
+way `createBountyResultEmbed` already does for the regular ladder — reuses the `metalPotatoMeddley`
+flavor object (not `StatBountyFlavor`'s pool) for the Result field, shows "Potatoes Spent:
+Nothing — this encounter costs nothing win or lose." instead of the normal cost line, and
+adds a "Potatoes Gained:" field plus all three stat grants (not just the single
+`statGrantAmount` line a normal win shows) on a hit. Title becomes "`<player> stumbles into a
+Metal Potato Meddley! (Stat Bounty)`".
+
+**Tests**: `mercenaryFactory.test.js` gained a `resolveStatBounty Metal Potato Meddley`
+describe block (hit numbers/formula, the 50%-cap proof at very high power, a 0-cost loss, a
+miss falling through to the normal flat-50%-roll path) mirroring the regular ladder's own
+Meddley describe block's structure. `takeBountyStatMode.test.js` gained end-to-end hit/loss
+tests through the real `callback`. Every PRE-EXISTING Stat Bounty test's `Math.random()`
+sequence needed one new leading "Meddley trigger miss" value spliced in (same shift the
+regular ladder's own Meddley rollout required of its own pre-existing tests, per the testing
+note above) — `resolveStatBounty` itself also moved from synchronous to `async` (it now needs
+to `await computeEffectiveBountyPower` on a Meddley roll), so every direct caller/test needed
+an `await` added.
 
 ## Flavor-text scenarios (`BountyScenarios`)
 
@@ -2021,3 +2126,155 @@ since Rival confrontations have no rank-style ceiling to anchor a capstone thres
 - A dedicated `/mercenary` command — Rank lives on `/profile` and `/bounty-board` instead,
   same "doesn't need its own command" reasoning Guild Level's own `/guild`-embedded display
   already sets.
+
+## `/take-bounty` and `/rob-npc` cooldown-skip chains rewritten to one DB write per chain, not per link (2026-10-03)
+
+Direct instruction, immediately following the identical `/work` rewrite (see
+[economy-and-work.md](economy-and-work.md#works-cooldown-skip-chain-rewritten-to-one-write-per-chain-instead-of-one-write-per-link-2026-10-03)) —
+the SAME target applied to the other two solo chaining commands: this player's own
+`dynamoHandler.updateUserFields` fires exactly ONCE per `/take-bounty` or `/rob-npc` call no
+matter how deep the cooldown-skip auto-chain goes (1 to
+`Work.MAX_BOUNTY_RAID_COOLDOWN_SKIP_CHAIN_LENGTH + 1` links), instead of once per link.
+
+**The 2026-09-20 architect pass (see `.claude/roadmap.md`'s own dated entry) had already
+scoped this exact idea for all four chaining commands and rated `/take-bounty`/`/rob-npc`
+"(a) Safe and worth doing (best target)"/"same profile as Bounty"** — both were already
+funneling every link's deltas into ONE `dynamoHandler.updateUserFields` call per link (not
+several scattered writes the way `/work`'s 10 scenario handlers each wrote directly), and
+their cooldown-skip sources (`mercenaryFactory.getMercenaryCooldownSkipSources`) are almost
+entirely in-memory (Rank, Mercenary Buff) plus one small, slow-changing global Spud Keep
+doc — no genuinely external multi-actor state the way `/start-raid`'s guild-shared state is
+(see that command's own write-up below). This rewrite followed that prior scoping rather
+than overriding it.
+
+**Verified, not assumed, that `mercenaryFactory.js`'s resolve functions were actually
+write-free** (per this rewrite's own instructions) — `resolveBountyAttempt`/
+`resolveStatBounty` were genuinely pure, exactly as that file's own module comments
+claimed. `resolveNpcRob` was NOT, despite an identical-sounding comment: its winning-branch
+payout routes through `workFactory.calculateGainAmount` (the exact shared /work-formula
+helper every `workFactory.js` handler uses), which defaults to firing an immediate
+`dynamoHandler.addUserDatabase` house-tax write unless told otherwise (`deferTax` param,
+added by `/work`'s own rewrite) — `resolveNpcRob` was calling it with the default (`false`),
+so every winning Heist link was still doing a second, un-consolidated write. Fixed at the
+source: `resolveNpcRob` now calls it with `deferTax: true` and returns `{ amount, houseTax }`
+instead of writing it itself (`result.houseTax`, defaulted to `0`) — `robNpc.js`'s own chain
+loop accumulates `houseTax` across every link and fires ONE `addUserDatabase` call for the
+whole chain, the same way `/take-bounty`'s own (always-deferred) Kingdom Tax already
+worked. No other hidden write was found in either resolve function.
+
+**Shape of the rewrite** — `takeBounty.js`'s `runBountyAttempt` and `robNpc.js`'s
+`runNpcRobAttempt` are no longer recursive; each now runs a single `while` loop internal to
+one top-level call, accumulating every link's result into an in-memory `userDetails` object
+(mutated as the chain progresses, so later links see earlier links' own real state) plus
+`aggregatedSetFields`/`aggregatedAddFields` objects, firing exactly one
+`dynamoHandler.updateUserFields` at the very end. `takeBounty.js`'s Stat Bounty mode
+(`resolveStatBountyChain`) is its own separate loop, same "entirely separate from the tiered
+ladder" split the pre-rewrite code already had — both loops share a small
+`resolveCooldownSkipForLink`/`makeLazySkipSourceCache` pair so the attribution/label logic
+and the lazy-fetch behavior below can't drift between them. Every rare secondary write each
+command used to make per link on a hit is folded into the same single end-of-chain write or
+deferred-and-accumulated the same way as `houseTax`:
+- The rare permanent stat-reward roll (both commands) used to call
+  `raidFactory.handleStatSplit` — its own separate `findUser` + `updateUserFields` for a
+  1-person "raidList." Now applied in-memory via a small mirrored `applyStatRewardGrant`
+  helper (same math, no write of its own) in each file, folded into the chain's own
+  accumulator.
+- `/take-bounty`'s Kingdom Tax (`Bounty.WIN_TAX_PERCENT`) was already computed per-link but
+  credited to the house/Spud Keep pot immediately each time — now accumulated
+  (`houseTaxTotal`/`potTotal`) and credited once after the chain's own write succeeds.
+- `updateIfNewRecord('largestBountyReward', ...)` (Bounty only — Heist has no equivalent
+  personal-best field) now tracks the chain's own best qualifying link and fires once at the
+  end, mirroring `/work`'s identical `biggestWorkPayout` consolidation.
+- Achievement/Quest/Festival Quest checks, previously re-run (with a fresh `findUser`
+  re-fetch) after every link, now run ONCE at the end against the chain's final in-memory
+  state vs. a `preChainUserDetails` snapshot taken before the loop started — safe for the
+  same reason `/work`'s identical consolidation is: every one of these checks is a monotonic
+  "did we newly cross a threshold" check.
+
+**Metal Potato Meddley (the 2026-10-03 same-day addition — see the 12-Tier Bounty Ladder
+section above) is untouched by this rewrite**, deliberately: `mercenaryFactory.
+resolveBountyAttempt` itself (where Meddley's own roll/reward/stat-grant logic lives) was
+not modified at all — this rewrite only changed how `takeBounty.js` PERSISTS that function's
+already-unchanged output, never when Meddley triggers or what it pays.
+
+**Two tradeoffs, carried forward IDENTICALLY from `/work`'s own rewrite** — not re-litigated,
+same acceptance:
+1. **Cooldown-skip-source staleness within a chain.** Both commands' shared sources
+   (`mercenaryRank` chance, Spud Keep's holder buff, `/take-bounty`'s own `mercenaryBuff`
+   source) are fetched **at most once per chain**, and — unlike `/work`'s unconditional
+   upfront read — **lazily**, only the first time a link in the chain actually wins:
+   neither command ever rolls a skip on a loss/whiff at all (a pre-existing rule, unchanged),
+   so an all-loss/all-whiff chain must still never query Spud Keep's cooldown buff doc even
+   once (a real, tested cost-saving behavior — see `takeBountyCooldownSkip.test.js`'s/
+   `robNpcCooldownSkip.test.js`'s own "Spud Keep not even queried" cases — that this rewrite
+   had to preserve, not just the write-count target). Once fetched, every later link's win
+   reuses the exact same cached array. A Spud Keep holder change or Mercenary Buff switch
+   mid-chain won't be picked up until the player's next `/take-bounty`/`/rob-npc` call.
+   `/take-bounty` has one extra wrinkle `/rob-npc` doesn't: the `mercenaryRank` source's own
+   magnitude reflects whatever rank was current at the moment of that first fetch, even if
+   wins earlier in the SAME chain later promote the player to a higher rank — the
+   attribution LABEL on a hit uses that same frozen rank (`chainStartRank`) so it can never
+   show a rank that doesn't match the chance that was actually rolled. `/rob-npc` has no
+   analog of this sub-case at all: Heist wins bump `mercenaryHeistWinCount`, never
+   `mercenaryBountyWinCount`, so Mercenary Rank (and this chain's own skip-chance magnitude)
+   can never change mid-chain there in the first place. Reward SIZE is unaffected by any of
+   this either way — `rankInfo.rewardMultiplier` is read fresh every link off the real,
+   live, in-memory `mercenaryBountyWinCount`, so a mid-chain Bounty rank-up still pays out
+   the bigger reward on the very next link; only the cooldown-skip-chance MAGNITUDE freezes.
+2. **Chain atomicity.** Nothing is written or announced until the one end-of-chain write
+   succeeds. A crash partway through an already-rare multi-link chain now discards the
+   whole chain's computed-but-unpersisted result, not just the link that crashed — both
+   loops wrap themselves in a try/catch mirroring `/work`'s own "nothing was lost, run it
+   again" recovery message, a new addition neither command had before (previously each
+   link replied immediately on its own, so an early link's result would have already
+   reached the player even if a LATER link crashed; deferring every reply to after the loop
+   makes this failure mode newly possible, not just newly described).
+
+**A real bug caught and fixed during this rewrite, unrelated to the write-count target
+itself**: `bountyTimer`/`npcRobTimer` are NOT "next available" absolute timestamps the way
+`/work`'s `workTimer` is — they store the timestamp of the LAST attempt, compared against
+`Bounty.BOUNTY_TIMER_SECONDS`/`RobNpc.NPC_ROB_TIMER_SECONDS` elapsed. The chain-cap-hit fix
+(2026-10-03, same day, see `economy-and-work.md`'s own dated entry) needs a REAL full
+cooldown when the chain's own final skip-hit couldn't actually chain further — for `/work`
+that's `Date.now() + WORK_TIMER_SECONDS * 1000`, but for these two commands it's just
+`Date.now()` (the same value every ordinary miss/loss already writes). An early draft of
+this rewrite copied `/work`'s own formula verbatim into both files, which `takeBountyCooldownSkip.test.js`'s/`robNpcCooldownSkip.test.js`'s own chain-cap regression tests
+(pinning the exact `bountyTimer`/`npcRobTimer` upper bound on that branch) caught immediately.
+
+**Tests.** `takeBountyCooldownSkip.test.js`/`robNpcCooldownSkip.test.js`'s own multi-link
+chain assertions (previously counting N separate `updateUserFields` calls, one per link)
+were rewritten to assert the new single-write-per-chain outcome instead — same final
+`bountyTimer`/`npcRobTimer` value, same message sequence (one `editReply` + N-1 `followUp`
+calls), just one write instead of N. `takeBountyStatMode.test.js`/
+`takeBountyMetalPotatoMeddley.test.js`/`rivalNotorietyAccrual.test.js` needed a smaller,
+unrelated fix: several assertions computed their "expected" value by reading the mocked
+`user` object's OWN fields back out AFTER calling the command (e.g. `user.potatoes -
+Bounty.STAT_BOUNTY_COST`) — safe under the old per-link-write architecture (which never
+mutated the caller's own `userDetails` object in place), but this rewrite's loop
+deliberately DOES mutate that same object in place (so later links see earlier links' real
+state, the same reasoning `/work`'s rewrite already established) — fixed by capturing the
+needed pre-call values into local consts before invoking the command, same discipline
+`workChainWriteCount.test.js` already uses. Two new dedicated regression-test files,
+`takeBountyChainWriteCount.test.js` (both the regular-ladder and Stat Bounty chains) and
+`robNpcChainWriteCount.test.js`, mirror `workChainWriteCount.test.js`'s own template: a
+forced multi-link chain, exactly one `updateUserFields` call asserted, the fully accumulated
+numeric outcome independently re-derived from the real constants/formulas (not copied from
+the implementation), and the one-`editReply`-plus-N-`followUp` message sequence. Full suite:
+127 of 128 suites (1 pre-existing unrelated skip) / 2321 tests (18 pre-existing unrelated
+skips, 2303 passing) — up from the `/work` rewrite's own 125/126 and 2318 baseline by the 2
+new test files' own test counts.
+
+**`/start-raid` deliberately NOT included in this pass — flagged, not silently decided.**
+The same 2026-09-20 architect pass that endorsed Bounty/Heist explicitly rated `/start-raid`
+"(c) Not safe / not worth it," for two concrete, still-current reasons (see that pass's own
+entry in `.claude/roadmap.md` and [guilds.md](guilds.md#guild-level)'s own "Why
+`resolveRaid`'s per-link `findUser`/guild reads can't be consolidated into one read-at-start"
+note under Guild level):
+a guild raid's shared state (roster, buffs, bank, level, companion) is genuinely
+multi-actor — another member can change it while THIS chain is still resolving, unlike any
+of the three solo commands — and the 2026-09-18 `claimGuildRaidSlot` race guard is a live,
+load-bearing PER-LINK conditional write that a chain-start-only consolidation would reopen a
+real double-raid race for. Per direct instruction for this pass ("don't assume the user
+wants the full-rewrite path for these three just because they chose it for `/work`"),
+`/start-raid` was left completely untouched pending explicit confirmation, rather than
+applying the same rewrite unilaterally.

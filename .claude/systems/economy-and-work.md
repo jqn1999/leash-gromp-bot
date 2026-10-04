@@ -653,9 +653,15 @@ Grants `round(getRandomFromInterval(userMultiplier+guildMultiplier, 1.5*(userMul
 starches. This is the only way to acquire starches other than the shop-driven `maxStarches` cap
 increase — see [systems/starch-trading.md](starch-trading.md).
 
-Every handler increments `workScenarioCounts.<type>`, adds 1 to `workCount`,
-and resets the work timer — all folded into one combined `dynamoHandler.updateUserFields` write per
-handler (see [architecture/data-model.md](../architecture/data-model.md)).
+Every handler increments `workScenarioCounts.<type>`, adds 1 to `workCount`, and resets the work
+timer — all folded into one combined delta per handler (`{setFields, addFields}`, stashed on
+`userDetails._workChainDelta` rather than written directly — see this file's own "`/work`'s
+cooldown-skip chain rewritten to one write per chain" section below for why, 2026-10-03). For a
+single, non-chained `/work` call that delta still lands as exactly one
+`dynamoHandler.updateUserFields` write (see
+[architecture/data-model.md](../architecture/data-model.md)); for a cooldown-skip chain of several
+links, every link's own delta like this one now accumulates into ONE such write for the whole
+chain instead of one per link.
 
 ### `/profile` page 3 — Work Encounter Counts
 
@@ -1131,17 +1137,19 @@ of thing a future rebalance or refactor could get wrong in either direction:
   above now overstates the real worst case — the true bound is `Σ pⁱ (i=1..5)`, roughly half the
   quoted extra-link averages at the same p. Left as an upper bound rather than re-derived exactly,
   since the qualitative conclusion (bounded, not runaway) only gets stronger with a smaller cap.
-- **`/work`'s own chain links are NOT safe to fold into a single write.** Every one of the 10
-  scenario handlers in `workFactory.js` (`handleGoldenPotato`, `handleLargePotato`, etc.) does its
-  own direct `dynamoHandler.updateUserFields` write, and `calculateWorkTimerValue` (called from
-  inside each handler) does its own fresh per-link reads of the guild/World Boss/Spud Keep/Mercenary
-  Buff docs to resolve the skip roll — the same "state can change between links" reasoning
-  `resolveRaid`'s own comment states explicitly for raids applies here too, just less loudly
-  commented. `performWork` also does a second `findUser` re-fetch after the scenario runs
-  specifically because the scenario already wrote straight to the DB without updating the in-memory
-  object — achievement/quest/guild-contract checks and companion leveling all depend on that fresh
-  read. Consolidating here means rewriting all 10 handlers to return deltas instead of writing
-  directly, for the shallowest-chaining of the four commands.
+- **`/work`'s own chain links WERE folded into a single write — 2026-10-03, direct instruction,
+  the exact consolidation this bullet originally argued against doing.** This section's own
+  2026-09-20 analysis was right about the MECHANICS (all 11 scenario handlers wrote directly;
+  `calculateWorkTimerValue` read its skip sources fresh per link; `performWork` re-fetched after
+  each link) — it just underweighted that the staleness those fresh-per-link reads bought could be
+  TRADED AWAY on purpose once asked to. See this file's own "`/work`'s cooldown-skip chain rewritten
+  to one write per chain" section below for the full writeup: all 11 handlers now return their
+  write as a delta instead of performing it, `performWork` accumulates every link's delta into one
+  `updateUserFields` call, and the one real cost is that a buff change mid-chain (the exact
+  staleness risk this bullet warned about) is no longer picked up by links 2..N of that SAME
+  chain — only by this player's NEXT `/work` call. `/take-bounty`'s and `/rob-npc`'s own chains
+  below remain unconsolidated (no one has asked for that yet); `/start-raid`'s remains genuinely
+  unsafe to consolidate regardless, for the other-player-shared-state reason its own bullet gives.
 - **`/take-bounty` and `/rob-npc` are the safe, worthwhile targets.** Both already fold their numeric
   deltas into one `updateUserFields(setAttributes, addAttributes)` call per link, and their shared
   `mercenaryFactory.getMercenaryCooldownSkipSources` pulls Mercenary Rank and Mercenary Buff purely
@@ -1273,3 +1281,62 @@ formula/data-shape change `financial-project`'s own ported Lambdas (`gromp-econo
 `/work`/Bounty/Heist's web equivalents) would need to mirror if those web paths independently
 implement the same chain-cap logic — not yet audited in this session; flagged per this repo's
 CLAUDE.md sibling-repo rule.
+
+**Note (2026-10-03, same day): `/work`'s own "one extra final write" above is now folded into
+the single end-of-chain write** the very next section describes — the OUTCOME this fix
+guarantees (a real full-duration cooldown, never left "ready now," when the cap is hit on a link
+that itself skipped) is unchanged; only `/work`'s write COUNT changed, and only for `/work` —
+`/take-bounty`/`/rob-npc`/`/start-raid` still write per-link exactly as described above.
+
+## `/work`'s cooldown-skip chain rewritten to one write per chain instead of one write per link (2026-10-03)
+
+**Asked** (direct instruction, choosing the full-rewrite option over a scoped-down safe win after
+being shown both, including this exact tradeoff): collapse `/work`'s own cooldown-skip chain (1 to
+`Work.MAX_COOLDOWN_SKIP_CHAIN_LENGTH + 1` = 6 resolutions) from one `dynamoHandler.updateUserFields`
+call per link down to exactly ONE call for the whole chain, regardless of depth — the exact
+consolidation the "Cooldown-skip chain: per-link DB cost" section above originally argued `/work`
+specifically was NOT safe to do, given the mechanics as they stood 2026-09-20.
+
+**How, mechanically** — full detail (file-by-file, including the two real bugs this surfaced and
+had to be fixed along the way) lives in `.claude/roadmap.md`'s own dated entry for this change;
+summarized here for this doc's own "what does the code actually do today" purpose:
+- All 11 `workFactory.js` scenario handlers stopped writing to the DB themselves. Each one still
+  computes its reward exactly as before, but stashes the write it would have made onto a
+  transient `userDetails._workChainDelta` (`{setFields, addFields, houseTax?, mimicHoardDelta?,
+  guildRaidTimerGuildId?}`) instead — mirroring the existing `_cooldownSkippedByCompanion`/
+  `_cooldownSkipChance`/`_companionXpGained` transient-flag convention this file already uses, so
+  no handler's own return VALUE needed to change shape.
+- `performWork` is no longer recursive. One `while` loop runs the whole chain, merging each link's
+  delta into an in-memory accumulator (and onto `userDetails` itself, so later links/checks see
+  this link's real result without a re-fetch), then fires exactly one `updateUserFields` call
+  after the loop ends.
+- `calculateWorkTimerValue` (`dynamoHandler.js`) gained an optional 4th `cachedSources` param.
+  `performWork` reads the chain's cooldown-skip sources (`getWorkCooldownSkipSources`) exactly
+  ONCE, at chain-start, and hands that same snapshot to every link's own skip roll for the rest of
+  that chain, instead of each link re-fetching fresh.
+
+**The tradeoff this specifically cost — the "per-link DB cost" section above's own warning, now
+real.** A buff change mid-chain (a companion swap, a guild buff changing, Spud Keep's holder
+changing) is no longer picked up by links 2 through N of the SAME chain — only by this player's
+NEXT `/work` call, since the whole chain now rolls its skip chance against one snapshot read at
+link 1. This is pinned by an actual test now
+(`workChainWriteCount.test.js`'s "buff-staleness tradeoff" block), not just documented here. A
+second, separate consequence (not a tradeoff anyone asked for — a direct, unavoidable result of
+"exactly one write") is that the whole chain is now atomic: nothing is written or announced until
+that one write succeeds, so a crash partway through a multi-link chain now discards the whole
+chain's result instead of just the link that crashed (the auto-recovery message the player sees
+is unchanged, and is now actually accurate about the WHOLE chain rather than just whichever link
+failed).
+
+**What did NOT change**: every reward odds/formula/amount, the message sequence sent to the
+player (same content, same order, one embed per resolution), and the 2026-10-03 chain-cap-reset
+fix's own guarantee (the section directly above this one) — still ends up with a real
+full-duration `workTimer` when the cap is hit on a link that itself skipped, just as part of the
+one combined write now.
+
+**Tests / full suite result**: see `.claude/roadmap.md`'s own dated entry for the complete list;
+headline numbers were **125 of 126 suites (1 pre-existing, unrelated skip) / 2318 tests (18
+pre-existing, unrelated skips, 2300 passing)**, net +3 new tests over the pre-rewrite baseline.
+
+**Cross-repo note**: pure backend write-count/architecture change, no player-visible formula or
+data-shape change — not flagged for `financial-project` porting.

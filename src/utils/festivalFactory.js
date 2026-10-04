@@ -1,7 +1,7 @@
 const dynamoHandler = require("../utils/dynamoHandler");
 const { getStatValue } = require("../utils/achievementFactory");
 const { getRandomFromInterval } = require("../utils/helperCommands");
-const { Festival, FestivalTemplates, FestivalShop, Work, sweetPotato, metalPotatoSuccess, largePotato } = require("../utils/constants");
+const { Festival, FestivalTemplates, FestivalShop, Work, sweetPotato, metalPotatoSuccess, largePotato, awsConfigurations } = require("../utils/constants");
 const { WorkFactory } = require("../utils/workFactory");
 const { WORK_SCENARIO_INDICES } = require("../utils/eventFactory");
 
@@ -318,20 +318,33 @@ async function attemptPurchaseFestivalSlot(userId, username, itemId) {
     };
 
     let voucherResult = null;
+    let voucherHouseTax = 0;
     if (item.itemType === "cosmetic") {
         const owned = freshUserDetails.festivalCosmetics || [];
         if (!owned.includes(item.cosmeticId)) {
             setFields.festivalCosmetics = [...owned, item.cosmeticId];
         }
     } else if (item.itemType === "voucher") {
-        // Its own independent write (workFactory's handler persists the potato/stat payout
-        // directly) — disjoint fields from setFields below (potatoes/stat fields vs.
-        // festivalTokens/festivalShop/festivalCosmetics), so there's no write collision
-        // between the two, same as this function never touching workCount/workTimer.
+        // workFactory's handler no longer writes to the DB itself (2026-10-03 /work chain
+        // write-count rewrite) — it stashes its own delta onto freshUserDetails._workChainDelta
+        // instead (see workFactory.js's own comment on that convention), so this now folds
+        // that delta straight into the SAME setFields/single write below rather than letting
+        // the handler fire a second, independent write. Disjoint fields from setFields
+        // (potatoes/stat fields vs. festivalTokens/festivalShop/festivalCosmetics), so merging
+        // them is a plain Object.assign, no collision — same as this function never touching
+        // workCount/workTimer (trackProgress: false, see VOUCHER_SCENARIOS' own comment).
         voucherResult = await redeemVoucher(freshUserDetails, item.scenarioHandler);
+        const voucherDelta = freshUserDetails._workChainDelta;
+        if (voucherDelta) {
+            Object.assign(setFields, voucherDelta.setFields || {});
+            voucherHouseTax = voucherDelta.houseTax || 0;
+        }
     }
 
     await dynamoHandler.updateUserFields(userId, setFields);
+    if (voucherHouseTax > 0) {
+        await dynamoHandler.addUserDatabase(awsConfigurations.clientId, 'potatoes', voucherHouseTax);
+    }
 
     return {
         ok: true,
