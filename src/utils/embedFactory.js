@@ -2967,14 +2967,21 @@ class EmbedFactory {
     // grant is shown only on a win. `result` is mercenaryFactory.resolveStatBounty's own
     // return shape; `rankInfo` is computed by takeBounty.js the same way every other Bounty
     // mode already does (mercenaryFactory.getMercenaryRankInfo off mercenaryBountyWinCount).
+    //
+    // Metal Potato Meddley for Stat Bounty (2026-10-03) branches the cost/reward fields
+    // entirely — see mercenaryFactory.resolveStatBounty's own comment for the full mechanic.
+    // Reuses the SAME `metalPotatoMeddley` flavor/title convention createBountyResultEmbed's
+    // own Meddley branch above already established, instead of StatBountyFlavor's pool.
     createStatBountyResultEmbed(userDisplayName, result, rankInfo, companionXpGained = 0, companionName = null, cooldownSkipSource = null, missedCooldownSkipChance = 0) {
-        const { won, successChance, cost, statGrantAmount, flavor } = result;
+        const { won, successChance, cost, statGrantAmount, flavor, isMetalPotatoMeddley, rewardAmount, statReward } = result;
         const color = won ? 'Green' : 'Red';
         const fields = [];
 
         fields.push({
             name: 'Result:',
-            value: won ? flavor.win : flavor.lose,
+            value: isMetalPotatoMeddley
+                ? (won ? metalPotatoMeddley.successDescription : metalPotatoMeddley.failureDescription)
+                : (won ? flavor.win : flavor.lose),
             inline: false,
         });
 
@@ -2986,11 +2993,26 @@ class EmbedFactory {
 
         fields.push({
             name: 'Potatoes Spent:',
-            value: `${cost.toLocaleString()} potatoes`,
+            value: isMetalPotatoMeddley ? `Nothing — this encounter costs nothing win or lose.` : `${cost.toLocaleString()} potatoes`,
             inline: true,
         });
 
-        if (won) {
+        if (isMetalPotatoMeddley) {
+            if (won) {
+                fields.push({
+                    name: 'Potatoes Gained:',
+                    value: `${rewardAmount.toLocaleString()} potatoes`,
+                    inline: true,
+                });
+                const statLabels = { workMultiplierAmount: 'Work Multiplier', passiveAmount: 'Passive Income', bankCapacity: 'Bank Capacity' };
+                const statText = statReward.map(s => `+${s.amount.toLocaleString()} ${statLabels[s.type]}`).join('\n');
+                fields.push({
+                    name: '🥈 Metal Potato Meddley — Permanent Stat Reward!',
+                    value: statText,
+                    inline: false,
+                });
+            }
+        } else if (won) {
             fields.push({
                 name: '🏅 Permanent Stat Reward!',
                 value: `+${statGrantAmount.toFixed(2)} Work Multiplier`,
@@ -3019,8 +3041,11 @@ class EmbedFactory {
             fields.push(cooldownSkipField);
         }
 
+        const title = isMetalPotatoMeddley
+            ? `${userDisplayName} stumbles into a Metal Potato Meddley! (Stat Bounty)`
+            : `${userDisplayName} attempts a Stat Bounty`;
         const embed = new EmbedBuilder()
-            .setTitle(`${userDisplayName} attempts a Stat Bounty`)
+            .setTitle(title)
             .setDescription(won ? 'Success!' : 'Failed.')
             .setColor(color)
             .setFooter({ text: "Made by Beggar" })

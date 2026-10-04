@@ -158,11 +158,12 @@ describe('/take-bounty (Stat Bounty) chain write-count regression — one write 
         dynamoHandler.findUser.mockResolvedValue(user);
         const interaction = fakeInteraction({ mode: 'stat' });
 
-        // Per-WIN roll sequence (4 values): win check(0) -> hit, flavor index(0), cooldown
-        // skip roll(0) -> HIT, pickSkipSource(.5) -> attribution. Repeated twice, then a
-        // final LOSS (2 values: win check fails, flavor index) ends the chain.
-        const perWinRoll = [0, 0, 0, 0.5];
-        const finalLossRoll = [0.999999, 0];
+        // Per-WIN roll sequence (5 values): Metal Potato Meddley trigger MISS(.99), win
+        // check(0) -> hit, flavor index(0), cooldown skip roll(0) -> HIT, pickSkipSource(.5)
+        // -> attribution. Repeated twice, then a final LOSS (3 values: Meddley MISS, win
+        // check fails, flavor index) ends the chain.
+        const perWinRoll = [0.99, 0, 0, 0, 0.5];
+        const finalLossRoll = [0.99, 0.999999, 0];
         const allRolls = [...Array(2).fill(perWinRoll).flat(), ...finalLossRoll];
         const randomSpy = jest.spyOn(Math, 'random');
         allRolls.forEach(v => randomSpy.mockReturnValueOnce(v));

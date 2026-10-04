@@ -419,6 +419,13 @@ async function resolveRegularBountyChain(client, interaction, userId, username, 
 // (not just once at chain-start) since the flat STAT_BOUNTY_COST is charged win or lose —
 // a long skip-chain run can legitimately run out of potatoes mid-chain, same as the old
 // recursive version's own fresh per-call check.
+//
+// Metal Potato Meddley for Stat Bounty (2026-10-03, direct instruction) — checked on every
+// link via mercenaryFactory.resolveStatBounty's own independent 1% roll, same as the regular
+// ladder's own Meddley. See that function's comment for the full mechanic (reuses Band I's
+// numbers doubled, Guild Stat Raid's own power-ratio-capped-at-50% success formula instead
+// of the flat 50% roll, costs nothing win or lose, pays potatoes AND all three permanent
+// stat grants on a hit instead of just workMultiplierAmount).
 async function resolveStatBountyChain(client, interaction, userId, username, userDisplayName, userDetails) {
     if (userDetails.potatoes < Bounty.STAT_BOUNTY_COST) {
         interaction.editReply(`${userDisplayName}, a Stat Bounty costs ${Bounty.STAT_BOUNTY_COST.toLocaleString()} potatoes and you only have ${userDetails.potatoes.toLocaleString()}.`);
@@ -445,13 +452,28 @@ async function resolveStatBountyChain(client, interaction, userId, username, use
                 break;
             }
 
-            const result = mercenaryFactory.resolveStatBounty(userDetails);
+            const result = await mercenaryFactory.resolveStatBounty(userDetails);
             const rankInfo = mercenaryFactory.getMercenaryRankInfo(userDetails.mercenaryBountyWinCount);
 
-            userDetails.potatoes -= Bounty.STAT_BOUNTY_COST;
-            userDetails.totalLosses -= Bounty.STAT_BOUNTY_COST;
+            // Metal Potato Meddley (2026-10-03) costs NOTHING at all, win or lose — bypasses
+            // STAT_BOUNTY_COST's normal win-or-lose charge entirely, same shape every other
+            // Metal King bracket already has. The upfront/per-link affordability gate above
+            // this loop is deliberately left checking against the NORMAL cost regardless —
+            // an attempt still has to clear that gate before it can roll at all, so a
+            // Meddley hit is only ever reachable by a mercenary who could have afforded the
+            // ordinary roll anyway, not a new "fish for a free jackpot with 0 potatoes" path.
+            if (!result.isMetalPotatoMeddley) {
+                userDetails.potatoes -= Bounty.STAT_BOUNTY_COST;
+                userDetails.totalLosses -= Bounty.STAT_BOUNTY_COST;
+            } else if (result.won) {
+                // Meddley is the one Stat Bounty branch that pays potatoes at all — a normal
+                // Stat Bounty win never credits potatoes, only the permanent stat grant below.
+                userDetails.potatoes += result.rewardAmount;
+                userDetails.totalEarnings += result.rewardAmount;
+            }
             aggregatedSetFields.potatoes = userDetails.potatoes;
             aggregatedSetFields.totalLosses = userDetails.totalLosses;
+            aggregatedSetFields.totalEarnings = userDetails.totalEarnings;
 
             if (result.won) {
                 userDetails.mercenaryBountyWinCount = (userDetails.mercenaryBountyWinCount || 0) + 1;
@@ -463,7 +485,19 @@ async function resolveStatBountyChain(client, interaction, userId, username, use
             aggregatedSetFields.companions = leveledCompanions;
 
             if (result.won) {
-                applyStatRewardGrant(userDetails, { type: 'workMultiplierAmount', amount: Bounty.STAT_BOUNTY_REWARD });
+                if (result.isMetalPotatoMeddley) {
+                    // All three permanent stat grants (not just workMultiplierAmount) — see
+                    // mercenaryFactory.resolveStatBounty's own comment on why Meddley pays
+                    // Bounty's full Band I bundle, doubled, instead of the single
+                    // workMultiplierAmount grant a normal Stat Bounty win pays.
+                    for (const grant of result.statReward) {
+                        applyStatRewardGrant(userDetails, grant);
+                    }
+                    aggregatedSetFields.passiveAmount = userDetails.passiveAmount;
+                    aggregatedSetFields.bankCapacity = userDetails.bankCapacity;
+                } else {
+                    applyStatRewardGrant(userDetails, { type: 'workMultiplierAmount', amount: Bounty.STAT_BOUNTY_REWARD });
+                }
                 aggregatedSetFields.workMultiplierAmount = userDetails.workMultiplierAmount;
                 aggregatedSetFields.sweetPotatoBuffs = userDetails.sweetPotatoBuffs;
             }

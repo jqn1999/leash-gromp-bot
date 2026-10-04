@@ -20681,3 +20681,34 @@ architecture change, byte-for-byte identical player-visible outcomes, nothing fo
 flag above for the full reasoning (multi-actor guild state + the live `claimGuildRaidSlot`
 race guard). Nothing in `src/` under `startRaid.js`/`raidFactory.js` was touched by this
 pass.
+
+**Follow-up, same day: Metal Potato Meddley extended to Stat Bounty.** A separate, smaller
+ask landed in the same session/branch — folded into this entry rather than given its own,
+per direct instruction ("don't create a third, separate roadmap entry for an instruction
+this small"). Applies the identical regular-ladder-Meddley transformation to `/take-bounty
+mode:stat`: the same flat 1% roll (`Bounty.METAL_POTATO_MEDDLEY_CHANCE`), checked
+independently on every attempt (including every link of Stat Bounty's own cooldown-skip
+chain), reusing Bounty's own Band I numbers DOUBLED (not Band II/III — Stat Bounty has no
+tier concept to select a band from, and never scaled up to Elite/Legendary-equivalent
+stakes, mirroring Guild Stat Raid's own Metal King bracket reusing ITS regular-mode numbers).
+Success chance switches from the flat, power-independent 50% roll to the normal power-ratio
+formula (`effectiveBountyPower / 2000`), capped at `Raid.MAXIMUM_STAT_RAID_SUCCESS_RATE`
+(also 50%, but via the formula every Guild Stat Raid bracket uses, not a coincidence worth
+skipping the real mechanism for) instead of the regular ladder's own 95% cap — confirmed by a
+dedicated test that forces power high enough to prove the CAP is actually being exercised,
+not just a 50%-vs-50% coincidence. On a hit: costs nothing at all (bypasses
+`STAT_BOUNTY_COST`'s normal win-or-lose charge entirely), pays potatoes AND all three
+permanent stat grants (not just the single `workMultiplierAmount` grant a normal win pays) —
+20,000,000 potatoes, +4.0 work multiplier, +2,000,000 passive income, +20,000,000 bank
+capacity at today's numbers, derived via `* 2` at the point of use rather than a duplicated
+constant. `mercenaryFactory.resolveStatBounty` moved from synchronous to `async` as part of
+this (it needs the same `computeEffectiveBountyPower` helper `resolveBountyAttempt` already
+used, factored out of that function so the two formulas can't drift) — every existing direct
+caller/test needed an `await` added, and every pre-existing Stat Bounty test's `Math.random()`
+sequence needed one new leading "Meddley trigger miss" value spliced in, the exact same
+mechanical shift the original regular-ladder Meddley rollout required of ITS own pre-existing
+tests. New tests: a `resolveStatBounty Metal Potato Meddley` describe block in
+`mercenaryFactory.test.js` (hit formula/numbers, the cap-at-high-power proof, a 0-cost loss, a
+miss falling through to the normal roll), plus end-to-end hit/loss tests in
+`takeBountyStatMode.test.js` through the real command `callback`. Full suite: **127 of 128
+suites (1 pre-existing skip) / 2327 tests (18 pre-existing skips, 2309 passing)**.

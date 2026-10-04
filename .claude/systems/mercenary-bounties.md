@@ -790,7 +790,10 @@ work-multiplier grant instead. Routed **entirely separately** from `regular`/`ba
 tightly coupled to the 12-tier weighted-roll/currency-reward/Rival-notoriety/Yukon-drop
 machinery, none of which applies here. The mercenary-gate and cooldown-ready checks at the
 top of `runBountyAttempt` stay shared across all 3 modes; only past that point does Stat
-Bounty run its own dedicated `runStatBountyAttempt`.
+Bounty run its own dedicated chain loop (`resolveStatBountyChain`, renamed 2026-10-03 from
+`runStatBountyAttempt` when the whole command was rewritten to resolve its own cooldown-skip
+chain in one loop instead of recursing — see this file's own dated entry near the bottom for
+that rewrite; the responsibility split described below is otherwise unchanged by it).
 
 **Flat 50% chance, not a power-scaled formula.** Guild Stat Raid's own success chance
 (`calculateRaidSuccessChance(totalMultiplier, Raid.REGULAR_STAT_RAID_DIFFICULTY,
@@ -811,18 +814,24 @@ STAT_BOUNTY_SUCCESS_CHANCE: 0.5,   // flat — see the comment above for why thi
 STAT_BOUNTY_REWARD: 0.2            // permanent +0.2 work multiplier on a win
 ```
 
-**Flow** (`takeBounty.js`'s `runStatBountyAttempt`):
+**Flow** (`takeBounty.js`'s `resolveStatBountyChain`, one iteration/link of its own chain
+loop — see this file's own 2026-10-03 dated entry near the bottom for the chain-level
+rewrite):
 
 1. **Affordability check FIRST, before rolling anything** — `userDetails.potatoes <
    Bounty.STAT_BOUNTY_COST` rejects immediately with a plain message and makes **no writes
    at all**, mirroring how shop/upgrade purchases in this codebase reject upfront on
    insufficient funds (`guildBuy.js`'s `doesGuildHaveEnoughToPurchase`). Unlike `/rob`'s fine
    formula (a deliberate, already-decided penalty for a *different* mechanic that can put a
-   player negative), a Stat Bounty attempt a player can't afford simply never starts.
-2. `mercenaryFactory.resolveStatBounty(userDetails)` rolls the flat 50% and picks one of 3
-   flavor-text variants (`StatBountyFlavor`, `constants.js`) — computation only, no writes;
-   affordability is deliberately **not** this function's job (kept in `takeBounty.js` instead,
-   same responsibility split `resolveBountyAttempt`/`resolveNpcRob` already use for their own
+   player negative), a Stat Bounty attempt a player can't afford simply never starts — checked
+   against the normal cost regardless of whether the roll turns out to be a Meddley hit (see
+   this section's own Metal Potato Meddley subsection below).
+2. `mercenaryFactory.resolveStatBounty(userDetails)` — now `async` as of 2026-10-03 (it may
+   need to `await` a Meddley roll's own power computation) — rolls the independent 1% Meddley
+   check first, then either that branch or the flat 50% roll + one of 3 flavor-text variants
+   (`StatBountyFlavor`, `constants.js`) — computation only, no writes; affordability is
+   deliberately **not** this function's job (kept in `takeBounty.js` instead, same
+   responsibility split `resolveBountyAttempt`/`resolveNpcRob` already use for their own
    pure-computation role).
 3. `Bounty.STAT_BOUNTY_COST` is charged **unconditionally** — win or lose, same as Guild Stat
    Raid's own `removeFromBankOrPurse` call. Tracked as `totalLosses -= cost` (Bounty's own
@@ -995,6 +1004,97 @@ in `mercenaryFactory.test.js` and `takeBountyTax.test.js` that hardcoded a `mock
 chain for 'regular' mode needed one more entry spliced in (a "Meddley trigger miss," e.g. 0.99)
 right after the tier-roll value; tests using a constant `mockReturnValue(...)` for every call
 were unaffected.
+
+### Metal Potato Meddley also applies to Stat Bounty (2026-10-03, direct instruction)
+
+Same flat 1% roll (`Bounty.METAL_POTATO_MEDDLEY_CHANCE`), checked independently on **every**
+Stat Bounty attempt — including every link of its own cooldown-skip chain (`resolveStatBounty`
+is called once per link inside `takeBounty.js`'s `resolveStatBountyChain`, same as the regular
+ladder's own Meddley rolls once per link of its chain). Folded into
+`mercenaryFactory.resolveStatBounty` itself (now `async` — it needs
+`computeEffectiveBountyPower`, below, which awaits the World Boss buff read), not a separate
+function, mirroring how the regular ladder's own Meddley check lives inside
+`resolveBountyAttempt` rather than a sibling.
+
+**Reuses Bounty's own Band I numbers, not Guild's Metal King numbers directly** — same
+`Bounty.METAL_POTATO_MEDDLEY.I` object the regular ladder's own Band I Meddley already reads,
+doubled at the point of use (`* 2`, not a second constant) — mirrors Guild Stat Raid's own
+Metal King bracket (`startRaid.js`'s `statRaidScenarios[0]`) reusing ITS OWN regular-mode
+Metal King numbers (also doubled) rather than Elite's/Legendary's. Stat Bounty has no
+tier/band concept to select II or III from in the first place, so Band I is the only
+candidate.
+
+**Success chance switches formulas entirely for this one roll** — Stat Bounty's own base
+roll is the flat, power-independent `Bounty.STAT_BOUNTY_SUCCESS_CHANCE` (50%), but a Meddley
+roll instead uses the normal raid-style power-ratio formula, capped at
+`Raid.MAXIMUM_STAT_RAID_SUCCESS_RATE` (also 50%, but for a structurally different reason —
+see below) rather than the regular ladder's own `Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE`
+(95%):
+
+```
+successChance = min(effectiveBountyPower / Bounty.METAL_POTATO_MEDDLEY.I.difficulty, Raid.MAXIMUM_STAT_RAID_SUCCESS_RATE)
+```
+
+This mirrors Guild Stat Raid's own Metal King bracket exactly — `calculateRaidSuccessChance(totalMultiplier, Raid.METAL_KING_DIFFICULTY, Raid.MAXIMUM_STAT_RAID_SUCCESS_RATE)` —
+which is the one Guild Raid bracket that caps against the LOWER `MAXIMUM_STAT_RAID_SUCCESS_RATE`
+even though it's nominally a Regular-mode-difficulty roll, because it lives inside Stat Raid's
+own scenario table, not Regular's. `effectiveBountyPower` is computed via the same
+`computeEffectiveBountyPower` helper `resolveBountyAttempt` uses (factored out 2026-10-03 so
+the two can't drift) — World Boss buff + Mercenary Rank + the mercenary's own `workMulti`
+Mercenary Buff selection, identical to the regular ladder's own figure.
+
+**Reward on a hit pays potatoes AND all three permanent stat grants — the one branch where
+Stat Bounty pays potatoes at all.** A normal Stat Bounty win only ever grants
+`Bounty.STAT_BOUNTY_REWARD` to `workMultiplierAmount`, nothing else; Meddley instead pays the
+full Band I bundle, doubled, through the same ×0.8-1.2 range roll and `rankInfo.rewardMultiplier`
+scaling every other Bounty win's reward already uses:
+
+```
+reward = round(Bounty.METAL_POTATO_MEDDLEY.I.reward * 2 * getRandomFromInterval(.8, 1.2) * rankInfo.rewardMultiplier)
+statReward = [
+    { type: 'workMultiplierAmount', amount: Bounty.METAL_POTATO_MEDDLEY.I.multiplierReward * 2 },
+    { type: 'passiveAmount', amount: Bounty.METAL_POTATO_MEDDLEY.I.passiveReward * 2 },
+    { type: 'bankCapacity', amount: Bounty.METAL_POTATO_MEDDLEY.I.capacityReward * 2 }
+]
+```
+
+At today's Band I numbers that's 20,000,000 potatoes, +4.0 work multiplier, +2,000,000
+passive income, +20,000,000 bank capacity (before the range roll/rank multiplier scale the
+potato figure further) — a genuinely bigger single hit than the regular ladder's own Band I
+Meddley, intentional given Stat Bounty's own higher baseline stakes (a flat 300,000-potato
+buy-in per attempt vs. the ladder's scaling-with-tier cost).
+
+**Costs nothing at all, win or lose** — bypasses `Bounty.STAT_BOUNTY_COST`'s normal
+win-or-lose charge entirely, same "costs nothing win or lose" shape every Metal King bracket
+already has (including the regular ladder's own Meddley). The upfront/per-link affordability
+gate in `resolveStatBountyChain` is deliberately left checking against the NORMAL cost
+regardless of what the roll turns out to be — a Meddley hit is only ever reachable by a
+mercenary who could have afforded the ordinary attempt anyway, a scoped judgment call (not
+explicitly specified either way) made to avoid opening a new "fish for a free jackpot with 0
+potatoes" grinding path for a destitute player.
+
+**Still increments `mercenaryBountyWinCount` on a win**, same as the regular ladder's own
+Meddley — a Meddley win still counts toward Mercenary Rank progress exactly like any other
+Bounty win.
+
+**Embed**: `createStatBountyResultEmbed` branches on `result.isMetalPotatoMeddley` the same
+way `createBountyResultEmbed` already does for the regular ladder — reuses the `metalPotatoMeddley`
+flavor object (not `StatBountyFlavor`'s pool) for the Result field, shows "Potatoes Spent:
+Nothing — this encounter costs nothing win or lose." instead of the normal cost line, and
+adds a "Potatoes Gained:" field plus all three stat grants (not just the single
+`statGrantAmount` line a normal win shows) on a hit. Title becomes "`<player> stumbles into a
+Metal Potato Meddley! (Stat Bounty)`".
+
+**Tests**: `mercenaryFactory.test.js` gained a `resolveStatBounty Metal Potato Meddley`
+describe block (hit numbers/formula, the 50%-cap proof at very high power, a 0-cost loss, a
+miss falling through to the normal flat-50%-roll path) mirroring the regular ladder's own
+Meddley describe block's structure. `takeBountyStatMode.test.js` gained end-to-end hit/loss
+tests through the real `callback`. Every PRE-EXISTING Stat Bounty test's `Math.random()`
+sequence needed one new leading "Meddley trigger miss" value spliced in (same shift the
+regular ladder's own Meddley rollout required of its own pre-existing tests, per the testing
+note above) — `resolveStatBounty` itself also moved from synchronous to `async` (it now needs
+to `await computeEffectiveBountyPower` on a Meddley roll), so every direct caller/test needed
+an `await` added.
 
 ## Flavor-text scenarios (`BountyScenarios`)
 

@@ -74,6 +74,7 @@ describe('/take-bounty mode:stat', () => {
         dynamoHandler.findUser.mockResolvedValue(baseUser({ potatoes: Bounty.STAT_BOUNTY_COST }));
         const interaction = fakeInteraction({ mode: 'stat' });
         const randomSpy = jest.spyOn(Math, 'random')
+            .mockReturnValueOnce(0.99)     // Metal Potato Meddley trigger MISS (>= 1% chance)
             .mockReturnValueOnce(0.999999) // win check fails (loss)
             .mockReturnValueOnce(0);       // flavor index
         try {
@@ -97,6 +98,7 @@ describe('/take-bounty mode:stat', () => {
         dynamoHandler.findUser.mockResolvedValue(user);
         const interaction = fakeInteraction({ mode: 'stat' });
         const randomSpy = jest.spyOn(Math, 'random')
+            .mockReturnValueOnce(0.99) // Metal Potato Meddley trigger MISS
             .mockReturnValueOnce(0)    // win check succeeds (< 0.5)
             .mockReturnValueOnce(0)    // flavor index
             .mockReturnValueOnce(0.99); // cooldown skip roll miss (Rank 1 has 0% skip chance anyway)
@@ -139,6 +141,7 @@ describe('/take-bounty mode:stat', () => {
         dynamoHandler.findUser.mockResolvedValue(user);
         const interaction = fakeInteraction({ mode: 'stat' });
         const randomSpy = jest.spyOn(Math, 'random')
+            .mockReturnValueOnce(0.99)     // Metal Potato Meddley trigger MISS
             .mockReturnValueOnce(0.999999) // win check fails
             .mockReturnValueOnce(0);       // flavor index
         try {
@@ -164,11 +167,13 @@ describe('/take-bounty mode:stat', () => {
     test('cooldown skip is only ever rolled on a win, never on a loss', async () => {
         dynamoHandler.findUser.mockResolvedValue(baseUser());
         const interaction = fakeInteraction({ mode: 'stat' });
-        // Only 2 Math.random calls provided (win check + flavor index) — if a skip roll were
-        // attempted on this loss, a 3rd call would be needed and the mock would return
-        // undefined, which Math.random consumers here would coerce oddly; instead we assert
-        // no crash AND that bountyTimer was set to "now" (full cooldown), not backdated.
+        // Only 3 Math.random calls provided (Meddley trigger + win check + flavor index) — if
+        // a skip roll were attempted on this loss, a 4th call would be needed and the mock
+        // would return undefined, which Math.random consumers here would coerce oddly;
+        // instead we assert no crash AND that bountyTimer was set to "now" (full cooldown),
+        // not backdated.
         const randomSpy = jest.spyOn(Math, 'random')
+            .mockReturnValueOnce(0.99)     // Metal Potato Meddley trigger MISS
             .mockReturnValueOnce(0.999999) // win check fails
             .mockReturnValueOnce(0);       // flavor index
         try {
@@ -195,11 +200,13 @@ describe('/take-bounty mode:stat', () => {
         dynamoHandler.findUser.mockResolvedValue(user);
         const interaction = fakeInteraction({ mode: 'stat' });
         const randomSpy = jest.spyOn(Math, 'random')
+            .mockReturnValueOnce(0.99) // Metal Potato Meddley trigger MISS
             .mockReturnValueOnce(0)    // win check succeeds
             .mockReturnValueOnce(0)    // flavor index
             .mockReturnValueOnce(0)    // skip roll HIT
             .mockReturnValueOnce(0.5)  // pickSkipSource attribution
             // Chained link (isChainedReply=true) resolves as a LOSS, ending the chain there:
+            .mockReturnValueOnce(0.99)     // Metal Potato Meddley trigger MISS
             .mockReturnValueOnce(0.999999) // win check fails
             .mockReturnValueOnce(0);       // flavor index
         try {
@@ -219,5 +226,83 @@ describe('/take-bounty mode:stat', () => {
         // produced.
         expect(interaction.editReply).toHaveBeenCalledTimes(1);
         expect(interaction.followUp).toHaveBeenCalled();
+    });
+
+    // Metal Potato Meddley for Stat Bounty (2026-10-03, direct instruction) — same flat 1%
+    // roll as the regular ladder's own Meddley, reusing Bounty's own Band I numbers doubled
+    // and Guild Stat Raid's own power-ratio-capped-at-50% success formula. See
+    // mercenaryFactory.resolveStatBounty's own comment for the full mechanic.
+    test('a Meddley hit costs nothing, pays doubled Band I potatoes, and grants all three permanent stats', async () => {
+        const user = baseUser({ workMultiplierAmount: 90 }); // successChance = 90/2000 = .045
+        const originalPotatoes = user.potatoes;
+        const originalTotalEarnings = user.totalEarnings;
+        const originalWorkMultiplierAmount = user.workMultiplierAmount;
+        const originalPassiveAmount = user.passiveAmount;
+        const originalBankCapacity = user.bankCapacity;
+        dynamoHandler.findUser.mockResolvedValue(user);
+        const interaction = fakeInteraction({ mode: 'stat' });
+        const randomSpy = jest.spyOn(Math, 'random')
+            .mockReturnValueOnce(0.005) // Metal Potato Meddley trigger HIT (< 1%)
+            .mockReturnValueOnce(0)     // win check: .045 > 0 -> win
+            .mockReturnValueOnce(0.5)   // reward rangeRoll -> 1.0
+            .mockReturnValueOnce(0.99); // cooldown skip roll miss (Rank 1 has 0% skip chance anyway)
+        try {
+            await callback(fakeClient, interaction);
+        } finally {
+            randomSpy.mockRestore();
+        }
+
+        // Exactly one of these writes carries the chain's own aggregated result — a second
+        // write (achievements, e.g. first_million) can legitimately follow from
+        // achievementFactory.checkAndUnlock, left real (not mocked) in this file.
+        const [, setFields, addFields] = dynamoHandler.updateUserFields.mock.calls.find(([, s]) => 'potatoes' in s);
+
+        // Costs nothing — potatoes only move by the reward, never STAT_BOUNTY_COST.
+        const expectedReward = Math.round(10000000 * 2 * 1.0 * 1.00); // Band I reward doubled, rank 1 -> 1.00x
+        expect(setFields.potatoes).toBe(originalPotatoes + expectedReward);
+        expect(setFields.totalEarnings).toBe(originalTotalEarnings + expectedReward);
+        expect(setFields.totalLosses).toBe(0);
+        expect(addFields.mercenaryBountyWinCount).toBe(1);
+
+        // All three permanent stat grants, doubled — not just workMultiplierAmount.
+        expect(setFields.workMultiplierAmount).toBeCloseTo(originalWorkMultiplierAmount + 4.0);
+        expect(setFields.passiveAmount).toBe(originalPassiveAmount + 2000000);
+        expect(setFields.bankCapacity).toBe(originalBankCapacity + 20000000);
+        expect(setFields.sweetPotatoBuffs.workMultiplierAmount).toBeCloseTo(4.0);
+        expect(setFields.sweetPotatoBuffs.passiveAmount).toBe(2000000);
+        expect(setFields.sweetPotatoBuffs.bankCapacity).toBe(20000000);
+
+        const resultEmbed = interaction.editReply.mock.calls[0][0].embeds[0];
+        expect(resultEmbed.data.title).toContain('Metal Potato Meddley');
+        expect(resultEmbed.data.description).toBe('Success!');
+        const potatoesField = resultEmbed.data.fields.find(f => f.name === 'Potatoes Gained:');
+        expect(potatoesField).toBeDefined();
+        expect(potatoesField.value).toContain(expectedReward.toLocaleString());
+        const costField = resultEmbed.data.fields.find(f => f.name === 'Potatoes Spent:');
+        expect(costField.value).toContain('Nothing');
+    });
+
+    test('a Meddley loss costs nothing at all, overriding the normal STAT_BOUNTY_COST charge', async () => {
+        const user = baseUser({ workMultiplierAmount: 90 });
+        const originalPotatoes = user.potatoes;
+        dynamoHandler.findUser.mockResolvedValue(user);
+        const interaction = fakeInteraction({ mode: 'stat' });
+        const randomSpy = jest.spyOn(Math, 'random')
+            .mockReturnValueOnce(0.005)     // Metal Potato Meddley trigger HIT
+            .mockReturnValueOnce(0.999999); // win check fails
+        try {
+            await callback(fakeClient, interaction);
+        } finally {
+            randomSpy.mockRestore();
+        }
+
+        const [, setFields, addFields] = dynamoHandler.updateUserFields.mock.calls[0];
+        expect(setFields.potatoes).toBe(originalPotatoes); // unchanged — costs nothing
+        expect(setFields.totalLosses).toBe(0);
+        expect(addFields).not.toHaveProperty('mercenaryBountyWinCount');
+        expect(setFields).not.toHaveProperty('workMultiplierAmount');
+
+        const resultEmbed = interaction.editReply.mock.calls[0][0].embeds[0];
+        expect(resultEmbed.data.description).toBe('Failed.');
     });
 });
