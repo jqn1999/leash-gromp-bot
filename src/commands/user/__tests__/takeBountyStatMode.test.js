@@ -87,6 +87,13 @@ describe('/take-bounty mode:stat', () => {
 
     test('a win charges the cost, grants +0.2 workMultiplierAmount, updates sweetPotatoBuffs.workMultiplierAmount, and increments mercenaryBountyWinCount', async () => {
         const user = baseUser({ mercenaryBountyWinCount: 3 });
+        // Captured BEFORE the call — the chain loop now mutates the SAME userDetails object
+        // dynamoHandler.findUser resolved to (2026-10-03 chain write-count rewrite, needed so
+        // later links of a chain see earlier links' own results), so `user` itself no longer
+        // reflects its pre-call values once callback() returns.
+        const originalPotatoes = user.potatoes;
+        const originalTotalLosses = user.totalLosses;
+        const originalWorkMultiplierAmount = user.workMultiplierAmount;
         dynamoHandler.findUser.mockResolvedValue(user);
         const interaction = fakeInteraction({ mode: 'stat' });
         const randomSpy = jest.spyOn(Math, 'random')
@@ -102,8 +109,8 @@ describe('/take-bounty mode:stat', () => {
         // Cost charged (unconditionally) — the write that carries `potatoes`.
         const potatoWrite = dynamoHandler.updateUserFields.mock.calls.find(([, setAttrs]) => 'potatoes' in setAttrs);
         expect(potatoWrite).toBeDefined();
-        expect(potatoWrite[1].potatoes).toBe(user.potatoes - Bounty.STAT_BOUNTY_COST);
-        expect(potatoWrite[1].totalLosses).toBe(user.totalLosses - Bounty.STAT_BOUNTY_COST);
+        expect(potatoWrite[1].potatoes).toBe(originalPotatoes - Bounty.STAT_BOUNTY_COST);
+        expect(potatoWrite[1].totalLosses).toBe(originalTotalLosses - Bounty.STAT_BOUNTY_COST);
 
         // Win counter incremented via the atomic ADD path (addAttributes), same as every
         // other Bounty win.
@@ -116,7 +123,7 @@ describe('/take-bounty mode:stat', () => {
         // sweetPotatoBuffs.workMultiplierAmount together.
         const statGrantWrite = dynamoHandler.updateUserFields.mock.calls.find(([, setAttrs]) => setAttrs && 'workMultiplierAmount' in setAttrs);
         expect(statGrantWrite).toBeDefined();
-        expect(statGrantWrite[1].workMultiplierAmount).toBeCloseTo(user.workMultiplierAmount + Bounty.STAT_BOUNTY_REWARD);
+        expect(statGrantWrite[1].workMultiplierAmount).toBeCloseTo(originalWorkMultiplierAmount + Bounty.STAT_BOUNTY_REWARD);
         expect(statGrantWrite[1].sweetPotatoBuffs.workMultiplierAmount).toBeCloseTo(Bounty.STAT_BOUNTY_REWARD);
 
         const resultEmbed = interaction.editReply.mock.calls[interaction.editReply.mock.calls.length - 1][0].embeds[0];
@@ -126,6 +133,9 @@ describe('/take-bounty mode:stat', () => {
 
     test('a loss charges the cost but grants no stat and does not increment the win counter', async () => {
         const user = baseUser();
+        // Captured BEFORE the call — see the first test's own comment on why `user` can no
+        // longer be read post-call for its pre-call value.
+        const originalPotatoes = user.potatoes;
         dynamoHandler.findUser.mockResolvedValue(user);
         const interaction = fakeInteraction({ mode: 'stat' });
         const randomSpy = jest.spyOn(Math, 'random')
@@ -139,7 +149,7 @@ describe('/take-bounty mode:stat', () => {
 
         const potatoWrite = dynamoHandler.updateUserFields.mock.calls.find(([, setAttrs]) => 'potatoes' in setAttrs);
         expect(potatoWrite).toBeDefined();
-        expect(potatoWrite[1].potatoes).toBe(user.potatoes - Bounty.STAT_BOUNTY_COST);
+        expect(potatoWrite[1].potatoes).toBe(originalPotatoes - Bounty.STAT_BOUNTY_COST);
 
         const winCountWrite = dynamoHandler.updateUserFields.mock.calls.find(([, , addAttrs]) => addAttrs && 'mercenaryBountyWinCount' in addAttrs);
         expect(winCountWrite).toBeUndefined();
@@ -177,6 +187,10 @@ describe('/take-bounty mode:stat', () => {
 
     test('a win with the skip roll hitting backdates the cooldown and auto-chains one more attempt', async () => {
         // Rank 6 (525 wins) has a real cooldownReductionPercent > 0 to actually roll against.
+        // 2026-10-03 chain write-count rewrite: the whole 2-link chain now produces exactly
+        // ONE dynamoHandler.updateUserFields call, carrying the FINAL link's own bountyTimer
+        // (the chained attempt's loss resets it to a real full cooldown) — not one write per
+        // link the way the pre-rewrite version produced.
         const user = baseUser({ mercenaryBountyWinCount: 525, potatoes: 10_000_000 });
         dynamoHandler.findUser.mockResolvedValue(user);
         const interaction = fakeInteraction({ mode: 'stat' });
@@ -185,7 +199,7 @@ describe('/take-bounty mode:stat', () => {
             .mockReturnValueOnce(0)    // flavor index
             .mockReturnValueOnce(0)    // skip roll HIT
             .mockReturnValueOnce(0.5)  // pickSkipSource attribution
-            // Chained attempt (isChainedReply=true) resolves as a LOSS, ending the chain there:
+            // Chained link (isChainedReply=true) resolves as a LOSS, ending the chain there:
             .mockReturnValueOnce(0.999999) // win check fails
             .mockReturnValueOnce(0);       // flavor index
         try {
@@ -195,8 +209,15 @@ describe('/take-bounty mode:stat', () => {
         }
 
         const bountyTimerWrites = dynamoHandler.updateUserFields.mock.calls.filter(([, setAttrs]) => setAttrs && 'bountyTimer' in setAttrs);
-        expect(bountyTimerWrites).toHaveLength(2); // first hit + one chained attempt
-        expect(bountyTimerWrites[0][1].bountyTimer).toBeLessThanOrEqual(Date.now() - Bounty.BOUNTY_TIMER_SECONDS * 1000 + 100);
-        expect(bountyTimerWrites[1][1].bountyTimer).toBeGreaterThanOrEqual(Date.now() - 100);
+        expect(bountyTimerWrites).toHaveLength(1); // one write for the whole 2-link chain
+        // The final (chained, loss) link's own full cooldown is what actually got written —
+        // the first link's own backdated-to-ready-now value was only ever an in-memory
+        // intermediate, overwritten the instant the chain's 2nd link resolved.
+        expect(bountyTimerWrites[0][1].bountyTimer).toBeGreaterThanOrEqual(Date.now() - 100);
+        // Two full resolutions still happened — one editReply (link 1) and one followUp
+        // (the chained link), matching the message-sequence the old per-link-write version
+        // produced.
+        expect(interaction.editReply).toHaveBeenCalledTimes(1);
+        expect(interaction.followUp).toHaveBeenCalled();
     });
 });

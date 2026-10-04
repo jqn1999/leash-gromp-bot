@@ -288,6 +288,14 @@ function resolveStatBounty(userDetails) {
 // /rob-npc — see robNpc.js), defaulting to Tier I ('market_stall') so every pre-existing
 // call site keeps behaving exactly as it did before roadmap #50's Heist Ladder rework: a
 // whiff-only, no-penalty, 5,000-cap attempt with the same rank-scaled odds it always had.
+//
+// NOT fully write-free on a win, despite this module's own header comment — see the
+// deferTax:true call to workFactory.calculateGainAmount below (2026-10-03 chain
+// write-count rewrite note): that shared /work-formula helper defaults to an IMMEDIATE
+// house-tax write unless told otherwise, which this function previously left at its
+// default. Fixed to defer it (return the amount as { gainAmount, houseTax } instead of
+// writing it itself) so robNpc.js's own chain loop can accumulate it across every link
+// and fire one write for the whole chain, same as every other value here.
 async function resolveNpcRob(userDetails, workGainAmount, catchUpBonus = 0, heistTierKey = RobNpc.TIERS[0].key) {
     const tier = RobNpc.TIERS.find(t => t.key === heistTierKey);
     const rankInfo = getMercenaryRankInfo(userDetails.mercenaryBountyWinCount);
@@ -354,7 +362,7 @@ async function resolveNpcRob(userDetails, workGainAmount, catchUpBonus = 0, heis
     // point rather than a player's downside continuing to grow after their upside stopped.
     const cappedDevelopedMultiplier = Math.min(developedMultiplier, RobNpc.MAX_REWARD_MULTIPLIER);
 
-    const result = { won, successChance, rankInfo, tier: tier.key, amount: 0, penaltyAmount: 0, statReward: null };
+    const result = { won, successChance, rankInfo, tier: tier.key, amount: 0, penaltyAmount: 0, statReward: null, houseTax: 0 };
     if (!won) {
         // Tier I stays whiff-only (hasPenalty: false) — the safe, always-available intro
         // action with zero regression from before this tier system existed. Tiers II-IV
@@ -389,7 +397,19 @@ async function resolveNpcRob(userDetails, workGainAmount, catchUpBonus = 0, heis
     // rewardRoll was already rolled above (it's what this attempt's own odds were weighed
     // against) — reused here rather than a fresh roll, so the payout actually matches the
     // risk the player just took.
-    result.amount = await calculateGainAmount(workGainAmount * RobNpc.PAYOUT_MULTIPLIER, tier.payoutCap, rewardRoll, effectiveMultiplier, userDetails);
+    //
+    // deferTax: true (2026-10-03 chain write-count rewrite) — calculateGainAmount's own
+    // house-tax skim defaults to writing dynamoHandler.addUserDatabase immediately
+    // (deferTax=false), which would reopen a per-link write this whole file's own module
+    // comment claims doesn't exist here. This was the one spot that comment was wrong —
+    // resolveNpcRob WAS writing to the DB indirectly, through this shared /work-formula
+    // helper, the exact thing this rewrite set out to verify rather than assume. Deferred
+    // here the same way every workFactory.js handler itself defers it post-/work's-own
+    // rewrite — robNpc.js's own chain loop now accumulates result.houseTax across every
+    // link and fires ONE addUserDatabase call for the whole chain instead.
+    const { gainAmount, houseTax } = await calculateGainAmount(workGainAmount * RobNpc.PAYOUT_MULTIPLIER, tier.payoutCap, rewardRoll, effectiveMultiplier, userDetails, true);
+    result.amount = gainAmount;
+    result.houseTax = houseTax;
 
     // The Royal Treasury's one distinguishing extra — see RobNpc.TIERS' own comment in
     // constants.js. 0 for every other tier, so this is a no-op everywhere else.

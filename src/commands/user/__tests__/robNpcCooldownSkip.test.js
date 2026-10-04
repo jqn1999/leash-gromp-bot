@@ -104,6 +104,10 @@ describe('/rob-npc cooldown skip', () => {
     });
 
     test('a win with the skip roll hitting clears the cooldown to ready-now and auto-chains one more attempt', async () => {
+        // 2026-10-03 chain write-count rewrite: the whole 2-link chain now produces exactly
+        // ONE dynamoHandler.updateUserFields call, carrying the FINAL (chained, whiff) link's
+        // own full cooldown — not one write per link the way the pre-rewrite recursive
+        // version produced.
         dynamoHandler.findUser.mockResolvedValue(baseUser({ mercenaryBountyWinCount: 15 })); // Rank 2, cooldownReductionPercent 0.06
         const interaction = fakeInteraction({ 'heist-type': 'market_stall' });
         const randomSpy = jest.spyOn(Math, 'random')
@@ -111,10 +115,10 @@ describe('/rob-npc cooldown skip', () => {
             .mockReturnValueOnce(0)    // win check -> hit
             .mockReturnValueOnce(0)    // skip roll HIT (< 0.06)
             .mockReturnValueOnce(0.5)  // pickSkipSource attribution (only mercenaryRank active)
-            // Chained attempt (isChainedReply=true) resolves as a whiff, ending the chain there —
+            // Chained link (isChainedReply=true) resolves as a whiff, ending the chain there —
             // needs its OWN reward roll (first call again) before its own win check now.
-            .mockReturnValueOnce(0.5)       // chained attempt's reward roll -> midpoint
-            .mockReturnValueOnce(0.999999); // chained attempt's win check fails
+            .mockReturnValueOnce(0.5)       // chained link's reward roll -> midpoint
+            .mockReturnValueOnce(0.999999); // chained link's win check fails
         try {
             await callback({}, interaction);
         } finally {
@@ -122,9 +126,8 @@ describe('/rob-npc cooldown skip', () => {
         }
 
         const heistWrites = dynamoHandler.updateUserFields.mock.calls.filter(([, setAttrs]) => 'npcRobTimer' in setAttrs);
-        expect(heistWrites).toHaveLength(2);
-        expect(heistWrites[0][1].npcRobTimer).toBeLessThanOrEqual(Date.now() - RobNpc.NPC_ROB_TIMER_SECONDS * 1000 + 100);
-        expect(heistWrites[1][1].npcRobTimer).toBeGreaterThanOrEqual(Date.now() - 100);
+        expect(heistWrites).toHaveLength(1);
+        expect(heistWrites[0][1].npcRobTimer).toBeGreaterThanOrEqual(Date.now() - 100);
         expect(interaction.followUp).toHaveBeenCalled();
     });
 
@@ -151,15 +154,15 @@ describe('/rob-npc cooldown skip', () => {
             randomSpy.mockRestore();
         }
 
+        // 2026-10-03 chain write-count rewrite — the whole capped chain (totalLinks real
+        // resolutions) now produces exactly ONE write, carrying the chain-cap fix's own
+        // real full cooldown (not backdated) rather than a separate overwrite write.
         const heistWrites = dynamoHandler.updateUserFields.mock.calls.filter(([, setAttrs]) => 'npcRobTimer' in setAttrs);
-        // One write per real resolution (totalLinks) PLUS the chain-cap fix's own explicit
-        // overwrite write once the last link's hit couldn't actually chain further.
-        expect(heistWrites).toHaveLength(totalLinks + 1);
-
-        for (let i = 0; i < totalLinks; i++) {
-            expect(heistWrites[i][1].npcRobTimer).toBeLessThanOrEqual(Date.now() - RobNpc.NPC_ROB_TIMER_SECONDS * 1000 + 100);
-        }
-        const finalWrite = heistWrites[heistWrites.length - 1][1];
+        expect(heistWrites).toHaveLength(1);
+        const finalWrite = heistWrites[0][1];
         expect(finalWrite.npcRobTimer).toBeGreaterThanOrEqual(Date.now() - 100);
+
+        expect(interaction.editReply).toHaveBeenCalledTimes(1);
+        expect(interaction.followUp.mock.calls.length).toBeGreaterThanOrEqual(totalLinks - 1);
     });
 });

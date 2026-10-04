@@ -20554,3 +20554,130 @@ formula, odds, reward amount, or message content change (every outcome is byte-f
 old per-link-write version would have produced) — `financial-project`'s own `/gromp` page has no
 equivalent write-count concern to port, since its own Lambdas aren't built around this same
 recursive-chain shape. Not flagged for porting.
+
+## `/take-bounty` and `/rob-npc` cooldown-skip chains given the same one-write-per-chain rewrite; `/start-raid` deliberately left untouched (2026-10-03, direct instruction, same-day follow-up to the `/work` rewrite above)
+
+Asked: apply the exact same "one write per chain, not per link" rewrite just shipped for
+`/work` to the other three chaining commands — `/take-bounty` (both its regular-ladder and
+Stat Bounty submodes), `/rob-npc`, and `/start-raid`.
+
+**Found first: a dated conflict for exactly one of the three, acted on per the instruction's
+own guardrail.** This repo already had a 2026-09-20 architect pass (its own entry just above
+this one, "Design (scoping only, not implemented): cooldown-skip chain read/write
+consolidation") scoping this EXACT idea across all four chaining commands at once, well
+before the `/work` rewrite happened. That pass rated `/work` "(c) Not safe / not worth it as
+a full rewrite" too — overridden for `/work` only by the user's own direct, explicit choice
+(shown both the full rewrite and a scoped-down safe win, picked the full rewrite) — but it
+rated `/take-bounty`/`/rob-npc` **"(a) Safe and worth doing"/"best target(s)"** and
+`/start-raid` **"(c) Not safe / not worth it,"** for reasons specific to each: Bounty/Heist
+already funneled every link into one `updateUserFields` call with almost entirely in-memory
+or slow-changing cooldown-skip sources, while `/start-raid`'s shared state (roster, buffs,
+bank, level, companion) is genuinely multi-actor — another guild member can change it mid-
+chain — and the 2026-09-18 `claimGuildRaidSlot` race guard is a live, load-bearing PER-LINK
+conditional write a chain-start-only consolidation would reopen a real double-raid race for.
+Per this task's own explicit instruction ("don't assume the user wants the full-rewrite path
+for these three just because they chose it for `/work`"), this was surfaced rather than
+resolved unilaterally: `/take-bounty` and `/rob-npc` were rewritten (the prior pass already
+endorsed both as safe); `/start-raid` was left completely untouched, reported back for
+explicit confirmation instead of guessing the user wanted the same override they made for
+`/work`.
+
+**What each command's own write-fragmentation looked like before this pass:**
+- **`/take-bounty`** (`runBountyAttempt`/`runStatBountyAttempt`, `takeBounty.js`): already
+  funneled potatoes/totalEarnings/totalLosses/starches/companions/bountyTimer into ONE
+  `dynamoHandler.updateUserFields(setAttributes, addAttributes)` call per link — NOT the
+  `workFactory.js`-style "every handler writes directly" pattern `/work` had, confirmed by
+  reading `mercenaryFactory.js` directly rather than assuming. The real per-link
+  fragmentation was: (a) a SECOND, separate `updateUserFields` buried inside
+  `raidFactory.handleStatSplit` on the rare permanent stat-reward roll (its own fresh
+  `findUser` + write for a 1-person "raidList"), and (b) the Kingdom Tax's house/Spud-Keep-
+  pot credit (`addUserDatabase`/`spudKeepFactory.creditSpudKeepPot`) firing immediately per
+  winning link instead of once per chain. The function was also fully recursive
+  (`isChainedReply`/`chainDepth` params), re-running the achievement/quest/festival-quest
+  check (with its own fresh `findUser` re-fetch) after every single link.
+- **`/rob-npc`** (`runNpcRobAttempt`, `robNpc.js`): same profile, same verdict — one
+  `updateUserFields` per link already, plus `raidFactory.handleStatSplit`'s own separate
+  write on the rare Royal Treasury stat-grant roll, plus the identical per-link achievement/
+  quest/festival-quest re-check. ONE additional, genuinely hidden write was found here that
+  the architect pass's own "already safe" read didn't catch (see below).
+- **`/start-raid`** (`resolveRaid`, `startRaid.js`): not touched at all this pass — see the
+  flag above. Its own write-fragmentation (`addToBankOrPurse`/`removeFromBankOrPurse`/
+  `dynamoHandler.updateGuildDatabase`/`raidFactory.handleStatSplit` called directly inside
+  each of its 14+ scenario closures, guild-scoped) is exactly as the architect pass already
+  described it — confirmed still accurate, not re-derived, since nothing there changed.
+
+**A real hidden write caught in `/rob-npc` specifically, by verifying rather than trusting
+`mercenaryFactory.js`'s own module comments** (per this task's own explicit instruction to
+verify, not assume): `resolveBountyAttempt`/`resolveStatBounty` were genuinely pure
+computation with no DB writes, exactly as claimed. `resolveNpcRob` was NOT — its winning-
+branch payout routes through `workFactory.calculateGainAmount`, the same shared /work-
+formula helper every `workFactory.js` handler uses, which defaults to an IMMEDIATE
+`dynamoHandler.addUserDatabase` house-tax write unless told otherwise (the `deferTax` param
+`/work`'s own rewrite added) — `resolveNpcRob` was calling it with the default (`false`), so
+every winning Heist link was still firing a second, un-consolidated write the architect
+pass's own "already in-memory, one small write" read never actually surfaced (that pass
+analyzed the COOLDOWN-SKIP sources, not the reward-payout call path). Fixed at the source:
+`resolveNpcRob` now passes `deferTax: true` and returns `{ amount, houseTax }` instead of
+writing it itself; `robNpc.js`'s own chain loop accumulates `houseTax` across every link and
+fires ONE `addUserDatabase` call for the whole chain, the same way `/take-bounty`'s own
+(already-deferred) Kingdom Tax now works.
+
+**Shape of the rewrite, both commands**: `runBountyAttempt`/`runNpcRobAttempt` are no longer
+recursive — each is a single `while` loop internal to one top-level call, mutating an
+in-memory `userDetails` object as the chain progresses (so later links see earlier links'
+real state) and accumulating `aggregatedSetFields`/`aggregatedAddFields`, firing exactly one
+`dynamoHandler.updateUserFields` at the very end. The rare stat-reward roll (both commands)
+is applied in-memory via a small mirrored `applyStatRewardGrant` helper (same math
+`raidFactory.handleStatSplit` already uses, no write of its own) instead of calling that
+shared helper per link. Achievement/Quest/Festival Quest checks now run once at the end
+against the chain's final state vs. a pre-chain snapshot, same consolidation `/work`'s
+rewrite already used, safe for the same "monotonic threshold check" reason.
+
+**Two tradeoffs carried forward IDENTICALLY from `/work`'s own rewrite, not re-litigated —
+see `.claude/systems/mercenary-bounties.md`'s own dated entry for the full writeup:**
+1. Cooldown-skip-source staleness within a chain — but LAZILY fetched (at most once per
+   chain, only once a link actually wins), not an unconditional upfront read the way
+   `/work`'s `cachedSkipSources` is, specifically to preserve a real, already-tested
+   cost-saving behavior neither command had before this rewrite could regress: an all-loss/
+   all-whiff chain must still never query Spud Keep's cooldown buff doc at all, since neither
+   command ever rolls a skip on a loss in the first place.
+2. Chain atomicity — nothing is written or announced until the one end-of-chain write
+   succeeds; both loops gained a `/work`-style try/catch "nothing was lost, run it again"
+   recovery message neither command had before (a genuinely new failure mode this
+   architecture change introduces, not just newly described).
+
+**A real bug caught and fixed mid-rewrite, unrelated to the write-count target**:
+`bountyTimer`/`npcRobTimer` store the timestamp of the LAST attempt (compared against the
+cooldown length elapsed), NOT a "next available" absolute timestamp the way `/work`'s
+`workTimer` is — so the chain-cap-hit fix's own "overwrite to a real full cooldown" branch
+needs `Date.now()` for these two commands, not `Date.now() + cooldownSeconds * 1000` the way
+`/work`'s equivalent fix uses. An early draft copied `/work`'s own formula verbatim into both
+files; `takeBountyCooldownSkip.test.js`'s/`robNpcCooldownSkip.test.js`'s own pre-existing
+chain-cap regression tests (pinning the exact post-cap timer value) caught it immediately.
+
+**Tests.** `takeBountyCooldownSkip.test.js`/`robNpcCooldownSkip.test.js`'s own multi-link
+chain assertions (previously counting N separate `updateUserFields` calls) were rewritten to
+assert the new single-write outcome instead, same final timer value and message sequence.
+`takeBountyStatMode.test.js`/`takeBountyMetalPotatoMeddley.test.js`/
+`rivalNotorietyAccrual.test.js` needed a smaller, unrelated fix: several assertions computed
+their expected value by reading the mocked `user` object's own fields back out AFTER calling
+the command — safe under the old architecture (which never mutated the caller's own
+`userDetails` object in place), broken by this rewrite's deliberate in-memory mutation (same
+reasoning `/work`'s rewrite already established) — fixed by capturing needed pre-call values
+into local consts first. Two new dedicated write-count regression files,
+`takeBountyChainWriteCount.test.js` (both Bounty submodes) and `robNpcChainWriteCount.test.js`,
+mirror `workChainWriteCount.test.js`'s own template exactly: a forced multi-link chain,
+exactly one `updateUserFields` call, the fully accumulated outcome independently re-derived
+from the real constants/formulas rather than copied from the implementation, and the right
+message sequence. Full suite: **127 of 128 suites (1 pre-existing, unrelated skip) / 2321
+tests (18 pre-existing, unrelated skips, 2303 passing)** — up from the `/work` rewrite's own
+125/126 and 2318 baseline by this pass's own 2 new test files/3 new tests, 0 broken.
+
+**Cross-repo note.** Same as `/work`'s own entry above — a pure backend write-count/
+architecture change, byte-for-byte identical player-visible outcomes, nothing for
+`financial-project` to port.
+
+**`/start-raid` status: not implemented this pass, awaiting explicit confirmation.** See the
+flag above for the full reasoning (multi-actor guild state + the live `claimGuildRaidSlot`
+race guard). Nothing in `src/` under `startRaid.js`/`raidFactory.js` was touched by this
+pass.

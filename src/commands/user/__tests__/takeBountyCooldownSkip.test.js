@@ -110,6 +110,10 @@ describe('/take-bounty cooldown skip', () => {
     });
 
     test('a win with the skip roll hitting clears the cooldown to ready-now and auto-chains one more attempt', async () => {
+        // 2026-10-03 chain write-count rewrite: the whole 2-link chain now produces exactly
+        // ONE dynamoHandler.updateUserFields call for this player's own record, carrying
+        // the FINAL link's own bountyTimer — not one write per link the way the pre-rewrite
+        // recursive version produced.
         const user = baseUser({ mercenaryBountyWinCount: 15 }); // Rank 2, cooldownReductionPercent 0.06
         dynamoHandler.findUser.mockResolvedValue(user);
         const interaction = fakeInteraction({ mode: 'baby' });
@@ -121,7 +125,7 @@ describe('/take-bounty cooldown skip', () => {
             .mockReturnValueOnce(0.99) // yukon miss
             .mockReturnValueOnce(0)    // skip roll HIT (< 0.06)
             .mockReturnValueOnce(0.5)  // pickSkipSource attribution (only mercenaryRank active -> irrelevant value)
-            // Chained attempt (isChainedReply=true) resolves as a LOSS, ending the chain there:
+            // Chained link (isChainedReply=true) resolves as a LOSS, ending the chain there:
             .mockReturnValueOnce(0.999999) // win check fails
             .mockReturnValueOnce(0)        // scenario index
             .mockReturnValueOnce(0);       // penalty rangeRoll
@@ -131,14 +135,19 @@ describe('/take-bounty cooldown skip', () => {
             randomSpy.mockRestore();
         }
 
-        // Two full resolutions happened — two separate bounty writes (first + chained).
         const bountyWrites = dynamoHandler.updateUserFields.mock.calls.filter(([, setAttrs]) => 'bountyTimer' in setAttrs);
-        expect(bountyWrites).toHaveLength(2);
+        expect(bountyWrites).toHaveLength(1); // one write for the whole 2-link chain
 
-        // First resolution: bountyTimer backdated the FULL cooldown (ready immediately).
-        expect(bountyWrites[0][1].bountyTimer).toBeLessThanOrEqual(Date.now() - Bounty.BOUNTY_TIMER_SECONDS * 1000 + 100);
-        // Chained (loss) resolution: full cooldown again, no further chaining.
-        expect(bountyWrites[1][1].bountyTimer).toBeGreaterThanOrEqual(Date.now() - 100);
+        // The final (chained, loss) link's own full cooldown is what actually got written —
+        // the first link's own backdated-to-ready-now value was only ever an in-memory
+        // intermediate, overwritten the instant the chain's 2nd link resolved.
+        expect(bountyWrites[0][1].bountyTimer).toBeGreaterThanOrEqual(Date.now() - 100);
+        // Two full resolutions still happened — one editReply (link 1) and at least one
+        // followUp (the chained link's own result; achievementFactory/questFactory are left
+        // real in this file, so a genuine first-win unlock can add further followUps on top
+        // — not asserted exactly here, that's achievements.md's own test surface).
+        expect(interaction.editReply).toHaveBeenCalledTimes(1);
+        expect(interaction.followUp).toHaveBeenCalled();
     });
 
     // Mercenary Buff's bountyTimer category (systems/mercenary-bounties.md#mercenary-buff) —
@@ -168,9 +177,11 @@ describe('/take-bounty cooldown skip', () => {
             randomSpy.mockRestore();
         }
 
+        // 2026-10-03 chain write-count rewrite — one write for the whole 2-link chain now,
+        // carrying the final (chained, loss) link's own full cooldown.
         const bountyWrites = dynamoHandler.updateUserFields.mock.calls.filter(([, setAttrs]) => 'bountyTimer' in setAttrs);
-        expect(bountyWrites).toHaveLength(2); // hit + one chained attempt
-        expect(bountyWrites[0][1].bountyTimer).toBeLessThanOrEqual(Date.now() - Bounty.BOUNTY_TIMER_SECONDS * 1000 + 100);
+        expect(bountyWrites).toHaveLength(1);
+        expect(bountyWrites[0][1].bountyTimer).toBeGreaterThanOrEqual(Date.now() - 100);
 
         const resultEmbed = interaction.editReply.mock.calls[0][0].embeds[0];
         const skipField = resultEmbed.data.fields.find(f => f.name.includes('Mercenary Buff'));
@@ -210,21 +221,21 @@ describe('/take-bounty cooldown skip', () => {
             randomSpy.mockRestore();
         }
 
+        // 2026-10-03 chain write-count rewrite — the whole capped chain (totalLinks real
+        // resolutions) now produces exactly ONE write, carrying the chain-cap fix's own
+        // real full cooldown (not backdated) rather than a separate overwrite write.
         const bountyWrites = dynamoHandler.updateUserFields.mock.calls.filter(([, setAttrs]) => 'bountyTimer' in setAttrs);
-        // One write per real resolution (totalLinks) PLUS the chain-cap fix's own explicit
-        // overwrite write once the last link's hit couldn't actually chain further.
-        expect(bountyWrites).toHaveLength(totalLinks + 1);
-
-        // Every one of the totalLinks real resolutions backdated bountyTimer (ready now) —
-        // the result embed on all of them genuinely said "skipped!", exactly as the user's
-        // own instruction acknowledged ("even if the last one says it skips again").
-        for (let i = 0; i < totalLinks; i++) {
-            expect(bountyWrites[i][1].bountyTimer).toBeLessThanOrEqual(Date.now() - Bounty.BOUNTY_TIMER_SECONDS * 1000 + 100);
-        }
-        // The fix's own final write is a REAL full cooldown, not backdated — this is what
-        // actually stops a manual re-run from working immediately.
-        const finalWrite = bountyWrites[bountyWrites.length - 1][1];
+        expect(bountyWrites).toHaveLength(1);
+        const finalWrite = bountyWrites[0][1];
         expect(finalWrite.bountyTimer).toBeGreaterThanOrEqual(Date.now() - 100);
         expect(finalWrite.bountyTimer).toBeLessThan(Date.now() - Bounty.BOUNTY_TIMER_SECONDS * 1000 + 100 + Bounty.BOUNTY_TIMER_SECONDS * 1000);
+
+        // Every one of the totalLinks real resolutions still genuinely said "skipped!" on
+        // its own result embed — only the FINAL persisted cooldown value changed, not the
+        // per-link narration. At least totalLinks-1 followUps (the chained links' own
+        // results) — not asserted exactly, since achievementFactory/questFactory are left
+        // real here and a genuine unlock can add further followUps on top.
+        expect(interaction.editReply).toHaveBeenCalledTimes(1);
+        expect(interaction.followUp.mock.calls.length).toBeGreaterThanOrEqual(totalLinks - 1);
     });
 });

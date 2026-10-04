@@ -1,9 +1,7 @@
 const { ApplicationCommandOptionType } = require("discord.js");
 const { getUserInteractionDetails, requireUserDetails, convertSecondstoMinutes } = require("../../utils/helperCommands")
 const dynamoHandler = require("../../utils/dynamoHandler");
-const { RobNpc, Work, CompanionLeveling } = require("../../utils/constants");
-const { RaidFactory } = require("../../utils/raidFactory");
-const raidFactory = new RaidFactory();
+const { RobNpc, Work, CompanionLeveling, awsConfigurations } = require("../../utils/constants");
 const mercenaryFactory = require("../../utils/mercenaryFactory");
 const companionFactory = require("../../utils/companionFactory");
 const cooldownFactory = require("../../utils/cooldownFactory");
@@ -17,9 +15,9 @@ const questFactory = new QuestFactory();
 const bigEventsChannel = require("../../utils/bigEventsChannel");
 
 // isChainedReply distinguishes the original /rob-npc invocation (edits the deferred reply)
-// from an auto-chained extra attempt triggered by a cooldown skip (see runNpcRobAttempt
-// below) — a chained result is always a brand new message via followUp, mirroring
-// work.js's sendWorkResult/performWork convention exactly.
+// from an auto-chained extra attempt triggered by a cooldown skip — a chained result is
+// always a brand new message via followUp, mirroring work.js's sendWorkResult convention
+// exactly.
 async function sendNpcRobResult(interaction, embed, isChainedReply = false) {
     if (isChainedReply) {
         try {
@@ -34,6 +32,25 @@ async function sendNpcRobResult(interaction, embed, isChainedReply = false) {
     } catch (err) {
         console.log(`robNpc.js editReply failed, falling back to followUp: ${err}`);
         await interaction.followUp({ embeds: [embed] }).catch(() => {});
+    }
+}
+
+// Applies one { type, amount } permanent-stat grant to userDetails IN-MEMORY — mirrors
+// raidFactory.handleStatSplit's own per-member math exactly, but deliberately without that
+// function's own fresh findUser + separate write (2026-10-03 chain write-count rewrite —
+// see runNpcRobAttempt's own top-of-chain comment). Mirrored (not shared) from
+// takeBounty.js's own identical copy — same "mirrored, not shared" convention this
+// codebase's other small cross-file-duplicated pure helpers already use.
+function applyStatRewardGrant(userDetails, grant) {
+    if (grant.type === 'workMultiplierAmount') {
+        userDetails.workMultiplierAmount += grant.amount;
+        userDetails.sweetPotatoBuffs.workMultiplierAmount += grant.amount;
+    } else if (grant.type === 'passiveAmount') {
+        userDetails.passiveAmount += grant.amount;
+        userDetails.sweetPotatoBuffs.passiveAmount += grant.amount;
+    } else if (grant.type === 'bankCapacity') {
+        userDetails.bankCapacity += grant.amount;
+        userDetails.sweetPotatoBuffs.bankCapacity += grant.amount;
     }
 }
 
@@ -64,38 +81,54 @@ module.exports = {
         await interaction.deferReply();
         const [userId, username, userDisplayName] = getUserInteractionDetails(interaction);
         const heistTierKey = interaction.options.get('heist-type')?.value;
-        await runNpcRobAttempt(interaction, userId, username, userDisplayName, heistTierKey, false, 0);
+        await runNpcRobAttempt(interaction, userId, username, userDisplayName, heistTierKey);
     },
     runNpcRobAttempt
 }
 
-// One full /rob-npc resolution: cooldown check, attempt roll, stat writes, and the
-// achievement/quest follow-ups. Recurses when a cooldown skip was rolled AND the attempt was
-// a WIN (2026-09-05 cooldown-skip overhaul, direct instruction: "on a loss there is no
-// cooldown skip and no auto trigger") — mirrors work.js's performWork/takeBounty.js's
-// runBountyAttempt exactly, right down to the isChainedReply/chainDepth/
-// MAX_BOUNTY_RAID_COOLDOWN_SKIP_CHAIN_LENGTH shape (see cooldownFactory.js and
-// .claude/systems/mercenary-bounties.md for the full writeup). Chain cap lowered from the
-// shared Work.MAX_COOLDOWN_SKIP_CHAIN_LENGTH (10, still /work's own) to its own separate
-// Work.MAX_BOUNTY_RAID_COOLDOWN_SKIP_CHAIN_LENGTH (5) 2026-09-29, direct instruction — see
-// that constant's own comment in constants.js.
-async function runNpcRobAttempt(interaction, userId, username, userDisplayName, heistTierKey, isChainedReply, chainDepth) {
+// One full /rob-npc resolution — covering the ENTIRE cooldown-skip auto-chain (1 to
+// Work.MAX_BOUNTY_RAID_COOLDOWN_SKIP_CHAIN_LENGTH + 1 links) in a single pass, rather than
+// one call per link recursing into the next. Rewritten 2026-10-03 (direct instruction — the
+// same "one write per chain, not per link" rewrite /work and /take-bounty just got). This
+// player's own dynamoHandler.updateUserFields is now called exactly ONCE no matter how deep
+// the chain goes. mercenaryFactory.resolveNpcRob's module-header comment claims it's pure
+// computation with no DB writes — verified that directly rather than trusting it (per this
+// rewrite's own instructions), and it was WRONG in one real spot: a win routes its payout
+// through workFactory.calculateGainAmount, the exact shared /work-formula helper every
+// workFactory.js handler uses, which defaults to an immediate house-tax write unless told
+// otherwise. Fixed at the source (resolveNpcRob now passes deferTax:true and returns
+// result.houseTax instead) rather than papered over here. The other per-link
+// write-fragmentation was in THIS file (one updateUserFields for the main delta, the
+// now-deferred house tax, plus a second, separate updateUserFields buried inside
+// raidFactory.handleStatSplit on a rare Royal Treasury stat-grant hit) — see the loop below
+// for how both fold into the one end-of-chain write instead.
+//
+// Simpler than /take-bounty's own version of this rewrite in one real way: Heist wins bump
+// mercenaryHeistWinCount, never mercenaryBountyWinCount — so Mercenary Rank (and therefore
+// this chain's own cooldown-skip chance magnitude) can never change mid-chain here. The two
+// tradeoffs /work's rewrite accepted still apply, just in a narrower form:
+// 1. Buff staleness — the shared cooldown-skip sources (mercenaryRank/spudKeep) are fetched
+//    AT MOST once per chain, lazily, the first time a link actually wins (see
+//    makeLazySkipSourceCache's own comment) — a Spud Keep holder change mid-chain won't be
+//    picked up until this player's next /rob-npc call. (Rank itself is immune to this, per
+//    above — there is no analog of /take-bounty's "the magnitude reflects a stale rank"
+//    sub-case here.)
+// 2. Chain atomicity — nothing is written OR announced until the single end-of-chain write
+//    succeeds. A crash partway through an already-rare multi-link chain discards the whole
+//    chain's computed-but-unpersisted result, not just the link that crashed.
+async function runNpcRobAttempt(interaction, userId, username, userDisplayName, heistTierKey) {
     const userDetails = await requireUserDetails(interaction, userId, username, userDisplayName);
     if (!userDetails) return;
 
     if (!userDetails.isMercenary) {
-        if (!isChainedReply) {
-            interaction.editReply(`${userDisplayName}, you're not a mercenary — run /become-mercenary first (you can't be in a guild).`);
-        }
+        interaction.editReply(`${userDisplayName}, you're not a mercenary — run /become-mercenary first (you can't be in a guild).`);
         return;
     }
 
     const tier = RobNpc.TIERS.find(t => t.key === heistTierKey);
     const rankInfo = mercenaryFactory.getMercenaryRankInfo(userDetails.mercenaryBountyWinCount);
     if (rankInfo.rank < tier.rankRequired) {
-        if (!isChainedReply) {
-            interaction.editReply(`${userDisplayName}, ${tier.label} unlocks at Mercenary Rank ${tier.rankRequired} — you're currently Rank ${rankInfo.rank}. Win more bounties to rank up (check /bounty-board).`);
-        }
+        interaction.editReply(`${userDisplayName}, ${tier.label} unlocks at Mercenary Rank ${tier.rankRequired} — you're currently Rank ${rankInfo.rank}. Win more bounties to rank up (check /bounty-board).`);
         return;
     }
 
@@ -104,199 +137,233 @@ async function runNpcRobAttempt(interaction, userId, username, userDisplayName, 
     // entirely by Bounty wins, independent of workMultiplierAmount, so a mercenary could
     // otherwise reach any rank via Baby Bounty grinding alone and unlock a real-stakes Heist
     // tier while still at the literal default 1x multiplier — a tier whose EV is actually
-    // negative for them at that power. Separate from the rank check above, checked against
-    // the player's own real earned power (never catch-up-boosted, same figure the loss-side
-    // scaling in resolveNpcRob itself reads).
+    // negative for them at that power.
     if (userDetails.workMultiplierAmount < tier.minPowerRequired) {
-        if (!isChainedReply) {
-            interaction.editReply(`${userDisplayName}, ${tier.label} needs at least a ${tier.minPowerRequired}x work multiplier to attempt safely — you're currently at ${userDetails.workMultiplierAmount.toFixed(2)}x. Build up your economy a bit more first (check /shop).`);
-        }
+        interaction.editReply(`${userDisplayName}, ${tier.label} needs at least a ${tier.minPowerRequired}x work multiplier to attempt safely — you're currently at ${userDetails.workMultiplierAmount.toFixed(2)}x. Build up your economy a bit more first (check /shop).`);
         return;
     }
 
     const timeSinceLastNpcRobInSeconds = Math.floor((Date.now() - userDetails.npcRobTimer) / 1000);
     const timeUntilNpcRobAvailableInSeconds = RobNpc.NPC_ROB_TIMER_SECONDS - timeSinceLastNpcRobInSeconds;
     if (timeSinceLastNpcRobInSeconds < RobNpc.NPC_ROB_TIMER_SECONDS) {
-        if (!isChainedReply) {
-            interaction.editReply(`${userDisplayName}, you've pulled a heist recently and must wait ${convertSecondstoMinutes(timeUntilNpcRobAvailableInSeconds)} before trying again.`);
-        } else {
-            console.log(`robNpc.js chain link ${chainDepth} aborted: cooldown unexpectedly not ready for ${userId}`);
+        interaction.editReply(`${userDisplayName}, you've pulled a heist recently and must wait ${convertSecondstoMinutes(timeUntilNpcRobAvailableInSeconds)} before trying again.`);
+        return;
+    }
+
+    await resolveNpcRobChain(interaction, userId, username, userDisplayName, tier, userDetails);
+}
+
+// Deliberately LAZY rather than an unconditional upfront fetch — a whiff/loss never rolls a
+// skip at all (RobNpc's own "no skip roll on a loss" rule, unchanged by this rewrite), so an
+// all-loss chain must still never query Spud Keep's cooldown buff doc at all — a real, tested
+// cost-saving behavior this rewrite must not regress (see robNpcCooldownSkip.test.js's "Spud
+// Keep not even queried" case). Mirrors takeBounty.js's own identical helper.
+function makeLazySkipSourceCache(userDetails) {
+    let cached = null;
+    return async function getSkipSources() {
+        if (!cached) {
+            cached = await mercenaryFactory.getMercenaryCooldownSkipSources(userDetails);
+        }
+        return cached;
+    };
+}
+
+async function resolveNpcRobChain(interaction, userId, username, userDisplayName, tier, userDetails) {
+    const getSkipSources = makeLazySkipSourceCache(userDetails);
+    // Rank-immune by construction here (see this file's own top comment) — captured once
+    // purely for the mercenaryRank source's cosmetic label, never re-derived mid-chain.
+    const chainRank = mercenaryFactory.getMercenaryRankInfo(userDetails.mercenaryBountyWinCount).rank;
+    const preChainUserDetails = JSON.parse(JSON.stringify(userDetails));
+
+    const aggregatedSetFields = {};
+    const aggregatedAddFields = {};
+    let houseTaxTotal = 0;
+    const pendingMessages = [];
+    const pendingBigEvents = [];
+    let chainDepth = 0;
+    let cappedWithSkip = false;
+
+    try {
+        while (true) {
+            // workGainAmount/catchUpBonus mirror the EXACT same per-call computation the old
+            // recursive version made before every resolveNpcRob call — recomputed fresh every
+            // link (not chain-cached), since getCachedServerTotal is already a cheap cached
+            // read and catchUpBonus genuinely depends on this player's own evolving balance
+            // within the chain.
+            const total = await dynamoHandler.getCachedServerTotal();
+            const serverWealthBasedWorkAmount = Math.floor(total * Work.PERCENT_OF_TOTAL);
+            const workGainAmount = serverWealthBasedWorkAmount < Work.MAX_BASE_WORK_GAIN ? Work.MAX_BASE_WORK_GAIN : serverWealthBasedWorkAmount;
+            const catchUpBonus = await dynamoHandler.getCatchUpBonus(userDetails);
+
+            const result = await mercenaryFactory.resolveNpcRob(userDetails, workGainAmount, catchUpBonus, tier.key);
+
+            let cooldownSkipSource = null;
+            let missedSkipChance = 0;
+            let shouldChain = false;
+            if (result.won) {
+                const sources = await getSkipSources();
+                const totalSkipChance = cooldownFactory.combineSkipChance(sources);
+                if (cooldownFactory.rollCooldownSkip(totalSkipChance)) {
+                    const winningSource = cooldownFactory.pickSkipSource(sources);
+                    cooldownSkipSource = winningSource === 'mercenaryRank'
+                        ? { source: 'mercenaryRank', label: `Rank ${chainRank}` }
+                        : { source: 'spudKeep' };
+                    userDetails.npcRobTimer = Date.now() - RobNpc.NPC_ROB_TIMER_SECONDS * 1000;
+                    shouldChain = true;
+                } else {
+                    missedSkipChance = totalSkipChance;
+                    userDetails.npcRobTimer = Date.now();
+                }
+            } else {
+                userDetails.npcRobTimer = Date.now();
+            }
+            aggregatedSetFields.npcRobTimer = userDetails.npcRobTimer;
+
+            if (result.won && result.amount > 0) {
+                userDetails.potatoes += result.amount;
+                userDetails.totalEarnings += result.amount;
+                // mercenaryFactory.resolveNpcRob defers its own house-tax skim (see that
+                // function's own comment) specifically so it can be accumulated across the
+                // whole chain and credited ONCE below, instead of once per link.
+                houseTaxTotal += result.houseTax || 0;
+            } else if (!result.won && result.penaltyAmount > 0) {
+                // Tiers II-IV only — Tier I stays whiff-only, so penaltyAmount is always 0 there.
+                userDetails.potatoes -= result.penaltyAmount;
+                userDetails.totalLosses -= result.penaltyAmount;
+            }
+            aggregatedSetFields.potatoes = userDetails.potatoes;
+            aggregatedSetFields.totalEarnings = userDetails.totalEarnings;
+            aggregatedSetFields.totalLosses = userDetails.totalLosses;
+
+            let updatedNotoriety = null;
+            if (result.won) {
+                const notorietyGain = mercenaryFactory.getNotorietyGain(userDetails.mercenaryNotoriety, tier.notorietyPerWin);
+                aggregatedAddFields.mercenaryNotoriety = (aggregatedAddFields.mercenaryNotoriety || 0) + notorietyGain;
+                userDetails.mercenaryNotoriety += notorietyGain;
+                updatedNotoriety = userDetails.mercenaryNotoriety;
+
+                aggregatedAddFields.mercenaryHeistWinCount = (aggregatedAddFields.mercenaryHeistWinCount || 0) + 1;
+                userDetails.mercenaryHeistWinCount = (userDetails.mercenaryHeistWinCount || 0) + 1;
+            }
+
+            const previousCompanions = userDetails.companions;
+            const leveledCompanions = companionFactory.levelActiveCompanion(
+                previousCompanions,
+                companionFactory.getCooldownScaledWorkCountGrant(RobNpc.NPC_ROB_TIMER_SECONDS, CompanionLeveling.REALISTIC_PLAY_DISCOUNT),
+                null,
+                "robChanceFlat"
+            );
+            const companionXpGained = companionFactory.getAppliedCompanionXpGain(previousCompanions, leveledCompanions);
+            const companionName = companionFactory.getActiveCompanion(userDetails)?.name || null;
+            userDetails.companions = leveledCompanions;
+            aggregatedSetFields.companions = leveledCompanions;
+
+            // The Royal Treasury's rare stat-grant branch — folded straight into this
+            // chain's own accumulator (applyStatRewardGrant) instead of
+            // raidFactory.handleStatSplit's own separate find+write.
+            if (result.won && result.statReward) {
+                for (const grant of result.statReward) {
+                    applyStatRewardGrant(userDetails, grant);
+                }
+                aggregatedSetFields.workMultiplierAmount = userDetails.workMultiplierAmount;
+                aggregatedSetFields.passiveAmount = userDetails.passiveAmount;
+                aggregatedSetFields.bankCapacity = userDetails.bankCapacity;
+                aggregatedSetFields.sweetPotatoBuffs = userDetails.sweetPotatoBuffs;
+            }
+
+            const embed = embedFactory.createRobNpcResultEmbed(userDisplayName, result, tier, companionXpGained, companionName, cooldownSkipSource, missedSkipChance, updatedNotoriety);
+            pendingMessages.push({ embed, isChainedReply: chainDepth > 0 });
+
+            if (result.won && result.successChance < bigEventsChannel.BIG_EVENT_WIN_CHANCE_THRESHOLD) {
+                const fields = [
+                    bigEventsChannel.playerField(userDisplayName, userDetails.equippedTitle),
+                    bigEventsChannel.oddsField(result.successChance),
+                    bigEventsChannel.rewardField(result.amount),
+                ];
+                if (result.statReward) {
+                    fields.push(bigEventsChannel.statsGrantedField(result.statReward.map(s => s.type)));
+                }
+                pendingBigEvents.push({
+                    title: '🔥 Against All Odds!',
+                    description: `**${userDisplayName}** pulled off a daring ${tier.label} Heist against the odds!`,
+                    fields,
+                    color: bigEventsChannel.LONG_SHOT_WIN_COLOR,
+                });
+            }
+
+            if (!shouldChain) break;
+            if (chainDepth < Work.MAX_BOUNTY_RAID_COOLDOWN_SKIP_CHAIN_LENGTH) {
+                chainDepth++;
+                continue;
+            }
+            // Chain cap hit (2026-10-03 fix, preserved behavior) — this link's OWN roll also
+            // skipped, so npcRobTimer above already backdated to "ready now." Overwritten to a
+            // real full cooldown below, as part of the single end-of-chain write instead of a
+            // separate extra write.
+            cappedWithSkip = true;
+            break;
+        }
+
+        if (cappedWithSkip) {
+            // npcRobTimer stores the timestamp of the LAST attempt (compared against
+            // RobNpc.NPC_ROB_TIMER_SECONDS elapsed, not a stored "next available" absolute
+            // time the way /work's workTimer works) — so a real full cooldown here is
+            // Date.now(), the same value every ordinary whiff/loss already writes.
+            aggregatedSetFields.npcRobTimer = Date.now();
+        }
+
+        // The ONE write this entire chain produces for this player's own record.
+        await dynamoHandler.updateUserFields(userId, aggregatedSetFields, aggregatedAddFields);
+    } catch (e) {
+        console.error(`/rob-npc chain crashed for ${username} (${userId}), chainDepth ${chainDepth}:`, e);
+        const recoveryMessage = `${userDisplayName}, your /rob-npc attempt hit an unexpected error and had to stop — sorry about that! Nothing was lost, so you can run /rob-npc again right away.`;
+        try {
+            await interaction.editReply({ content: recoveryMessage, embeds: [], components: [] });
+        } catch (replyError) {
+            console.error(`Failed to notify ${username} of their /rob-npc crash:`, replyError);
         }
         return;
     }
 
-    const total = await dynamoHandler.getCachedServerTotal();
-    const serverWealthBasedWorkAmount = Math.floor(total * Work.PERCENT_OF_TOTAL);
-    const workGainAmount = serverWealthBasedWorkAmount < Work.MAX_BASE_WORK_GAIN ? Work.MAX_BASE_WORK_GAIN : serverWealthBasedWorkAmount;
-    const catchUpBonus = await dynamoHandler.getCatchUpBonus(userDetails);
-
-    const result = await mercenaryFactory.resolveNpcRob(userDetails, workGainAmount, catchUpBonus, heistTierKey);
-
-    const setAttributes = {};
-    const addAttributes = {};
-
-    // Cooldown-skip overhaul (2026-09-05, direct instruction) — Mercenary Rank's
-    // cooldownReductionPercent and Spud Keep's holder-wide perk used to shorten the wait
-    // deterministically; both are now a chance to skip the cooldown entirely instead,
-    // combined into one roll via cooldownFactory (same convention /work's
-    // calculateWorkTimerValue and takeBounty.js's runBountyAttempt use). Per explicit
-    // follow-up instruction, NEITHER source is even rolled on a loss/whiff — "on a loss
-    // there is no cooldown skip and no auto trigger" — so a loss always resets the full
-    // RobNpc.NPC_ROB_TIMER_SECONDS, no exceptions. A hit backdates npcRobTimer by the full
-    // cooldown (ready now) rather than changing the constant itself, keeping every
-    // NPC_ROB_TIMER_SECONDS reader correct without further changes.
-    let cooldownSkipSource = null;
-    // Shown on the result embed only when the roll actually happened AND missed — a hit
-    // gets its own flavor field instead, and a loss/whiff never rolls at all, so there's
-    // genuinely no chance to report (2026-09-05, player-reported: "the embeds no longer
-    // have a % cooldown reduction... if it doesn't skip they should at least know what
-    // the chance was so its not hidden").
-    let missedSkipChance = 0;
-    let shouldChain = false;
-    if (result.won) {
-        const sources = await mercenaryFactory.getMercenaryCooldownSkipSources(userDetails);
-        const totalSkipChance = cooldownFactory.combineSkipChance(sources);
-        if (cooldownFactory.rollCooldownSkip(totalSkipChance)) {
-            const winningSource = cooldownFactory.pickSkipSource(sources);
-            cooldownSkipSource = winningSource === 'mercenaryRank'
-                ? { source: 'mercenaryRank', label: `Rank ${result.rankInfo.rank}` }
-                : { source: 'spudKeep' };
-            setAttributes.npcRobTimer = Date.now() - RobNpc.NPC_ROB_TIMER_SECONDS * 1000;
-            shouldChain = true;
-        } else {
-            missedSkipChance = totalSkipChance;
-            setAttributes.npcRobTimer = Date.now();
-        }
-    } else {
-        setAttributes.npcRobTimer = Date.now();
-    }
-    if (result.won && result.amount > 0) {
-        setAttributes.potatoes = userDetails.potatoes + result.amount;
-        setAttributes.totalEarnings = userDetails.totalEarnings + result.amount;
-    } else if (!result.won && result.penaltyAmount > 0) {
-        // Tiers II-IV only — Tier I stays whiff-only, so penaltyAmount is always 0 there.
-        setAttributes.potatoes = userDetails.potatoes - result.penaltyAmount;
-        setAttributes.totalLosses = userDetails.totalLosses - result.penaltyAmount;
-    }
-    // Rival Bounty Hunters — Notoriety accrual on a win, same one-line lookup shape
-    // takeBounty.js uses (not a mercenaryFactory.js function), now reading the picked
-    // tier's own notorietyPerWin instead of a single flat constant. See
-    // systems/mercenary-bounties.md#rival-bounty-hunters.
-    // Projected mercenaryNotoriety AFTER this call's own gain (if any) — null on a whiff,
-    // so createRobNpcResultEmbed's own "ready now" note only ever fires off a real win.
-    let updatedNotoriety = null;
-    if (result.won) {
-        addAttributes.mercenaryNotoriety = mercenaryFactory.getNotorietyGain(userDetails.mercenaryNotoriety, tier.notorietyPerWin);
-        updatedNotoriety = userDetails.mercenaryNotoriety + addAttributes.mercenaryNotoriety;
-        // Durable lifetime counter (systems/quests.md#mercenary-quest) — separate from
-        // mercenaryNotoriety above, which resets on /confront-rival and so can't safely
-        // drive delta-based quest progress. Does NOT feed Mercenary Rank — that's
-        // mercenaryBountyWinCount only.
-        addAttributes.mercenaryHeistWinCount = 1;
-    }
-    // Companion leveling (roadmap #59, direct instruction — "have it level during
-    // heists and bounties... account for the longer cooldown"). Unconditional on
-    // win/loss, same as /work's own per-call bump. Cooldown-scaled against /work's own
-    // 300s baseline (see companionFactory.getCooldownScaledWorkCountGrant), then pulled
-    // back by CompanionLeveling.REALISTIC_PLAY_DISCOUNT since the pure ratio (6x)
-    // assumes a player hits /work back-to-back the instant its cooldown clears — 4x,
-    // direct instruction. Shared across all 4 heist tiers, same as the cooldown itself,
-    // since every tier costs the same real time regardless of which one was picked.
-    // Gated by robChanceFlat (originally hardcoded to Yukon by id, reworked 2026-09-07 —
-    // direct instruction: "make it so yamimic can level up with any of the mentioned
-    // increases it gives" — to match every other non-work leveling path's perk-type
-    // gating, and real /rob's own identical gate) — any equipped companion WITHOUT that
-    // perk is still a no-op here.
-    setAttributes.companions = companionFactory.levelActiveCompanion(
-        userDetails.companions,
-        companionFactory.getCooldownScaledWorkCountGrant(RobNpc.NPC_ROB_TIMER_SECONDS, CompanionLeveling.REALISTIC_PLAY_DISCOUNT),
-        null,
-        "robChanceFlat"
-    );
-    // "did Yukon actually train" readout for the result embed — see
-    // companionFactory.getAppliedCompanionXpGain's own comment.
-    const companionXpGained = companionFactory.getAppliedCompanionXpGain(userDetails.companions, setAttributes.companions);
-    const companionName = companionFactory.getActiveCompanion(userDetails)?.name || null;
-    // npcRobTimer resets on every outcome the same as every other cooldown-gated action
-    // in this bot, win, whiff, or loss alike.
-    await dynamoHandler.updateUserFields(userId, setAttributes, addAttributes);
-
-    // The Royal Treasury's rare stat-grant branch — reuses raidFactory.handleStatSplit (a
-    // 1-person "raidList") for the actual write, same precedent takeBounty.js's own
-    // rare stat-reward branch already set. The amount handed in is already the
-    // fully-resolved final delta (see mercenaryFactory.pickStatGrant), not a raw
-    // multiplier.
-    if (result.won && result.statReward) {
-        for (const grant of result.statReward) {
-            await raidFactory.handleStatSplit([{ id: userId, username }], grant.type, grant.amount);
-        }
+    // Every write below this point only runs once the chain's own write above has
+    // actually succeeded.
+    if (houseTaxTotal > 0) {
+        await dynamoHandler.addUserDatabase(awsConfigurations.clientId, 'potatoes', houseTaxTotal);
     }
 
-    const embed = embedFactory.createRobNpcResultEmbed(userDisplayName, result, tier, companionXpGained, companionName, cooldownSkipSource, missedSkipChance, updatedNotoriety);
-    await sendNpcRobResult(interaction, embed, isChainedReply);
+    for (const { embed, isChainedReply } of pendingMessages) {
+        await sendNpcRobResult(interaction, embed, isChainedReply);
+    }
+    for (const payload of pendingBigEvents) {
+        await bigEventsChannel.postBigEvent(payload);
+    }
 
-    if (result.won && result.successChance < bigEventsChannel.BIG_EVENT_WIN_CHANCE_THRESHOLD) {
-        const fields = [
-            bigEventsChannel.playerField(userDisplayName, userDetails.equippedTitle),
-            bigEventsChannel.oddsField(result.successChance),
-            bigEventsChannel.rewardField(result.amount),
+    // Achievement/Quest/Festival Quest checks — consolidated to run ONCE for the whole
+    // chain rather than once per link, mirroring work.js's/takeBounty.js's identical
+    // consolidation. Safe for the same reason: every check here is a monotonic
+    // "did we newly cross a threshold" check.
+    const newlyUnlocked = await achievementFactory.checkAndUnlock(userDetails);
+    if (newlyUnlocked.length > 0) {
+        const achievementEmbeds = embedFactory.createAchievementUnlockedEmbed(userDisplayName, newlyUnlocked);
+        interaction.followUp({ embeds: achievementEmbeds });
+        userDetails.achievements = [
+            ...(userDetails.achievements || []),
+            ...newlyUnlocked.map(achievement => achievement.id)
         ];
-        // Guild Raid Stat Reward parity pass (2026-09-20, systems/guilds.md's "Guild Raid
-        // Stat Reward: Technical Design", section 8) — enriches this ALREADY-firing
-        // long-shot post with a "Stats Granted" field when the same win also landed the
-        // Royal Treasury tier's rare stat-grant roll (result.statReward, already resolved
-        // above). Never a new independent post.
-        if (result.statReward) {
-            fields.push(bigEventsChannel.statsGrantedField(result.statReward.map(s => s.type)));
-        }
-        await bigEventsChannel.postBigEvent({
-            title: '🔥 Against All Odds!',
-            description: `**${userDisplayName}** pulled off a daring ${tier.label} Heist against the odds!`,
-            fields,
-            color: bigEventsChannel.LONG_SHOT_WIN_COLOR,
-        });
     }
 
-    // Achievement check — /rob-npc never had one before at all. Re-fetches (same
-    // "don't trust in-memory state after other writes just landed" discipline
-    // take-bounty.js's own check already uses) so this sees the companion leveling
-    // write above, including a same-turn Max-Level capstone crossing.
-    const updatedUserDetails = await dynamoHandler.findUser(userId, username);
-    if (updatedUserDetails) {
-        const newlyUnlocked = await achievementFactory.checkAndUnlock(updatedUserDetails);
-        if (newlyUnlocked.length > 0) {
-            const achievementEmbeds = embedFactory.createAchievementUnlockedEmbed(userDisplayName, newlyUnlocked);
-            interaction.followUp({ embeds: achievementEmbeds });
-        }
-
-        // Mercenary Quest's Heist-win option (systems/quests.md#mercenary-quest) is
-        // keyed off mercenaryHeistWinCount, which only ever changes here — mirrors
-        // take-bounty.js's own quest check for its Bounty-win option.
-        const questResult = await questFactory.checkAndClaimQuests(updatedUserDetails, userDetails);
-        if (questResult.completedQuests.length > 0) {
-            const questEmbed = embedFactory.createQuestCompleteEmbed(userDisplayName, questResult.completedQuests, updatedUserDetails.workMultiplierAmount);
-            interaction.followUp({ embeds: [questEmbed] });
-        }
-
-        // Seasonal Festivals' own objective track — mirrors take-bounty.js's own check.
-        const festivalQuestResult = await festivalFactory.checkAndClaimFestivalQuests(updatedUserDetails, userDetails);
-        if (festivalQuestResult.completedObjectives.length > 0) {
-            const festivalQuestEmbed = embedFactory.createFestivalQuestCompleteEmbed(userDisplayName, festivalQuestResult.completedObjectives, festivalQuestResult.festivalId);
-            interaction.followUp({ embeds: [festivalQuestEmbed] });
-        }
+    // Mercenary Quest's Heist-win option (systems/quests.md#mercenary-quest) is keyed off
+    // mercenaryHeistWinCount, which only ever changes here — mirrors takeBounty.js's own
+    // quest check for its Bounty-win option.
+    const questResult = await questFactory.checkAndClaimQuests(userDetails, preChainUserDetails);
+    if (questResult.completedQuests.length > 0) {
+        const questEmbed = embedFactory.createQuestCompleteEmbed(userDisplayName, questResult.completedQuests, userDetails.workMultiplierAmount);
+        interaction.followUp({ embeds: [questEmbed] });
     }
 
-    if (shouldChain) {
-        if (chainDepth < Work.MAX_BOUNTY_RAID_COOLDOWN_SKIP_CHAIN_LENGTH) {
-            await runNpcRobAttempt(interaction, userId, username, userDisplayName, heistTierKey, true, chainDepth + 1);
-        } else {
-            // Chain cap hit (2026-10-03, direct instruction) — this call's OWN roll also
-            // skipped, so npcRobTimer was already backdated to "ready now" above, with no
-            // concept of chain depth. Left alone, the player could run /rob-npc again
-            // themselves immediately for a free extra Heist past the cap. Overwrite with a
-            // real full cooldown — npcRobTimer = Date.now() is the same "time since" value
-            // every ordinary whiff/loss already writes.
-            await dynamoHandler.updateUserFields(userId, { npcRobTimer: Date.now() });
-        }
+    const festivalQuestResult = await festivalFactory.checkAndClaimFestivalQuests(userDetails, preChainUserDetails);
+    if (festivalQuestResult.completedObjectives.length > 0) {
+        const festivalQuestEmbed = embedFactory.createFestivalQuestCompleteEmbed(userDisplayName, festivalQuestResult.completedObjectives, festivalQuestResult.festivalId);
+        interaction.followUp({ embeds: [festivalQuestEmbed] });
     }
 }

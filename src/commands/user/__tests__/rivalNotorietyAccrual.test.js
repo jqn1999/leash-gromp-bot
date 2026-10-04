@@ -245,10 +245,20 @@ describe('/rob-npc accrues that heist tier\'s own notorietyPerWin on a win only'
             mercenaryNotoriety: Rival.NOTORIETY_GAIN_HALVING_THRESHOLD + 1,
         }));
         const interaction = fakeInteraction({ 'heist-type': 'royal_treasury' });
-        // Every random() call returns 0 — guarantees a hit, and also guarantees Royal
-        // Treasury's own 5% stat-grant roll lands (0 < 0.05), which is why baseUser above
-        // carries a sweetPotatoBuffs fixture.
-        const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0);
+        // Reward roll(0)/win check(0)/stat-grant roll(0) all hit (the win and the 5%
+        // stat-grant roll, matching why baseUser above carries a sweetPotatoBuffs fixture),
+        // then the cooldown-skip roll is pinned to MISS (0.999999) — Rank 6's own
+        // cooldownReductionPercent is genuinely nonzero here (unlike Market Stall's Rank-1
+        // cases elsewhere in this file), so leaving every call pinned to 0 would guarantee a
+        // skip HIT every link and auto-chain this single-win assertion into a full
+        // multi-link chain (2026-10-03 chain write-count rewrite — a single chain now
+        // produces one write with every link's notoriety gain summed together, so this test
+        // must isolate exactly one link to assert the per-win halved gain in isolation).
+        const randomSpy = jest.spyOn(Math, 'random')
+            .mockReturnValueOnce(0)
+            .mockReturnValueOnce(0)
+            .mockReturnValueOnce(0)
+            .mockReturnValueOnce(0.999999);
         try {
             await callback({}, interaction);
         } finally {
