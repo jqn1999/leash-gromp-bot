@@ -299,8 +299,12 @@ async function resolveNpcRobChain(interaction, userId, username, userDisplayName
             // Chain cap hit (2026-10-03 fix, preserved behavior) — this link's OWN roll also
             // skipped, so npcRobTimer above already backdated to "ready now." Overwritten to a
             // real full cooldown below, as part of the single end-of-chain write instead of a
-            // separate extra write.
+            // separate extra write. The embed just queued for THIS link still shows its own
+            // "skipped!" flavor text, which would now mislead the player about their real
+            // cooldown (2026-10-04, direct instruction) — appended to in place since it's
+            // already in pendingMessages.
             cappedWithSkip = true;
+            embedFactory.addChainCapNotice(pendingMessages[pendingMessages.length - 1].embed, Work.MAX_BOUNTY_RAID_COOLDOWN_SKIP_CHAIN_LENGTH);
             break;
         }
 

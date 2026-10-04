@@ -165,4 +165,34 @@ describe('/rob-npc cooldown skip', () => {
         expect(interaction.editReply).toHaveBeenCalledTimes(1);
         expect(interaction.followUp.mock.calls.length).toBeGreaterThanOrEqual(totalLinks - 1);
     });
+
+    // 2026-10-04, direct instruction: "make sure the skip text says something about how
+    // they reached the max amount of skips, timer not reduced" — same fix as /work's own
+    // copy (workCooldownSkipChainCap.test.js), Heist's own version. Reuses the exact same
+    // roll sequence as the test just above.
+    test('the final capped link\'s own embed explicitly says the chain cap was hit and the cooldown was not reduced', async () => {
+        dynamoHandler.findUser.mockResolvedValue(baseUser({ mercenaryBountyWinCount: 15 }));
+        const interaction = fakeInteraction({ 'heist-type': 'market_stall' });
+
+        const perHitRoll = [0, 0, 0, 0.5];
+        const totalLinks = Work.MAX_BOUNTY_RAID_COOLDOWN_SKIP_CHAIN_LENGTH + 1;
+        const allRolls = Array(totalLinks).fill(perHitRoll).flat();
+        const randomSpy = jest.spyOn(Math, 'random');
+        allRolls.forEach(v => randomSpy.mockReturnValueOnce(v));
+        try {
+            await callback({}, interaction);
+        } finally {
+            randomSpy.mockRestore();
+        }
+
+        // Searches every followUp rather than assuming the LAST one is the chain's own
+        // final embed — achievementFactory/questFactory are left real here, so a genuine
+        // unlock can add its own followUp(s) on top, after the chain's own messages.
+        const capField = interaction.followUp.mock.calls
+            .map(([payload]) => payload.embeds?.[0]?.data?.fields?.find(f => f.name.includes('Chain Cap Reached')))
+            .find(Boolean);
+        expect(capField).toBeDefined();
+        expect(capField.value).toContain(`${Work.MAX_BOUNTY_RAID_COOLDOWN_SKIP_CHAIN_LENGTH}`);
+        expect(capField.value.toLowerCase()).toContain('not');
+    });
 });

@@ -6,7 +6,7 @@
 jest.mock('../../../utils/dynamoHandler');
 
 const dynamoHandler = require('../../../utils/dynamoHandler');
-const { Bounty } = require('../../../utils/constants');
+const { Bounty, Work } = require('../../../utils/constants');
 const { callback } = require('../takeBounty');
 
 const fakeClient = { user: { id: 'house-account' } };
@@ -226,6 +226,41 @@ describe('/take-bounty mode:stat', () => {
         // produced.
         expect(interaction.editReply).toHaveBeenCalledTimes(1);
         expect(interaction.followUp).toHaveBeenCalled();
+    });
+
+    // 2026-10-04, direct instruction: "make sure the skip text says something about how
+    // they reached the max amount of skips, timer not reduced" — Stat Bounty's own copy of
+    // the same fix takeBountyCooldownSkip.test.js covers for the regular ladder.
+    test('the final capped link\'s own embed explicitly says the chain cap was hit and the cooldown was not reduced', async () => {
+        const user = baseUser({ mercenaryBountyWinCount: 525, potatoes: 10_000_000 });
+        dynamoHandler.findUser.mockResolvedValue(user);
+        const interaction = fakeInteraction({ mode: 'stat' });
+
+        // Per-link win+hit sequence: Meddley trigger MISS(.99), win check succeeds(0),
+        // flavor index(0), skip roll HIT(0), pickSkipSource attribution(.5) — the same
+        // 5-value sequence the "auto-chains one more attempt" test above uses for its own
+        // first (hit) resolution. Repeated once per link, MAX_BOUNTY_RAID_COOLDOWN_SKIP_
+        // CHAIN_LENGTH + 1 times total.
+        const perHitRoll = [0.99, 0, 0, 0, 0.5];
+        const totalLinks = Work.MAX_BOUNTY_RAID_COOLDOWN_SKIP_CHAIN_LENGTH + 1;
+        const allRolls = Array(totalLinks).fill(perHitRoll).flat();
+        const randomSpy = jest.spyOn(Math, 'random');
+        allRolls.forEach(v => randomSpy.mockReturnValueOnce(v));
+        try {
+            await callback(fakeClient, interaction);
+        } finally {
+            randomSpy.mockRestore();
+        }
+
+        // Searches every followUp rather than assuming the LAST one is the chain's own
+        // final embed — achievementFactory/questFactory are left real here, so a genuine
+        // unlock can add its own followUp(s) on top, after the chain's own messages.
+        const capField = interaction.followUp.mock.calls
+            .map(([payload]) => payload.embeds?.[0]?.data?.fields?.find(f => f.name.includes('Chain Cap Reached')))
+            .find(Boolean);
+        expect(capField).toBeDefined();
+        expect(capField.value).toContain(`${Work.MAX_BOUNTY_RAID_COOLDOWN_SKIP_CHAIN_LENGTH}`);
+        expect(capField.value.toLowerCase()).toContain('not');
     });
 
     // Metal Potato Meddley for Stat Bounty (2026-10-03, direct instruction) — same flat 1%

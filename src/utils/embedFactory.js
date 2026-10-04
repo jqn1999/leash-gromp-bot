@@ -270,12 +270,35 @@ const COOLDOWN_SKIP_FLAVOR = {
     mochi: { emoji: '🐈‍⬛', text: 'Kept pace with you the whole way — your cooldown never started, go again right away!' }
 };
 
+// Chain Cap notice (2026-10-04, direct instruction: "Whenever a full 5 additional work,
+// raid, bounty, or rob-npc chain happens... make sure the skip text says something about
+// how they reached the max amount of skips, timer not reduced") — every cooldown-skip
+// chain (/work, Guild Raid, Bounty/Heist) caps at Work.MAX_COOLDOWN_SKIP_CHAIN_LENGTH or
+// Work.MAX_BOUNTY_RAID_COOLDOWN_SKIP_CHAIN_LENGTH extra links; the FINAL link's own roll
+// can still hit the skip chance, but the chain can't extend any further, so that roll's
+// cooldown gets overwritten back to a real, full cooldown immediately after (see each
+// command file's own "Chain cap hit" comment). Before this, that final link's embed still
+// showed the normal "skipped — go again!" flavor text, which was actively misleading since
+// the cooldown was NOT actually left skipped. Exported standalone (not just a
+// buildCooldownSkipField branch) so every chain-loop command file can append this field
+// directly onto an already-built embed, not only pass it in as a fresh cooldownSkipSource.
+function createChainCapNoticeField(maxChainLength) {
+    return {
+        name: `⏳ Chain Cap Reached:`,
+        value: `Your cooldown-skip chance hit, but you'd already run this round's max of ${maxChainLength} auto-chained attempts — so this one doesn't count. Your cooldown was **not** reduced; a full cooldown applies.`,
+        inline: false,
+    };
+}
+
 // cooldownSkipSource shapes (2026-09-05 cooldown-skip overhaul added the last two):
 // - a companion id string (existing behavior — Fieldmouse/Spudsprite/Mochi)
 // - `{ worldBuffBossName }` when Griseous's World Boss buff rolled it
 // - `{ source: 'guildBuff', label }` when the guild's own selected workTimer buff rolled it
 // - `{ source: 'spudKeep' }` when Spud Keep's holder-wide perk rolled it
 // - `{ source: 'potion' }` when Trading Post's Quickstep Tonic rolled it
+// - `{ source: 'chainCapped', maxChainLength }` (2026-10-04) — a real skip-chance hit that
+//   landed on the chain's own final allowed link, so the skip can't actually take effect;
+//   see createChainCapNoticeField's own comment above.
 // All reuse the same _cooldownSkippedByCompanion field/parameter rather than parallel ones,
 // so every existing call site's truthiness check and work.js's chain-continuation check
 // keep working unchanged for every source — see dynamoHandler.calculateWorkTimerValue and
@@ -304,6 +327,9 @@ function buildCooldownSkipField(cooldownSkipSource, missedSkipChance = 0) {
         return null;
     }
     if (cooldownSkipSource && typeof cooldownSkipSource === 'object') {
+        if (cooldownSkipSource.source === 'chainCapped') {
+            return createChainCapNoticeField(cooldownSkipSource.maxChainLength);
+        }
         if (cooldownSkipSource.source === 'guildBuff') {
             return {
                 name: `🏰 ${cooldownSkipSource.label}'s Guild Buff:`,
@@ -5765,6 +5791,16 @@ class EmbedFactory {
             .setFooter({ text: "Made by Beggar" })
             .setTimestamp(Date.now())
         return embed;
+    }
+
+    // Chain Cap notice (2026-10-04) — see createChainCapNoticeField's own comment. Used by
+    // every chain-loop command file (work.js/takeBounty.js/robNpc.js) whose embed for the
+    // chain's own final link was already built (and queued, not yet sent) by the time the
+    // loop learns that THIS link's skip hit landed on the hard cap — mutates that
+    // already-built embed in place rather than needing a second code path that builds the
+    // field in up front. Returns the same embed instance for convenient chaining.
+    addChainCapNotice(embed, maxChainLength) {
+        return embed.addFields(createChainCapNoticeField(maxChainLength));
     }
 }
 

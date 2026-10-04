@@ -1361,6 +1361,17 @@ async function resolveRaid(interaction, raidSelection, isChainedReply, chainDept
     // cooldown skip" section for the full writeup.
     const sources = await getRaidCooldownSkipSources(guild, guildLevel);
 
+    // Chain Cap notice (2026-10-04, direct instruction) — known up front from this call's
+    // own chainDepth parameter, before any scenario below even rolls: if THIS link's own
+    // skip roll hits, there's no depth left to chain into (the check below, at this
+    // function's own bottom, would land in its "overwrite to full cooldown" branch either
+    // way). resolveRaidCooldown's hit branch reads this to show the real outcome instead of
+    // the normal "skipped — go again!" flavor text, since — unlike /work's or Bounty's own
+    // chain loops — this raid chain's embed gets SENT (not just queued) before that bottom
+    // check ever runs, so there's no already-built embed left to mutate afterward; the text
+    // has to be correct going in.
+    const isLastChainableLink = chainDepth >= Work.MAX_BOUNTY_RAID_COOLDOWN_SKIP_CHAIN_LENGTH;
+
     let shouldChain = false;
     let finalNextRaidAvailableAt = null;
     // Deferred long-shot-win Big Events post (2026-09-20, Guild Raid Stat Reward, section 7)
@@ -1400,16 +1411,26 @@ async function resolveRaid(interaction, raidSelection, isChainedReply, chainDept
         }
         const totalSkipChance = cooldownFactory.combineSkipChance(sources);
         if (cooldownFactory.rollCooldownSkip(totalSkipChance)) {
-            const winningSource = cooldownFactory.pickSkipSource(sources);
+            // Chain Cap notice (2026-10-04, direct instruction) — this roll genuinely hit,
+            // but this call's own chainDepth already sits at the cap, so there's no room
+            // left to chain into; the real skip never takes effect (see this function's own
+            // bottom "else overwrite" branch, unchanged below). shouldChain still has to
+            // stay true so that branch actually runs — only the DISPLAYED source changes,
+            // so the embed about to be sent tells the truth instead of "go again!"
             let cooldownSkipSource;
-            if (winningSource === 'guildBuff') {
-                cooldownSkipSource = { source: 'guildBuff', label: guildName };
-            } else if (winningSource === 'spudKeep') {
-                cooldownSkipSource = { source: 'spudKeep' };
-            } else if (winningSource === 'guildLevel') {
-                cooldownSkipSource = { source: 'guildLevel', label: `Guild Level ${guildLevel}` };
+            if (isLastChainableLink) {
+                cooldownSkipSource = { source: 'chainCapped', maxChainLength: Work.MAX_BOUNTY_RAID_COOLDOWN_SKIP_CHAIN_LENGTH };
             } else {
-                cooldownSkipSource = { source: 'guildCompanion', label: 'Cinderroot, the Hoardwarden' };
+                const winningSource = cooldownFactory.pickSkipSource(sources);
+                if (winningSource === 'guildBuff') {
+                    cooldownSkipSource = { source: 'guildBuff', label: guildName };
+                } else if (winningSource === 'spudKeep') {
+                    cooldownSkipSource = { source: 'spudKeep' };
+                } else if (winningSource === 'guildLevel') {
+                    cooldownSkipSource = { source: 'guildLevel', label: `Guild Level ${guildLevel}` };
+                } else {
+                    cooldownSkipSource = { source: 'guildCompanion', label: 'Cinderroot, the Hoardwarden' };
+                }
             }
             finalNextRaidAvailableAt = Date.now();
             shouldChain = true;

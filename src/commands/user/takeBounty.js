@@ -363,8 +363,12 @@ async function resolveRegularBountyChain(client, interaction, userId, username, 
             // skipped, so cooldownTimer above already backdated bountyTimer to "ready now."
             // Left alone, the player could run /take-bounty again themselves immediately for
             // a free extra attempt past the cap — overwritten to a real full cooldown below,
-            // as part of the single end-of-chain write instead of a separate extra write.
+            // as part of the single end-of-chain write instead of a separate extra write. The
+            // embed just queued for THIS link still shows its own "skipped!" flavor text,
+            // which would now mislead the player about their real cooldown (2026-10-04,
+            // direct instruction) — appended to in place since it's already in pendingMessages.
             cappedWithSkip = true;
+            embedFactory.addChainCapNotice(pendingMessages[pendingMessages.length - 1].embed, Work.MAX_BOUNTY_RAID_COOLDOWN_SKIP_CHAIN_LENGTH);
             break;
         }
 
@@ -527,7 +531,12 @@ async function resolveStatBountyChain(client, interaction, userId, username, use
                 chainDepth++;
                 continue;
             }
+            // Chain cap hit — same fix as resolveRegularBountyChain's own identical branch
+            // (2026-10-04, direct instruction): this link's embed already shows its own
+            // "skipped!" flavor text, misleading now that the cooldown gets overwritten
+            // back to full below — appended to in place since it's already in pendingMessages.
             cappedWithSkip = true;
+            embedFactory.addChainCapNotice(pendingMessages[pendingMessages.length - 1].embed, Work.MAX_BOUNTY_RAID_COOLDOWN_SKIP_CHAIN_LENGTH);
             break;
         }
 

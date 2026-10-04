@@ -230,12 +230,46 @@ describe('/take-bounty cooldown skip', () => {
         expect(finalWrite.bountyTimer).toBeGreaterThanOrEqual(Date.now() - 100);
         expect(finalWrite.bountyTimer).toBeLessThan(Date.now() - Bounty.BOUNTY_TIMER_SECONDS * 1000 + 100 + Bounty.BOUNTY_TIMER_SECONDS * 1000);
 
-        // Every one of the totalLinks real resolutions still genuinely said "skipped!" on
-        // its own result embed — only the FINAL persisted cooldown value changed, not the
-        // per-link narration. At least totalLinks-1 followUps (the chained links' own
-        // results) — not asserted exactly, since achievementFactory/questFactory are left
-        // real here and a genuine unlock can add further followUps on top.
+        // Every link but the LAST one still genuinely said "skipped!" on its own result
+        // embed — only the final persisted cooldown value changed there, not the per-link
+        // narration. The very last link's own embed is covered by its own dedicated test
+        // below (2026-10-04) instead, since it no longer says "skipped!" at all. At least
+        // totalLinks-1 followUps (the chained links' own results) — not asserted exactly,
+        // since achievementFactory/questFactory are left real here and a genuine unlock
+        // can add further followUps on top.
         expect(interaction.editReply).toHaveBeenCalledTimes(1);
         expect(interaction.followUp.mock.calls.length).toBeGreaterThanOrEqual(totalLinks - 1);
+    });
+
+    // 2026-10-04, direct instruction: "make sure the skip text says something about how
+    // they reached the max amount of skips, timer not reduced" — same fix as /work's own
+    // copy (workCooldownSkipChainCap.test.js). Reuses the exact same roll sequence as the
+    // test just above (a hit on every link through the cap), checking the FINAL link's
+    // own embed content instead of the write/call-count side effects.
+    test('the final capped link\'s own embed explicitly says the chain cap was hit and the cooldown was not reduced', async () => {
+        const user = baseUser({ mercenaryBountyWinCount: 15 });
+        dynamoHandler.findUser.mockResolvedValue(user);
+        const interaction = fakeInteraction({ mode: 'baby' });
+
+        const perHitRoll = [0, 0, 0, 0.99, 0.99, 0, 0.5];
+        const totalLinks = Work.MAX_BOUNTY_RAID_COOLDOWN_SKIP_CHAIN_LENGTH + 1;
+        const allRolls = Array(totalLinks).fill(perHitRoll).flat();
+        const randomSpy = jest.spyOn(Math, 'random');
+        allRolls.forEach(v => randomSpy.mockReturnValueOnce(v));
+        try {
+            await callback(fakeClient, interaction);
+        } finally {
+            randomSpy.mockRestore();
+        }
+
+        // Searches every followUp rather than assuming the LAST one is the chain's own
+        // final embed — achievementFactory/questFactory are left real here, so a genuine
+        // unlock can add its own followUp(s) on top, after the chain's own messages.
+        const capField = interaction.followUp.mock.calls
+            .map(([payload]) => payload.embeds?.[0]?.data?.fields?.find(f => f.name.includes('Chain Cap Reached')))
+            .find(Boolean);
+        expect(capField).toBeDefined();
+        expect(capField.value).toContain(`${Work.MAX_BOUNTY_RAID_COOLDOWN_SKIP_CHAIN_LENGTH}`);
+        expect(capField.value.toLowerCase()).toContain('not');
     });
 });

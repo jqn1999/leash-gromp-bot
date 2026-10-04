@@ -265,6 +265,41 @@ describe('/start-raid cooldown skip', () => {
         // The fix's own final write is a REAL full cooldown, not "ready now".
         expect(raidTimerCalls[raidTimerCalls.length - 1][2]).toBe(FIXED_NOW + Raid.RAID_TIMER_SECONDS * 1000);
     });
+
+    // 2026-10-04, direct instruction: "make sure the skip text says something about how
+    // they reached the max amount of skips, timer not reduced" — Guild Raid's own copy,
+    // see workCooldownSkipChainCap.test.js's identical test. Unlike /work/Bounty/Heist,
+    // this chain's embed is SENT (not just queued) before the cap is known, so the fix
+    // lives in resolveRaidCooldown itself (an up-front isLastChainableLink check) rather
+    // than an after-the-fact mutation — this proves the embed is correct going out, not
+    // patched after. Reuses the exact same roll sequence as the test just above; with the
+    // fix, the final link's own pickSkipSource roll is never even made (chainCapped short-
+    // circuits it), so its queued 0.5 is simply left unconsumed — harmless since nothing
+    // downstream needs it.
+    test('the final capped link\'s own embed explicitly says the chain cap was hit and the cooldown was not reduced', async () => {
+        strongRosterSetup();
+        const guild = guildFixture({ guildCompanion: cinderroot });
+        dynamoHandler.findGuildById.mockResolvedValue(guild);
+        dynamoHandler.getActiveSpudKeepCooldownBuff.mockResolvedValue(undefined);
+
+        const perHitRoll = [0.5, 0.5, 0.5, 0.1, 0.001, 0.5];
+        const totalLinks = Work.MAX_BOUNTY_RAID_COOLDOWN_SKIP_CHAIN_LENGTH + 1;
+        const allRolls = Array(totalLinks).fill(perHitRoll).flat();
+        const randomSpy = jest.spyOn(Math, 'random');
+        allRolls.forEach(v => randomSpy.mockReturnValueOnce(v));
+
+        const interaction = fakeInteraction();
+        await runStartRaidFlow(interaction, 'baby');
+
+        randomSpy.mockRestore();
+
+        const lastCall = interaction.followUp.mock.calls[interaction.followUp.mock.calls.length - 1];
+        const embed = lastCall[0].embeds[0];
+        const capField = embed.data.fields.find(f => f.name.includes('Chain Cap Reached'));
+        expect(capField).toBeDefined();
+        expect(capField.value).toContain(`${Work.MAX_BOUNTY_RAID_COOLDOWN_SKIP_CHAIN_LENGTH}`);
+        expect(capField.value.toLowerCase()).toContain('not');
+    });
 });
 
 // getRaidCooldownSkipSources (2026-09-05, direct instruction — "can we get all the user's

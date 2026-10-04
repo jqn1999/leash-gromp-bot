@@ -127,4 +127,24 @@ describe('/work chain-cap-hit-on-its-own-skip', () => {
         // Every one of the totalLinks real resolutions still counts toward workCount.
         expect(addFields.workCount).toBe(totalLinks);
     });
+
+    // 2026-10-04, direct instruction: "make sure the skip text says something about how
+    // they reached the max amount of skips, timer not reduced" — the final link's own
+    // embed (already queued, sent via followUp since it's chainDepth > 0) used to still
+    // show its normal "skipped!" flavor text even though workTimer gets overwritten back
+    // to a real cooldown moments later. It now carries an explicit notice instead.
+    test('the final capped link\'s own embed explicitly says the chain cap was hit and the cooldown was not reduced', async () => {
+        const interaction = fakeInteraction();
+
+        await workModule.callback({}, interaction);
+
+        // chainDepth > 0 for every link but the first, so every link after the first sends
+        // via followUp — the LAST call is the capped link's own embed.
+        const lastCall = interaction.followUp.mock.calls[interaction.followUp.mock.calls.length - 1];
+        const embed = lastCall[0].embeds[0];
+        const capField = embed.data.fields.find(f => f.name.includes('Chain Cap Reached'));
+        expect(capField).toBeDefined();
+        expect(capField.value).toContain(`${Work.MAX_COOLDOWN_SKIP_CHAIN_LENGTH}`);
+        expect(capField.value.toLowerCase()).toContain('not');
+    });
 });

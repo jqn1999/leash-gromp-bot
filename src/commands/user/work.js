@@ -472,11 +472,15 @@ async function performWork(interaction, userId, username, userDisplayName, workG
             // top comment) — this link's OWN roll also skipped, so its own delta.setFields
             // above already carries workTimer as "available now." Left alone, the player
             // could just run /work again themselves immediately for a free extra roll
-            // beyond the chain cap — the result embed still says "skipped!" (that part of
-            // this link was real), but workTimer gets overwritten back to a real, full
+            // beyond the chain cap — workTimer gets overwritten back to a real, full
             // Work.WORK_TIMER_SECONDS cooldown below, as part of the single end-of-chain
-            // write now, instead of a separate extra write.
+            // write now, instead of a separate extra write. The result embed just queued
+            // for THIS link above still shows its own "skipped!" flavor text, which would
+            // now actively mislead the player about their real cooldown (2026-10-04, direct
+            // instruction) — appended to in place rather than rebuilt, since it's already
+            // sitting in pendingMessages, not yet sent.
             cappedWithSkip = true;
+            embedFactory.addChainCapNotice(pendingMessages[pendingMessages.length - 1].embed, Work.MAX_COOLDOWN_SKIP_CHAIN_LENGTH);
             break;
         }
 

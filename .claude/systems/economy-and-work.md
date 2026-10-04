@@ -1255,9 +1255,10 @@ recurse if under the cap. If the cap was reached on a call whose OWN roll ALSO h
 "chains 5 times and the 5th [technically 6th, 0-indexed] also says it skips" case the instruction
 describes — the chain correctly stopped recursing, but the cooldown field was left at "available
 right now," since nothing ever overwrote it. The result embed genuinely said "skipped!" (that
-part was real, and deliberately left alone — see the instruction's own "even if the last one
-says it skips again"), but the player could then immediately run the command again themselves for
-a free extra attempt the chain cap was supposed to prevent.
+part was real, and deliberately left alone at the time — see the instruction's own "even if the
+last one says it skips again" — **though this was reversed 2026-10-04, see this section's own
+"Chain Cap wording" follow-up below**), but the player could then immediately run the command
+again themselves for a free extra attempt the chain cap was supposed to prevent.
 
 **Fix, identical shape in all four files**: the `if (shouldChain && chainDepth < CAP)` check
 became `if (shouldChain) { if (chainDepth < CAP) { recurse } else { overwrite the cooldown field
@@ -1293,6 +1294,65 @@ the single end-of-chain write** the very next section describes — the OUTCOME 
 guarantees (a real full-duration cooldown, never left "ready now," when the cap is hit on a link
 that itself skipped) is unchanged; only `/work`'s write COUNT changed, and only for `/work` —
 `/take-bounty`/`/rob-npc`/`/start-raid` still write per-link exactly as described above.
+
+### Chain Cap wording: the capped link's own embed still said "skipped!" even though the write overwrites it a moment later (2026-10-04 follow-up, all 4 chaining commands)
+
+**Asked** (direct instruction): "Whenever a full 5 additional work, raid, bounty, or rob-npc
+chain happens can u make sure the skip text says something about how they reached the max amount
+of skips timer not reduced." A direct reversal of the "deliberately left alone" call made in this
+same section's original fix above — back then the capped link's own "skipped!" flavor text was
+judged harmless since "that part was real." On reflection (and by this instruction) it isn't
+harmless: the player reads "skipped — go again!" on that exact link, then watches their cooldown
+land at a full duration anyway, with nothing on screen explaining why.
+
+**Fix, shared helper + two different wiring shapes** depending on whether each command's embed
+is SENT or merely QUEUED by the time the chain-cap check runs:
+- `embedFactory.js` gained `createChainCapNoticeField(maxChainLength)` (a plain field object:
+  "⏳ Chain Cap Reached: Your cooldown-skip chance hit, but you'd already run this round's max of
+  N auto-chained attempts — so this one doesn't count. Your cooldown was **not** reduced; a full
+  cooldown applies.") plus an `EmbedFactory.addChainCapNotice(embed, maxChainLength)` method that
+  appends it to an existing embed, plus a new `cooldownSkipSource.source === 'chainCapped'` branch
+  in `buildCooldownSkipField` that delegates to the same field — one shared source of the actual
+  copy, two ways in.
+- **`/work`/`/take-bounty` (both chains)/`/rob-npc`** (all four rewritten 2026-10-03 to one
+  write/queued-messages-sent-after-the-loop) build and queue each link's embed into
+  `pendingMessages` BEFORE the chain-cap check runs, and don't actually SEND anything until after
+  the whole loop ends — so the fix mutates the already-built embed in place, right where
+  `cappedWithSkip = true` gets set: `embedFactory.addChainCapNotice(pendingMessages[pendingMessages.length - 1].embed, CAP)`.
+  No handler-signature changes needed across any of the scenario handlers.
+- **`/start-raid`** (never rewritten to the single-write architecture — `/start-raid`'s own write-
+  batching remains explicitly deferred, see roadmap.md) sends each link's embed via `sendResult`
+  SYNCHRONOUSLY INSIDE the scenario closure, before `resolveRaid`'s own bottom-of-function
+  chain-cap check ever runs — by the time that check would fire, the message is already out over
+  the network, too late to mutate. Fixed differently: `chainDepth` (already a parameter at this
+  call's own top) lets `resolveRaid` compute `isLastChainableLink` up front, before any scenario
+  even rolls; `resolveRaidCooldown`'s win-and-skip-hit branch checks it and returns
+  `{ source: 'chainCapped', maxChainLength }` instead of the normal flavor object when true — the
+  SAME `cooldownSkipSource` that already flows untouched into whichever scenario's own embed call,
+  so no scenario closure needed a signature change either. `shouldChain`/`finalNextRaidAvailableAt`
+  stay exactly as they were (still `true`/`Date.now()`) so the existing bottom-of-function
+  `if (chainDepth < CAP) {...} else { overwrite }` still does the real cooldown-correcting write —
+  only the DISPLAYED source changes on that one link; `pickSkipSource`'s own `Math.random()` call
+  is skipped entirely in this branch (one fewer roll on the capped link only — harmless, since
+  nothing downstream needs it).
+
+**Tests**: one new test per command (`workCooldownSkipChainCap.test.js`,
+`takeBountyCooldownSkip.test.js` ×2 — regular ladder AND `takeBountyStatMode.test.js`'s Stat
+Bounty submode, `robNpcCooldownSkip.test.js`, `startRaidCooldownSkip.test.js`), each reusing that
+file's own pre-existing "hit on every link through the cap" roll sequence and asserting the final
+link's own sent embed carries a field named "Chain Cap Reached" mentioning the real cap number
+and the word "not." `takeBountyCooldownSkip.test.js`'s OLDER chain-cap test's own comment
+("every one of the totalLinks real resolutions still genuinely said 'skipped!'") was corrected —
+that's no longer true of the very last link, which is exactly what the new test next to it now
+covers. Full suite: **127 of 128 suites (1 pre-existing skip) / 2334 tests (18 pre-existing
+skips, 2316 passing)** — net +5 new tests, 0 broken (one known pre-existing flaky test,
+`rivalNotorietyAccrual.test.js`'s "above NOTORIETY_GAIN_HALVING_THRESHOLD" case, was independently
+confirmed to fail at roughly the same ~10-15% rate on a clean, unmodified checkout — unrelated to
+this change, not investigated further here).
+
+**Cross-repo note**: not yet ported to `financial-project` — if its own `gromp-economy`/
+`gromp-guilds`/`gromp-mercenary` Lambdas have an equivalent chain-cap branch with the same
+"skipped!" text left in place, it needs the identical wording fix to stay in sync.
 
 ## `/work`'s cooldown-skip chain rewritten to one write per chain instead of one write per link (2026-10-03)
 
