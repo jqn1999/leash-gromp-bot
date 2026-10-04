@@ -562,12 +562,12 @@ describe('resolveBountyAttempt', () => {
             expect(result.tier).toBe(Bounty.TIERS[0].tier);
         });
 
-        test('Band I numbers (tier roll lands 1-4): difficulty 2000, +10,000,000 potatoes, permanent flat stat grants, no stat-reward/Yukon roll', async () => {
+        test('Band I numbers (tier roll lands 1-4): difficulty 900 (45% of guild-derived 2000, solo rescale), +4,500,000 potatoes, permanent flat stat grants, no stat-reward/Yukon roll', async () => {
             const user = baseUser({ workMultiplierAmount: 90 }); // power=90, Bounty.TIERS[0].tier=1 -> Band I
             const randomSpy = jest.spyOn(Math, 'random')
                 .mockReturnValueOnce(0)     // tier roll -> Tier 1 (Band I)
                 .mockReturnValueOnce(0.005) // Metal Potato Meddley trigger HIT (< 1%)
-                .mockReturnValueOnce(0)     // win check: successChance = min(90/2000, .95) = .045, 0 < .045 -> win
+                .mockReturnValueOnce(0)     // win check: successChance = min(90/900, .95) = .1, 0 < .1 -> win
                 .mockReturnValueOnce(0.5);  // reward rangeRoll -> 1.0 (midpoint of .8-1.2)
             let result;
             try {
@@ -579,8 +579,8 @@ describe('resolveBountyAttempt', () => {
             expect(result.won).toBe(true);
             expect(result.scenario).toBeNull();
             expect(result.currency).toBe('potato');
-            expect(result.successChance).toBeCloseTo(Math.min(90 / 2000, Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE));
-            expect(result.rewardAmount).toBe(Math.round(10000000 * 1.0 * 1.00)); // rank 1 -> 1.00x
+            expect(result.successChance).toBeCloseTo(Math.min(90 / 900, Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE));
+            expect(result.rewardAmount).toBe(Math.round(4500000 * 1.0 * 1.00)); // rank 1 -> 1.00x
             expect(result.statReward).toEqual([
                 { type: 'workMultiplierAmount', amount: 2.0 },
                 { type: 'passiveAmount', amount: 1000000 },
@@ -588,12 +588,12 @@ describe('resolveBountyAttempt', () => {
             ]);
         });
 
-        test('Band II numbers (tier roll lands 5-8): difficulty 6000, +30,000,000 potatoes, matching permanent grants', async () => {
+        test('Band II numbers (tier roll lands 5-8): difficulty 2700 (45% of guild-derived 6000), +13,500,000 potatoes, matching permanent grants', async () => {
             const user = baseUser({ workMultiplierAmount: 200 });
             const randomSpy = jest.spyOn(Math, 'random')
                 .mockReturnValueOnce(0.5)   // tier roll -> Tier 7 at power 200 (Band II, verified via raidFactory.rollWeightedTier)
                 .mockReturnValueOnce(0.005) // Metal Potato Meddley trigger HIT
-                .mockReturnValueOnce(0)     // win check: successChance = min(200/6000, .95) ≈ .0333, 0 < that -> win
+                .mockReturnValueOnce(0)     // win check: successChance = min(200/2700, .95) ≈ .0741, 0 < that -> win
                 .mockReturnValueOnce(0.5);  // reward rangeRoll -> 1.0
             let result;
             try {
@@ -604,8 +604,8 @@ describe('resolveBountyAttempt', () => {
             expect(mercenaryFactory.getBandLetter(result.tier)).toBe('II');
             expect(result.isMetalPotatoMeddley).toBe(true);
             expect(result.won).toBe(true);
-            expect(result.successChance).toBeCloseTo(Math.min(200 / 6000, Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE));
-            expect(result.rewardAmount).toBe(Math.round(30000000 * 1.0 * 1.00));
+            expect(result.successChance).toBeCloseTo(Math.min(200 / 2700, Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE));
+            expect(result.rewardAmount).toBe(Math.round(13500000 * 1.0 * 1.00));
             expect(result.statReward).toEqual([
                 { type: 'workMultiplierAmount', amount: 6.0 },
                 { type: 'passiveAmount', amount: 3000000 },
@@ -613,13 +613,13 @@ describe('resolveBountyAttempt', () => {
             ]);
         });
 
-        test('Band III numbers (tier roll lands 9-12): difficulty 12000, +60,000,000 potatoes, matching permanent grants, reward scaled by Mercenary Rank', async () => {
+        test('Band III numbers (tier roll lands 9-12): difficulty 5400 (45% of guild-derived 12000), +27,000,000 potatoes, matching permanent grants, reward scaled by Mercenary Rank', async () => {
             const maxRankTier = MercenaryRank.THRESHOLDS[MercenaryRank.THRESHOLDS.length - 1];
             const user = baseUser({ workMultiplierAmount: 2000, mercenaryBountyWinCount: maxRankTier.winsRequired }); // max rank -> rewardMultiplier 5.00x
             const randomSpy = jest.spyOn(Math, 'random')
                 .mockReturnValueOnce(0.5)   // tier roll -> Tier 12 at power 2000 (Band III, verified via raidFactory.rollWeightedTier)
                 .mockReturnValueOnce(0.005) // Metal Potato Meddley trigger HIT
-                .mockReturnValueOnce(0)     // win check: successChance = min(2000/12000, .95) ≈ .1667, 0 < that -> win
+                .mockReturnValueOnce(0)     // win check: successChance = min(2000/5400, .95) ≈ .3704, 0 < that -> win
                 .mockReturnValueOnce(0.5);  // reward rangeRoll -> 1.0
             let result;
             try {
@@ -630,8 +630,8 @@ describe('resolveBountyAttempt', () => {
             expect(mercenaryFactory.getBandLetter(result.tier)).toBe('III');
             expect(result.isMetalPotatoMeddley).toBe(true);
             expect(result.won).toBe(true);
-            expect(result.successChance).toBeCloseTo(Math.min(2000 / 12000, Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE));
-            expect(result.rewardAmount).toBe(Math.round(60000000 * 1.0 * maxRankTier.rewardMultiplier));
+            expect(result.successChance).toBeCloseTo(Math.min(2000 / 5400, Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE));
+            expect(result.rewardAmount).toBe(Math.round(27000000 * 1.0 * maxRankTier.rewardMultiplier));
             expect(result.statReward).toEqual([
                 { type: 'workMultiplierAmount', amount: 12.0 },
                 { type: 'passiveAmount', amount: 6000000 },
@@ -2078,11 +2078,11 @@ describe('resolveStatBounty', () => {
 // Stat Raid's own power-ratio-capped-at-50% success formula instead of the flat 50% roll.
 // See mercenaryFactory.resolveStatBounty's own comment for the full mechanic.
 describe('resolveStatBounty Metal Potato Meddley', () => {
-    test('a hit reuses Band I doubled, difficulty 2000, capped at MAXIMUM_STAT_RAID_SUCCESS_RATE (not the flat 50% roll), and pays potatoes plus all three stat grants', async () => {
-        const user = baseUser({ workMultiplierAmount: 90 }); // power=90 -> successChance = 90/2000 = .045
+    test('a hit reuses Band I doubled, difficulty 900 (45% of guild-derived 2000, solo rescale), capped at MAXIMUM_STAT_RAID_SUCCESS_RATE (not the flat 50% roll), and pays potatoes plus all three stat grants', async () => {
+        const user = baseUser({ workMultiplierAmount: 90 }); // power=90 -> successChance = 90/900 = .1
         const randomSpy = jest.spyOn(Math, 'random')
             .mockReturnValueOnce(0.005) // Metal Potato Meddley trigger HIT (< 1%)
-            .mockReturnValueOnce(0)     // win check: .045 > 0 -> win
+            .mockReturnValueOnce(0)     // win check: .1 > 0 -> win
             .mockReturnValueOnce(0.5);  // reward rangeRoll -> 1.0 (midpoint of .8-1.2)
         let result;
         try {
@@ -2094,8 +2094,8 @@ describe('resolveStatBounty Metal Potato Meddley', () => {
         expect(result.isMetalPotatoMeddley).toBe(true);
         expect(result.won).toBe(true);
         expect(result.cost).toBe(0);
-        expect(result.successChance).toBeCloseTo(Math.min(90 / 2000, Raid.MAXIMUM_STAT_RAID_SUCCESS_RATE));
-        expect(result.rewardAmount).toBe(Math.round(10000000 * 2 * 1.0 * 1.00)); // Band I reward doubled, rank 1 -> 1.00x
+        expect(result.successChance).toBeCloseTo(Math.min(90 / 900, Raid.MAXIMUM_STAT_RAID_SUCCESS_RATE));
+        expect(result.rewardAmount).toBe(Math.round(4500000 * 2 * 1.0 * 1.00)); // Band I reward (rescaled) doubled, rank 1 -> 1.00x
         expect(result.statReward).toEqual([
             { type: 'workMultiplierAmount', amount: 4.0 },
             { type: 'passiveAmount', amount: 2000000 },

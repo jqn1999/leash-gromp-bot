@@ -900,9 +900,9 @@ later without silently affecting the other:
 METAL_POTATO_MEDDLEY_CHANCE: 0.01,
 METAL_POTATO_MEDDLEY_PENALTY: 0,
 METAL_POTATO_MEDDLEY: {
-    I:   { difficulty: 2000,  reward: 10000000, multiplierReward: 2.0,  passiveReward: 1000000, capacityReward: 10000000 },  // = Raid.METAL_KING_*
-    II:  { difficulty: 6000,  reward: 30000000, multiplierReward: 6.0,  passiveReward: 3000000, capacityReward: 30000000 },  // = Raid.ELITE_METAL_KING_*
-    III: { difficulty: 12000, reward: 60000000, multiplierReward: 12.0, passiveReward: 6000000, capacityReward: 60000000 }, // = Raid.LEGENDARY_METAL_KING_*
+    I:   { difficulty: 900,  reward: 4500000,  multiplierReward: 2.0,  passiveReward: 1000000, capacityReward: 10000000 },  // 45% of Raid.METAL_KING_* difficulty/reward
+    II:  { difficulty: 2700, reward: 13500000, multiplierReward: 6.0,  passiveReward: 3000000, capacityReward: 30000000 },  // 45% of Raid.ELITE_METAL_KING_* difficulty/reward
+    III: { difficulty: 5400, reward: 27000000, multiplierReward: 12.0, passiveReward: 6000000, capacityReward: 60000000 }, // 45% of Raid.LEGENDARY_METAL_KING_* difficulty/reward
 }
 ```
 
@@ -915,12 +915,16 @@ had the one Regular-mode-equivalent cap, unlike Metal King's three separate per-
 successChance = min(effectiveBountyPower / METAL_POTATO_MEDDLEY[band].difficulty, Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE)
 ```
 
-Difficulty 2000/6000/12000 at bands I/II/III was chosen to land solo odds in roughly the same
-~17-24% ballpark a 4-person guild's own Metal King sees at each mode's own reference power —
-a direct reuse of Metal King's own difficulty numbers accomplishes this without a separate
-derivation, since Bounty's solo `effectiveBountyPower` and a guild's aggregate
-`totalMultiplier` already occupy comparable ranges at matching content tiers (see the 12-Tier
-Bounty Ladder's own "Solo power reference points" table above).
+Difficulty/reward were originally a direct 1:1 copy of Guild Raid's own Metal King numbers
+(2000/6000/12000 and 10M/30M/60M), chosen to land solo odds in roughly the same ~17-24%
+ballpark a 4-person guild's own Metal King sees at each mode's own reference power. **Rescaled
+to 45% of those values, 2026-10-04**, direct instruction ("scale the difficulty and potato
+reward to 45%... since they're solo") — a solo mercenary's `effectiveBountyPower` has no
+4-person team-power multiplier (~2.18x at a 4-person equal-power roster) the way a guild's
+`totalMultiplier` does, so the original 1:1 reuse made this meaningfully harder to reach for a
+solo player at comparable individual power than the equivalent guild bracket is for a guild
+member. Only `difficulty`/`reward` moved; the permanent stat grants
+(`multiplierReward`/`passiveReward`/`capacityReward`) are untouched.
 
 **Reward on a win** — direct numeric copy of Guild Raid's own Metal King win math (same
 ×0.8-1.2 range roll, no `raidRewardMultiplier` term — Bounty has no guild-level reward
@@ -1058,11 +1062,12 @@ statReward = [
 ]
 ```
 
-At today's Band I numbers that's 20,000,000 potatoes, +4.0 work multiplier, +2,000,000
-passive income, +20,000,000 bank capacity (before the range roll/rank multiplier scale the
-potato figure further) — a genuinely bigger single hit than the regular ladder's own Band I
-Meddley, intentional given Stat Bounty's own higher baseline stakes (a flat 300,000-potato
-buy-in per attempt vs. the ladder's scaling-with-tier cost).
+At today's (45%-rescaled) Band I numbers that's 9,000,000 potatoes, +4.0 work multiplier,
++2,000,000 passive income, +20,000,000 bank capacity (before the range roll/rank multiplier
+scale the potato figure further) — the permanent grants stay the bigger single hit relative to
+the regular ladder's own Band I Meddley (the 2026-10-04 rescale only touched difficulty/reward,
+not the grants), intentional given Stat Bounty's own higher baseline stakes (a flat
+300,000-potato buy-in per attempt vs. the ladder's scaling-with-tier cost).
 
 **Costs nothing at all, win or lose** — bypasses `Bounty.STAT_BOUNTY_COST`'s normal
 win-or-lose charge entirely, same "costs nothing win or lose" shape every Metal King bracket

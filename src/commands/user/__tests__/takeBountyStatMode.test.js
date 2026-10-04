@@ -233,7 +233,7 @@ describe('/take-bounty mode:stat', () => {
     // and Guild Stat Raid's own power-ratio-capped-at-50% success formula. See
     // mercenaryFactory.resolveStatBounty's own comment for the full mechanic.
     test('a Meddley hit costs nothing, pays doubled Band I potatoes, and grants all three permanent stats', async () => {
-        const user = baseUser({ workMultiplierAmount: 90 }); // successChance = 90/2000 = .045
+        const user = baseUser({ workMultiplierAmount: 90 }); // successChance = 90/900 = .1 (difficulty rescaled to 45% for solo play)
         const originalPotatoes = user.potatoes;
         const originalTotalEarnings = user.totalEarnings;
         const originalWorkMultiplierAmount = user.workMultiplierAmount;
@@ -258,7 +258,7 @@ describe('/take-bounty mode:stat', () => {
         const [, setFields, addFields] = dynamoHandler.updateUserFields.mock.calls.find(([, s]) => 'potatoes' in s);
 
         // Costs nothing — potatoes only move by the reward, never STAT_BOUNTY_COST.
-        const expectedReward = Math.round(10000000 * 2 * 1.0 * 1.00); // Band I reward doubled, rank 1 -> 1.00x
+        const expectedReward = Math.round(4500000 * 2 * 1.0 * 1.00); // Band I reward (rescaled) doubled, rank 1 -> 1.00x
         expect(setFields.potatoes).toBe(originalPotatoes + expectedReward);
         expect(setFields.totalEarnings).toBe(originalTotalEarnings + expectedReward);
         expect(setFields.totalLosses).toBe(0);

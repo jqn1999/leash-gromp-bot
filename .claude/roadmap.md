@@ -20712,3 +20712,42 @@ tests. New tests: a `resolveStatBounty Metal Potato Meddley` describe block in
 miss falling through to the normal roll), plus end-to-end hit/loss tests in
 `takeBountyStatMode.test.js` through the real command `callback`. Full suite: **127 of 128
 suites (1 pre-existing skip) / 2327 tests (18 pre-existing skips, 2309 passing)**.
+
+## Metal Potato Meddley rescaled to 45% of its guild-derived difficulty/reward — solo mercs have no team-power multiplier (2026-10-04, direct instruction: "scale the difficulty and potato reward to 45% for the merc potato meddley since they're solo")
+
+Every Meddley band's `difficulty`/`reward` in `Bounty.METAL_POTATO_MEDDLEY` were literal copies of
+Guild Raid's own Regular/Elite/Legendary Metal King numbers (see the feature's own original
+roadmap entry above) — a straight 1:1 reuse, unadjusted for the fact that a solo mercenary's
+`effectiveBountyPower` has no 4-person team-power multiplier the way a guild raider's
+`totalMultiplier` does (~2.18x at a 4-person equal-power roster, `raidFactory.js`'s
+`getEffectiveRaidPowerBreakdown` — rank-weighted decay summing to 2.0x, times a 9% headcount
+bonus at 4 members). Reusing Guild's raw difficulty verbatim meant a solo player needed
+meaningfully MORE raw personal power than an equivalent guild raider to reach the same odds on
+what was supposed to be the directly-comparable solo encounter — not the intended parity.
+
+**Changed** (`Bounty.METAL_POTATO_MEDDLEY` in `src/utils/constants.js`): `difficulty` and
+`reward` scaled to 45% of their previous (guild-derived) values, per band:
+- Band I: 2000 → 900 difficulty, 10,000,000 → 4,500,000 reward
+- Band II: 6000 → 2700 difficulty, 30,000,000 → 13,500,000 reward
+- Band III: 12000 → 5400 difficulty, 60,000,000 → 27,000,000 reward
+
+`multiplierReward`/`passiveReward`/`capacityReward` (the permanent stat grants) are UNCHANGED —
+the instruction named only difficulty and potato reward, not the permanent grants. Stat Bounty's
+own Meddley (added the same day, see the entry above) derives its numbers from Band I doubled at
+the point of use rather than its own duplicated constant, so it automatically follows this
+rescale too: difficulty 2000 → 900 (still capped at `Raid.MAXIMUM_STAT_RAID_SUCCESS_RATE`, 50%,
+not the regular ladder's 95%), reward 20,000,000 → 9,000,000 — no separate edit needed there,
+confirmed by the pre-existing "derive, don't duplicate" comment on that doubling still holding.
+
+**Tests updated** (5 pre-existing assertions pinned the old guild-derived numbers, all fixed to
+assert the new rescaled values and their resulting success chances): the three Band I/II/III hit
+tests and the Stat Bounty hit test in `mercenaryFactory.test.js`, and the end-to-end Stat Bounty
+Meddley test in `takeBountyStatMode.test.js`. No new tests needed — same formulas, same code
+paths, only the constants moved. Full suite re-run clean: **127 of 128 suites (1 pre-existing
+skip) / 2327 tests (18 pre-existing skips, 2309 passing)** — identical pass count to before this
+change, confirming nothing else depended on the old literal values.
+
+Not yet ported to `financial-project` as of this entry — same constants need the identical 45%
+rescale applied wherever that port's own `Bounty.METAL_POTATO_MEDDLEY` copy lives (`gromp-
+mercenary/handler.ts`), whether that currently sits on `master` (if the regular-ladder port
+already merged) or on the in-progress chain-write-batching branch.
