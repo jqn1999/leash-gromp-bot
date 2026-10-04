@@ -27,7 +27,7 @@ function baseUser(overrides = {}) {
     return {
         userId: 'user-1',
         username: 'User',
-        companionHunt: { tierKey: 'long', returnsAt: Date.now() - 1000 }, // 0.50 successChance
+        companionHunt: { tierKey: 'long', returnsAt: Date.now() - 1000 }, // 1.00 successChance (guaranteed, 2026-10-04 doubling)
         companions: { owned: [], active: null, ownedCount: 0, mythicOwnedCount: 0 },
         achievements: [],
         ...overrides,
@@ -78,8 +78,10 @@ describe('/companion-hunt action:collect Big Events post', () => {
     });
 
     test('a miss posts nothing to Big Events', async () => {
-        randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.999999); // fails the 0.50 successChance roll
-        dynamoHandler.findUser.mockResolvedValue(baseUser());
+        // 'short' (30%), not the default 'long' — Long Expedition is a guaranteed find (100%)
+        // since the 2026-10-04 doubling, so no roll can miss it.
+        randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.999999); // fails the 0.30 successChance roll
+        dynamoHandler.findUser.mockResolvedValue(baseUser({ companionHunt: { tierKey: 'short', returnsAt: Date.now() - 1000 } }));
         const interaction = fakeInteraction();
 
         await callback({}, interaction);

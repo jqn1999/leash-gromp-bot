@@ -81,9 +81,15 @@ don't want to grind" reasoning that keeps it ungated):
 
 | Tier | Duration | Success chance |
 |---|---|---|
-| Short Expedition | 2h | 15% |
-| Medium Expedition | 4h | 30% |
-| Long Expedition | 8h | 50% |
+| Short Expedition | 2h | 30% |
+| Medium Expedition | 4h | 60% |
+| Long Expedition | 8h | 100% (guaranteed) |
+
+**Doubled 2026-10-04**, direct instruction ("make all the companion hunt % chance of finding
+companion doubled") — originally 15%/30%/50%. Long Expedition's 50%→100% was confirmed with the
+user over capping it below 100% instead (every other %-chance system in this game caps short of
+a guaranteed outcome) — they chose the literal doubling, so Long Expedition is now a genuine
+guaranteed find with zero RNG left on that tier; Short/Medium still carry real miss risk.
 
 **`successChance` derivation** — grounded against what ACTIVE `/work` grinding already
 yields over the same stretch, so this reads as a genuine alternative rather than a

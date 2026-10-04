@@ -51,8 +51,10 @@ describe('buildHuntDispatch', () => {
 
 describe('resolveHuntOutcome', () => {
     test('a miss returns { found: false } and touches nothing else', () => {
-        randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.999999); // above every tier's successChance
-        const user = freshUser({ companionHunt: { tierKey: 'long', returnsAt: Date.now() - 1000 } });
+        // 'short' (30%), not 'long' — Long Expedition is a guaranteed find (100%) since the
+        // 2026-10-04 doubling, so no roll can miss it; 'short' still has real miss odds.
+        randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.999999); // above every non-long tier's successChance
+        const user = freshUser({ companionHunt: { tierKey: 'short', returnsAt: Date.now() - 1000 } });
 
         const result = resolveHuntOutcome(user);
 

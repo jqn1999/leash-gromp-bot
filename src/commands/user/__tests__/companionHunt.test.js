@@ -181,9 +181,11 @@ describe('/companion-hunt action:collect', () => {
     });
 
     test('a miss clears companionHunt without touching companions', async () => {
+        // 'short' (30%), not 'long' — Long Expedition is a guaranteed find (100%) since the
+        // 2026-10-04 doubling, so no roll can miss it.
         randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.999999);
         const returnsAt = Date.now() - 1000;
-        dynamoHandler.findUser.mockResolvedValue(baseUser({ companionHunt: { tierKey: 'long', returnsAt } }));
+        dynamoHandler.findUser.mockResolvedValue(baseUser({ companionHunt: { tierKey: 'short', returnsAt } }));
         const interaction = fakeInteraction({ action: 'collect' });
 
         await callback({}, interaction);

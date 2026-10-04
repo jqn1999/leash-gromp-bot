@@ -20751,3 +20751,26 @@ Not yet ported to `financial-project` as of this entry — same constants need t
 rescale applied wherever that port's own `Bounty.METAL_POTATO_MEDDLEY` copy lives (`gromp-
 mercenary/handler.ts`), whether that currently sits on `master` (if the regular-ladder port
 already merged) or on the in-progress chain-write-batching branch.
+
+## Companion Hunt's three tiers' success chances doubled (2026-10-04, direct instruction: "make all the companion hunt % chance of finding companion doubled")
+
+`CompanionHunt.TIERS` in `src/utils/constants.js` — Short 15%→30%, Medium 30%→60%, Long
+50%→100%. Flagged explicitly before implementing: doubling Long's own 50% lands on exactly
+100%, a literal guarantee rather than just "better odds" — every other probability-driven
+system in this game (raid/bounty success caps, etc.) caps short of a true 100% so SOME risk
+always survives. Confirmed with the user over capping Long below 100% instead (e.g. 90%); they
+chose the literal doubling, so Long Expedition is now a genuine guaranteed find with zero RNG
+left on that tier — only Short/Medium retain real miss risk.
+
+**Tests fixed** (3 pre-existing tests broke, all for the same reason): each specifically used
+`tierKey: 'long'` with a `Math.random()` roll just under 1.0 to simulate "a miss" — a pattern
+that's now structurally impossible, since any roll `Math.random()` can return is `< 1.00`.
+Switched all three (`companionHuntFactory.test.js`, `companionHunt.test.js`,
+`companionHuntBigEvents.test.js`) to use `'short'` (30%) instead, which still has real miss
+odds at the same mocked roll value. Full suite re-run clean: **127 of 128 suites (1
+pre-existing skip) / 2327 tests (18 pre-existing skips, 2309 passing)**.
+
+Updated `.claude/systems/companions.md`'s own Companion Hunt tier table to match.
+
+Not yet ported to `financial-project` — that port's own `CompanionHunt`-equivalent constants
+(if any mirror this tier table) would need the identical doubling to stay in sync.

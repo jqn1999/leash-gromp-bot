@@ -1364,10 +1364,16 @@ const CompanionLeveling = {
 // table) — a custom, possibly-better-than-/work rarity skew here would quietly undercut
 // Prospector's own "better companion-encounter luck" niche (see its 2026-08-30 redesign).
 const CompanionHunt = {
+    // Doubled 2026-10-04, direct instruction ("make all the companion hunt % chance of
+    // finding companion doubled"). Long's own 50% doubles to a literal 100% — confirmed with
+    // the user over capping it below 100% instead (every other %-chance system in this game
+    // caps short of a guaranteed outcome); they chose the literal doubling, so Long Expedition
+    // is now a guaranteed find, no RNG left on that tier at all. Short/Medium still have real
+    // risk (30%/60%).
     TIERS: [
-        { key: 'short', label: 'Short Expedition (2h)', durationSeconds: 7200, successChance: 0.15 },
-        { key: 'medium', label: 'Medium Expedition (4h)', durationSeconds: 14400, successChance: 0.30 },
-        { key: 'long', label: 'Long Expedition (8h)', durationSeconds: 28800, successChance: 0.50 }
+        { key: 'short', label: 'Short Expedition (2h)', durationSeconds: 7200, successChance: 0.30 },
+        { key: 'medium', label: 'Medium Expedition (4h)', durationSeconds: 14400, successChance: 0.60 },
+        { key: 'long', label: 'Long Expedition (8h)', durationSeconds: 28800, successChance: 1.00 }
     ]
 }
 
