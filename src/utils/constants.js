@@ -50,14 +50,6 @@ const Work = {
     // rather than compounding forever, the same weekly ceiling everyone else's own
     // mitigation caps at.
     GUINEA_PIG_ESCALATION_PER_HIT: 0.15,
-    // Even when a player is still eligible for one of Ancient Potato's two stat-bump
-    // branches (free regrade slice / free shop tier, above), this is the flat chance the
-    // roll grants a straight potato payout instead — the same formula/branch a fully-
-    // maxed player always gets. Added alongside the regrade-grant nerf so a stat bump
-    // isn't the guaranteed outcome of every eligible Ancient roll anymore, per direct
-    // instruction. Applies uniformly to both stat-bump branches (one roll, checked once,
-    // before either branch is picked — see handleAncientPotato).
-    ANCIENT_POTATO_PAYOUT_CHANCE: 0.25,
     // Restored 2026-08-23 — accidentally deleted in the commit right above this one
     // (f97f427, adding ANCIENT_POTATO_PAYOUT_CHANCE) when an edit replaced this line
     // instead of inserting alongside it. workFactory.js's handleLargePotato has referenced

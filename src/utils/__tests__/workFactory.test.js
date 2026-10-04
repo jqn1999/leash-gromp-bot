@@ -1020,11 +1020,10 @@ describe('handleAncientPotato', () => {
             },
         });
 
-        // Forces rollsPotatoInstead false (ANCIENT_POTATO_PAYOUT_CHANCE's roll needs to
-        // land above the threshold) so this test's branch outcome stays deterministic —
-        // real play rolls this randomly, this test is about what the regrade branch
-        // itself grants when it's the one that fires. Restored after so it doesn't leak
-        // into other tests (this file doesn't mock Math.random globally).
+        // Only one track is regrade-eligible here, so Math.random()'s own track-pick
+        // (Math.floor(Math.random() * 1)) is deterministic regardless of value — mocked
+        // anyway for a stable, explicit test. Restored after so it doesn't leak into
+        // other tests (this file doesn't mock Math.random globally).
         const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.99);
         let result;
         try {
@@ -1050,11 +1049,13 @@ describe('handleAncientPotato', () => {
         expect(setFields.regrades.passiveAmount.regradeAmount).toBe(REGRADE_CAPS.passiveAmount);
     });
 
-    // Direct instruction, same day as the regrade-grant nerf above: a stat-bump branch
-    // shouldn't be the guaranteed outcome of every eligible Ancient roll — some fraction
-    // of rolls should grant straight potatoes instead, even while regrade/shop-eligible
-    // tracks exist.
-    test('rolls a straight potato payout instead of the regrade bonus when ANCIENT_POTATO_PAYOUT_CHANCE hits', async () => {
+    // Removed 2026-10-04 (direct instruction) — Ancient Potato no longer has a flat
+    // chance of pre-empting an eligible regrade with a straight potato payout instead.
+    // Regression coverage: a Math.random() value of 0 used to be exactly the roll that
+    // triggered that pre-empt (see the deleted ANCIENT_POTATO_PAYOUT_CHANCE constant) —
+    // the regrade branch must now fire unconditionally whenever a track is eligible,
+    // regardless of what Math.random() returns.
+    test('grants the regrade bonus even on a Math.random() value that used to trigger the removed potato pre-empt', async () => {
         const userDetails = baseUser({
             workMultiplierAmount: SHOP_MAX.workMulti,
             regrades: {
@@ -1064,8 +1065,6 @@ describe('handleAncientPotato', () => {
             },
         });
 
-        // Forces rollsPotatoInstead true (below the threshold) — the opposite mock from
-        // the test above, exercising the other side of the same roll.
         const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0);
         let result;
         try {
@@ -1074,17 +1073,11 @@ describe('handleAncientPotato', () => {
             randomSpy.mockRestore();
         }
 
-        expect(result.regradedStatName).toBeNull();
-        expect(result.shopUpgradedStatName).toBeNull();
-        expect(result.potatoesGained).toBeGreaterThan(0);
+        expect(result.regradedStatName).toBe('Work Multiplier');
+        expect(result.potatoesGained).toBe(0);
 
         const { setFields } = userDetails._workChainDelta;
-        // The player's real regrade progress must be completely untouched by this roll —
-        // same guarantee the regrade branch itself gives, this just took the other fork.
-        expect(setFields.regrades.workMulti).toEqual({ regradeAmount: 0, failStack: 0 });
-        // sweetPotatoBuffs is still part of the write (unconditionally, every branch),
-        // but this fork never adds anything to it — stays at baseUser's own default (0).
-        expect(setFields.sweetPotatoBuffs.workMultiplierAmount).toBe(0);
+        expect(setFields.regrades.workMulti).toEqual({ regradeAmount: 10, failStack: 0 });
     });
 
     // Regression: a track with regradeAmount < REGRADE_CAPS used to be treated as
@@ -1110,8 +1103,8 @@ describe('handleAncientPotato', () => {
             },
         });
 
-        // Forces rollsPotatoInstead false, same reasoning as the regrade-branch test
-        // above — this test is about what the shop branch grants, not the random fork.
+        // All three tracks are shop-eligible here — mocked for a deterministic track
+        // pick (Math.floor(Math.random() * 3)) rather than leaving it to chance.
         const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.99);
         let result;
         try {
@@ -1242,6 +1235,27 @@ describe('handleAncientPotato', () => {
 
         expect(result.guildRaidReady).toBe(false);
         expect(dynamoHandler.updateGuildDatabase).not.toHaveBeenCalled();
+    });
+
+    // 2026-10-04, direct instruction — mirrors the guild raid cooldown reset above, but
+    // bountyTimer lives on this same player record, so it's written straight into
+    // setFields rather than needing its own deferred DB call like the guild write does.
+    test('resets the mercenary bounty cooldown to ready-now when the roller is a mercenary', async () => {
+        const userDetails = fullyMaxedUser({ isMercenary: true, bountyTimer: Date.now() });
+
+        const result = await workFactory.handleAncientPotato(userDetails, 1000, 1, 0);
+
+        expect(result.bountyReady).toBe(true);
+        expect(userDetails._workChainDelta.setFields.bountyTimer).toBe(0);
+    });
+
+    test('leaves bountyTimer untouched when the roller is not a mercenary', async () => {
+        const userDetails = fullyMaxedUser({ isMercenary: false, bountyTimer: 12345 });
+
+        const result = await workFactory.handleAncientPotato(userDetails, 1000, 1, 0);
+
+        expect(result.bountyReady).toBe(false);
+        expect(userDetails._workChainDelta.setFields.bountyTimer).toBe(12345);
     });
 
     test('increments workScenarioCounts.ancient', async () => {

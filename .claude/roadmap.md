@@ -20774,3 +20774,53 @@ Updated `.claude/systems/companions.md`'s own Companion Hunt tier table to match
 
 Not yet ported to `financial-project` — that port's own `CompanionHunt`-equivalent constants
 (if any mirror this tier table) would need the identical doubling to stay in sync.
+
+## Ancient Potato: removed its 25% no-regrade roll, and mercenaries now also get a bounty-cooldown reset (2026-10-04, direct instruction: "Remove the 25% chance of no regrade / For mercs have it also reset bounty cooldown")
+
+Asked in direct response to "Does ancient potato still have a chance of no regrade" (investigated
+and answered first: yes, via three separate paths — the flat 25% pre-empt roll, landing in the
+shop-upgrade branch instead of regrade, or every track already being maxed). This entry removes
+the first of those three paths and adds a second, mercenary-specific cooldown reset alongside the
+pre-existing guild one.
+
+**Removed the 25% pre-empt roll** (`workFactory.js`'s `handleAncientPotato`): `rollsPotatoInstead`
+— a flat `Work.ANCIENT_POTATO_PAYOUT_CHANCE` (25%) roll that pre-empted either stat-bump branch
+(free regrade step / free shop tier) and fell through to the potato-payout branch instead — is
+gone. A stat-bump branch is now the guaranteed outcome whenever a track is eligible for one, same
+as it was before the 2026-08-22 nerf that originally added this roll; the potato-payout branch
+(`handleAncientPotato`'s `else`) now only fires once every track is already maxed on both shop
+and regrade. `Work.ANCIENT_POTATO_PAYOUT_CHANCE` itself was deleted from `constants.js` along with
+its usage — nothing else referenced it.
+
+**Mercenary bounty-cooldown reset** (same function): mirrors the pre-existing guild-raid-cooldown
+reset (`guild.raidTimer` → `Date.now()`, ready-now) with a mercenary-facing equivalent — if the
+roller `isMercenary`, their own `bountyTimer` resets to `0`. `bountyTimer` stores the timestamp of
+the player's *last* bounty attempt (`takeBounty.js` compares elapsed time since it against the
+cooldown, the opposite direction from `raidTimer`'s "time until" semantics), so `0` is the
+ready-now value — the same default a brand-new account starts at (`dynamoHandler.js`). Unlike the
+guild reset, this doesn't need a deferred cross-item write: `bountyTimer` lives on the same
+player record Ancient Potato is already writing, so it's folded straight into the handler's
+existing `setFields` (`bountyTimer: resetsBountyCooldown ? 0 : userDetails.bountyTimer`) — no
+change needed in `work.js`'s chain loop, which already merges whatever keys `setFields` carries
+into the single end-of-chain write. The result now also carries `bountyReady` (parallel to
+`guildRaidReady`), and `embedFactory.js`'s `createAncientPotatoEmbed` shows a "Bounty Cooldown:
+Ready now!" field alongside the existing "Guild Raid Cooldown:" one whenever it's set. Both resets
+are unconditional — they fire regardless of which of the three personal-reward branches lands.
+
+**Tests**: removed `workFactory.test.js`'s now-impossible "rolls a straight potato payout instead
+of the regrade bonus when ANCIENT_POTATO_PAYOUT_CHANCE hits" test, replacing it with a regression
+test proving the regrade branch now fires unconditionally even at the exact `Math.random()` value
+(`0`) that used to trigger the removed pre-empt. Added two new tests for the mercenary bounty
+reset (resets to `0` when `isMercenary`, left untouched otherwise) alongside the existing guild
+ones. Updated two other tests' stale comments that referenced the deleted `rollsPotatoInstead`
+roll (their `Math.random()` mocks were actually serving double duty as deterministic track-picks
+all along, so the mocks themselves didn't need to change, only the comments explaining them).
+Full suite re-run clean: **127 of 128 suites (1 pre-existing skip) / 2329 tests (18 pre-existing
+skips, 2311 passing)**.
+
+Updated `.claude/systems/economy-and-work.md`'s Ancient Potato section to describe both resets and
+record the pre-empt roll's removal history.
+
+Not yet ported to `financial-project` — if that port's `gromp-economy/handler.ts` has its own
+Ancient-Potato-equivalent scenario with a matching pre-empt roll and/or guild-raid-cooldown reset,
+it needs the identical removal/addition to stay in sync.

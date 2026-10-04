@@ -575,6 +575,16 @@ class WorkFactory {
         // doing it once, so this only ever needs to carry the most recent guildId, not a list.
         const guildRaidTimerGuildId = userDetails.guildId || null;
 
+        // Mercenary bounty-cooldown reset (2026-10-04, direct instruction) — mirrors the
+        // guild-raid-cooldown reset immediately above, but bountyTimer lives on this same
+        // player record rather than a separate guild item, so it's written straight into
+        // setFields below instead of needing its own deferred DB call. bountyTimer stores
+        // the timestamp of the LAST bounty attempt (takeBounty.js compares time SINCE it
+        // against the cooldown), so 0 (epoch — same as a brand-new account's default,
+        // dynamoHandler.js) reads as "ready now," the bounty equivalent of raidTimer's
+        // Date.now() "ready now."
+        const resetsBountyCooldown = Boolean(userDetails.isMercenary);
+
         // regrade.js's hasRequiredBaseAmount requires a track's BASE (shop-purchased)
         // value to already equal that shop's max before /regrade will even attempt that
         // track — a free regrade step has to respect the same precondition, or a player
@@ -600,19 +610,13 @@ class WorkFactory {
         let shopUpgradeIncrease = 0;
         const updateFields = {};
 
-        // Even when a stat-bump branch (regrade or shop) would normally apply, there's a
-        // flat chance the roll grants straight potatoes instead — same formula/branch the
-        // "everything's already maxed" case below always uses. Rolled once, before
-        // picking a branch, so it can pre-empt EITHER stat-bump branch uniformly rather
-        // than needing its own copy of this check in each one. Added per direct
-        // instruction alongside the regrade-grant nerf above, so a stat bump isn't the
-        // guaranteed outcome of every eligible roll anymore. Never rolled (and never
-        // matters) once every track is already maxed — that state always falls through
-        // to the potato branch below regardless.
-        const rollsPotatoInstead = (regradeEligibleTracks.length > 0 || shopEligibleTracks.length > 0)
-            && Math.random() < Work.ANCIENT_POTATO_PAYOUT_CHANCE;
+        // Removed 2026-10-04 (direct instruction) — Ancient Potato's flat chance of
+        // pre-empting an eligible stat-bump branch with a straight potato payout instead
+        // (ANCIENT_POTATO_PAYOUT_CHANCE, formerly rolled here) is gone. A stat-bump branch
+        // is now the guaranteed outcome whenever a track is eligible for it — the potato
+        // payout branch below only fires once every track is already maxed.
 
-        if (regradeEligibleTracks.length > 0 && !rollsPotatoInstead) {
+        if (regradeEligibleTracks.length > 0) {
             const track = regradeEligibleTracks[Math.floor(Math.random() * regradeEligibleTracks.length)];
             const currentTier = track.tiers.find(tier => tier.currentRegradeAmount === regrades[track.regradeKey].regradeAmount);
             // Restored 2026-09-22 (direct instruction) to a full tier step, written
@@ -627,7 +631,7 @@ class WorkFactory {
             regrades[track.regradeKey].regradeAmount += regradeIncrease;
             regrades[track.regradeKey].failStack = 0;
             updateFields[track.statField] = userDetails[track.statField] + regradeIncrease;
-        } else if (shopEligibleTracks.length > 0 && !rollsPotatoInstead) {
+        } else if (shopEligibleTracks.length > 0) {
             // Not shop-maxed on anything yet — grant the next shop tier for free instead
             // of a regrade step nothing here is actually eligible for. Mirrors buy.js's
             // exact write shape (new base + sweetPotatoBuffs + regradeAmount), not just
@@ -650,9 +654,8 @@ class WorkFactory {
                 updateFields[track.statField] = nextTier.amount + userDetails.sweetPotatoBuffs[track.statField] + regrades[track.regradeKey].regradeAmount;
             }
         } else {
-            // Reached either because every track is already maxed (nothing left to
-            // stat-bump) or because rollsPotatoInstead pre-empted an eligible stat-bump
-            // branch above — same payout formula either way.
+            // Reached only once every track is already maxed — nothing left to
+            // stat-bump, so this is the only branch left.
             let guildMultiplier = await getGuildWorkMulti(userDetails, userDetails.workMultiplierAmount);
             const mercenaryMultiplier = getMercenaryWorkMulti(userDetails, userDetails.workMultiplierAmount);
             const companionMultiplier = getCompanionWorkMulti(userDetails, userDetails.workMultiplierAmount);
@@ -687,6 +690,7 @@ class WorkFactory {
                 sweetPotatoBuffs: sweetPotatoBuffs,
                 workScenarioCounts: workScenarioCounts,
                 workTimer: workTimer,
+                bountyTimer: resetsBountyCooldown ? 0 : userDetails.bountyTimer,
                 ...updateFields
             },
             addFields: { workCount: 1 },
@@ -700,7 +704,8 @@ class WorkFactory {
             regradeIncrease,
             shopUpgradedStatName,
             shopUpgradeIncrease,
-            guildRaidReady: Boolean(userDetails.guildId)
+            guildRaidReady: Boolean(userDetails.guildId),
+            bountyReady: resetsBountyCooldown
         };
     }
 

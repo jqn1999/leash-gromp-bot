@@ -395,16 +395,22 @@ Metal Potato failure: 0 potatoes, just resets the timer.
 
 ### Ancient Potato (0.05% roll — `workFactory.js`'s `handleAncientPotato`)
 
-The one scenario whose main payoff is guild-facing rather than personal: if the roller is in a
-guild, `guild.raidTimer` is reset to `Date.now()` — the guild's raid cooldown is ready immediately,
-regardless of how much was left on it (a no-op if solo, or if nothing was on cooldown). Separately,
-the roller gets exactly one of three personal rewards, checked in this order. **Added 2026-08-22**,
-same day as the regrade-grant nerf below: whenever branch 1 or 2 would otherwise apply,
-`Work.ANCIENT_POTATO_PAYOUT_CHANCE` (25%) is rolled first — a hit pre-empts either stat-bump branch
-uniformly and falls through to branch 3's potato payout instead, so a stat bump isn't the
-guaranteed outcome of every eligible Ancient roll anymore. Never rolled once every track is already
-maxed (branch 3 always applies there regardless). One roll, checked once before either stat-bump
-branch is picked, rather than a separate check duplicated in each:
+The one scenario whose main payoff is guild/mercenary-facing rather than purely personal: if the
+roller is in a guild, `guild.raidTimer` is reset to `Date.now()` — the guild's raid cooldown is
+ready immediately, regardless of how much was left on it (a no-op if solo, or if nothing was on
+cooldown). **Added 2026-10-04 (direct instruction):** if the roller `isMercenary`, their own
+`bountyTimer` is reset to `0` the same way — `bountyTimer` stores the timestamp of the *last*
+bounty attempt (compared as time-since, unlike `raidTimer`'s time-until), so `0` reads as "ready
+now," the same value a brand-new account starts at. Both resets are unconditional — they land
+regardless of which of the three personal-reward branches below fires. Separately, the roller gets
+exactly one of three personal rewards, checked in this order. **History:** from 2026-08-22 to
+2026-10-04, `Work.ANCIENT_POTATO_PAYOUT_CHANCE` (25%) was rolled first whenever branch 1 or 2
+would otherwise apply — a hit pre-empted either stat-bump branch uniformly and fell through to
+branch 3's potato payout instead, so a stat bump wasn't the guaranteed outcome of every eligible
+Ancient roll. **Removed 2026-10-04 (direct instruction)** — a stat-bump branch (1 or 2) is now the
+guaranteed outcome whenever a track is eligible for one; branch 3's potato payout only fires once
+every track is already maxed on both shop and regrade. The constant itself was deleted from
+`constants.js` along with the roll.
 1. **Free regrade step** on a random track that's shop-maxed but not yet at `REGRADE_CAPS`. Grants
    that track's current tier's real `increase` **in full**, for free, written straight into
    `regrades.X.regradeAmount` (and resets `regrades.X.failStack` to 0) — the exact same write shape

@@ -2648,10 +2648,10 @@ class EmbedFactory {
     // "potatoes gained" number, same reason createCompanionEncounterEmbed is its own
     // function rather than shoehorned in there. result: { potatoesGained,
     // regradedStatName, regradeIncrease, shopUpgradedStatName, shopUpgradeIncrease,
-    // guildRaidReady } from workFactory.js's handleAncientPotato — exactly one of
-    // regradedStatName/shopUpgradedStatName/potatoesGained>0 is set per roll.
+    // guildRaidReady, bountyReady } from workFactory.js's handleAncientPotato — exactly
+    // one of regradedStatName/shopUpgradedStatName/potatoesGained>0 is set per roll.
     createAncientPotatoEmbed(userDisplayName, newWorkCount, result, ancientPotato, cooldownSkippedByCompanion = null, companionXpGained = 0, companionName = null, missedCooldownSkipChance = 0) {
-        const { potatoesGained, regradedStatName, regradeIncrease, shopUpgradedStatName, shopUpgradeIncrease, guildRaidReady } = result;
+        const { potatoesGained, regradedStatName, regradeIncrease, shopUpgradedStatName, shopUpgradeIncrease, guildRaidReady, bountyReady } = result;
         let fields = [{
             name: `Work Count:`,
             value: formatWorkCountValue(newWorkCount, companionXpGained, companionName),
@@ -2687,6 +2687,17 @@ class EmbedFactory {
         if (guildRaidReady) {
             fields.push({
                 name: `Guild Raid Cooldown:`,
+                value: `Ready now!`,
+                inline: true,
+            });
+        }
+
+        // Mercenary bounty-cooldown reset (2026-10-04, direct instruction) — same
+        // "Ready now!" treatment as the guild raid cooldown reset above, gated on
+        // isMercenary instead of guildId.
+        if (bountyReady) {
+            fields.push({
+                name: `Bounty Cooldown:`,
                 value: `Ready now!`,
                 inline: true,
             });
