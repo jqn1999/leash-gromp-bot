@@ -1385,6 +1385,41 @@ describe('companion XP display gating on companion equipped', () => {
         expect(embed.data.fields.find(f => f.name.includes('Companion XP'))).toBeUndefined();
     });
 
+    // 2026-10-05, direct instruction ("also credit it to inspired by Rednaxela") — same
+    // mob.credit-overrides-footer convention createRaidEmbed already uses for Metal King.
+    describe('createBountyResultEmbed Metal Potato Medley credit/thumbnail', () => {
+        const { metalPotatoMedley } = require('../constants');
+
+        test('shows the Medley\'s own credit in the footer instead of the default', () => {
+            const embed = embedFactory.createBountyResultEmbed('User', baseBountyResult({ isMetalPotatoMedley: true, tier: 1 }));
+            expect(embed.data.footer.text).toBe('Inspired by Rednaxela');
+        });
+
+        test('a non-Medley result keeps the default footer', () => {
+            const embed = embedFactory.createBountyResultEmbed('User', baseBountyResult());
+            expect(embed.data.footer.text).toBe('Made by Beggar');
+        });
+
+        // thumbnailUrl isn't set on the real constant yet (see its own comment in
+        // constants.js — awaiting a real image URL) — this proves the WIRING itself is
+        // correct by temporarily setting one, restoring it immediately after so this test
+        // doesn't leak real state into any other test in this file.
+        test('sets the thumbnail once metalPotatoMedley.thumbnailUrl exists', () => {
+            metalPotatoMedley.thumbnailUrl = 'https://example.com/medley.png';
+            try {
+                const embed = embedFactory.createBountyResultEmbed('User', baseBountyResult({ isMetalPotatoMedley: true, tier: 1 }));
+                expect(embed.data.thumbnail.url).toBe('https://example.com/medley.png');
+            } finally {
+                delete metalPotatoMedley.thumbnailUrl;
+            }
+        });
+
+        test('sets no thumbnail at all while metalPotatoMedley.thumbnailUrl is still unset', () => {
+            const embed = embedFactory.createBountyResultEmbed('User', baseBountyResult({ isMetalPotatoMedley: true, tier: 1 }));
+            expect(embed.data.thumbnail).toBeUndefined();
+        });
+    });
+
     test('createRobNpcResultEmbed shows the Companion XP field only when companionXpGained > 0', () => {
         const tier = { key: 'market_stall', label: 'Market Stall' };
         const result = { won: true, successChance: 0.8, amount: 5000, rankInfo: { rank: 1, rewardMultiplier: 1.00, cooldownReductionPercent: 0 }, penaltyAmount: 0, statReward: null };

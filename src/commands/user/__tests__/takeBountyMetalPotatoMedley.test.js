@@ -1,10 +1,10 @@
-// Metal Potato Meddley (2026-10-03, direct instruction) — Bounty's own analog of Guild
+// Metal Potato Medley (2026-10-03, direct instruction) — Bounty's own analog of Guild
 // Raid's flat 1% Metal King roll, 'regular' mode only. Same "mock at the boundary this
 // command actually touches" approach takeBountyTax.test.js/takeBountyStatMode.test.js
 // already use — dynamoHandler is mocked, mercenaryFactory/raidFactory/embedFactory are
 // left real so the full callback -> resolveBountyAttempt -> handleStatSplit chain is
 // exercised end to end, not just the pure resolve function (see
-// mercenaryFactory.test.js's own "Metal Potato Meddley" describe block for that half).
+// mercenaryFactory.test.js's own "Metal Potato Medley" describe block for that half).
 jest.mock('../../../utils/dynamoHandler');
 
 const dynamoHandler = require('../../../utils/dynamoHandler');
@@ -60,7 +60,7 @@ beforeEach(() => {
     dynamoHandler.getCatchUpBonus.mockResolvedValue(0);
 });
 
-describe('/take-bounty — Metal Potato Meddley', () => {
+describe('/take-bounty — Metal Potato Medley', () => {
     test('a Band I win credits the full Metal King-mirrored reward (net of Kingdom Tax) and grants all three permanent stats flat', async () => {
         const user = baseUser();
         // Captured BEFORE the call — the chain loop mutates the SAME userDetails object
@@ -75,7 +75,7 @@ describe('/take-bounty — Metal Potato Meddley', () => {
         const interaction = fakeInteraction({ mode: 'regular' });
         const randomSpy = jest.spyOn(Math, 'random')
             .mockReturnValueOnce(0)     // tier roll -> Tier 1 (Band I)
-            .mockReturnValueOnce(0.005) // Metal Potato Meddley trigger HIT (< 1%)
+            .mockReturnValueOnce(0.005) // Metal Potato Medley trigger HIT (< 1%)
             .mockReturnValueOnce(0)     // win check: successChance = min(90/2000, .95) = .045 -> win
             .mockReturnValueOnce(0.5);  // reward rangeRoll -> 1.0 (midpoint of .8-1.2)
         try {
@@ -84,7 +84,7 @@ describe('/take-bounty — Metal Potato Meddley', () => {
             randomSpy.mockRestore();
         }
 
-        const grossReward = Math.round(Bounty.METAL_POTATO_MEDDLEY.I.reward * 1.0 * 1.00); // rank 1 -> 1.00x
+        const grossReward = Math.round(Bounty.METAL_POTATO_MEDLEY.I.reward * 1.0 * 1.00); // rank 1 -> 1.00x
         const expectedTax = Math.floor(grossReward * Bounty.WIN_TAX_PERCENT);
         const netReward = grossReward - expectedTax;
 
@@ -95,26 +95,26 @@ describe('/take-bounty — Metal Potato Meddley', () => {
         expect(potatoWrite[1].potatoes).toBe(originalPotatoes + netReward);
 
         const multiplierWrite = dynamoHandler.updateUserFields.mock.calls.find(([, setAttrs]) => setAttrs && 'workMultiplierAmount' in setAttrs);
-        expect(multiplierWrite[1].workMultiplierAmount).toBeCloseTo(originalWorkMultiplierAmount + Bounty.METAL_POTATO_MEDDLEY.I.multiplierReward);
+        expect(multiplierWrite[1].workMultiplierAmount).toBeCloseTo(originalWorkMultiplierAmount + Bounty.METAL_POTATO_MEDLEY.I.multiplierReward);
 
         const passiveWrite = dynamoHandler.updateUserFields.mock.calls.find(([, setAttrs]) => setAttrs && 'passiveAmount' in setAttrs);
-        expect(passiveWrite[1].passiveAmount).toBe(originalPassiveAmount + Bounty.METAL_POTATO_MEDDLEY.I.passiveReward);
+        expect(passiveWrite[1].passiveAmount).toBe(originalPassiveAmount + Bounty.METAL_POTATO_MEDLEY.I.passiveReward);
 
         const capacityWrite = dynamoHandler.updateUserFields.mock.calls.find(([, setAttrs]) => setAttrs && 'bankCapacity' in setAttrs);
-        expect(capacityWrite[1].bankCapacity).toBe(originalBankCapacity + Bounty.METAL_POTATO_MEDDLEY.I.capacityReward);
+        expect(capacityWrite[1].bankCapacity).toBe(originalBankCapacity + Bounty.METAL_POTATO_MEDLEY.I.capacityReward);
 
         const resultEmbed = interaction.editReply.mock.calls[interaction.editReply.mock.calls.length - 1][0].embeds[0];
-        expect(resultEmbed.data.title).toContain('Metal Potato Meddley');
+        expect(resultEmbed.data.title).toContain('Metal Potato Medley');
         expect(resultEmbed.data.description).toBe('Success!');
     });
 
-    test('a Meddley loss costs nothing — no potato deduction at all, regardless of the normal tier penalty', async () => {
+    test('a Medley loss costs nothing — no potato deduction at all, regardless of the normal tier penalty', async () => {
         const user = baseUser();
         dynamoHandler.findUser.mockResolvedValue(user);
         const interaction = fakeInteraction({ mode: 'regular' });
         const randomSpy = jest.spyOn(Math, 'random')
             .mockReturnValueOnce(0)        // tier roll -> Tier 1 (Band I)
-            .mockReturnValueOnce(0.005)     // Metal Potato Meddley trigger HIT
+            .mockReturnValueOnce(0.005)     // Metal Potato Medley trigger HIT
             .mockReturnValueOnce(0.999999); // win check fails -> loss
         try {
             await callback(fakeClient, interaction);

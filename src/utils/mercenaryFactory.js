@@ -127,7 +127,7 @@ function rollBountyStatReward(tierLetter, userDetails) {
 // with no rank-gating layered on top: which tier gets rolled is purely a function of
 // power now, see constants.js's Bounty.TIERS comment for the full 2026-08-28 rework).
 // A mercenary's effective raid-style power for Bounty purposes — same formula both
-// resolveBountyAttempt (below) and resolveStatBounty's own Metal Potato Meddley roll need,
+// resolveBountyAttempt (below) and resolveStatBounty's own Metal Potato Medley roll need,
 // factored out 2026-10-03 so the two can never drift apart. A 1-person "roster" run through
 // the exact same formula a guild raid uses — getEffectiveRaidPower is already generic over
 // an array of userDetails, not guild-shaped (confirmed directly against raidFactory.js — no
@@ -161,29 +161,29 @@ async function resolveBountyAttempt(userDetails, mode) {
     const { tier: tierNum, difficulty, reward: rewardBase, penalty: penaltyBase, starchReward: starchRewardBase } = tierEntry;
     const bandLetter = getBandLetter(tierNum);
 
-    // Metal Potato Meddley (2026-10-03, direct instruction) — Bounty's own analog of Guild
+    // Metal Potato Medley (2026-10-03, direct instruction) — Bounty's own analog of Guild
     // Raid's flat 1% Metal King roll. 'regular' mode only, same as Metal King itself excludes
     // Baby Raid — rolled AFTER the tier/band above, reusing whichever band the already-rolled
     // tier landed in (NO second band roll) rather than rolling anything fresh. See
-    // Bounty.METAL_POTATO_MEDDLEY's own comment in constants.js for the full band-reward
+    // Bounty.METAL_POTATO_MEDLEY's own comment in constants.js for the full band-reward
     // derivation (a literal numeric copy of Raid's own Regular/Elite/Legendary Metal King
     // numbers, keyed by band instead of guild mode).
-    const isMetalPotatoMeddley = mode === 'regular' && Math.random() < Bounty.METAL_POTATO_MEDDLEY_CHANCE;
-    const meddleyBand = isMetalPotatoMeddley ? Bounty.METAL_POTATO_MEDDLEY[bandLetter] : null;
+    const isMetalPotatoMedley = mode === 'regular' && Math.random() < Bounty.METAL_POTATO_MEDLEY_CHANCE;
+    const medleyBand = isMetalPotatoMedley ? Bounty.METAL_POTATO_MEDLEY[bandLetter] : null;
 
-    // A Meddley attempt rolls its own success chance against its OWN (much higher) band
+    // A Medley attempt rolls its own success chance against its OWN (much higher) band
     // difficulty, same shared Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE cap every Bounty tier
     // already uses — Metal King's own three brackets each cap against their OWN mode's
     // maximum rate, but Bounty has only ever had the one (Regular-mode-equivalent) rate, so
     // there's nothing to branch on here.
-    const effectiveDifficulty = isMetalPotatoMeddley ? meddleyBand.difficulty : difficulty;
+    const effectiveDifficulty = isMetalPotatoMedley ? medleyBand.difficulty : difficulty;
     const successChance = Math.min(effectiveBountyPower / effectiveDifficulty, Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE);
     const won = Math.random() < successChance;
 
-    // Meddley has its own dedicated flavor (constants.js's metalPotatoMeddley, mirrors
+    // Medley has its own dedicated flavor (constants.js's metalPotatoMedley, mirrors
     // metalKingRaidBoss's shape exactly) instead of BountyScenarios' per-band wanted-poster
     // flavor — no scenario roll (and no Math.random() call) happens on this branch.
-    const scenario = isMetalPotatoMeddley ? null : BountyScenarios[bandLetter][Math.floor(Math.random() * BountyScenarios[bandLetter].length)];
+    const scenario = isMetalPotatoMedley ? null : BountyScenarios[bandLetter][Math.floor(Math.random() * BountyScenarios[bandLetter].length)];
 
     const result = {
         tier: tierNum,
@@ -192,11 +192,11 @@ async function resolveBountyAttempt(userDetails, mode) {
         successChance,
         scenario,
         rankInfo,
-        isMetalPotatoMeddley,
-        // Meddley's own reward/penalty always denominate in potatoes (mirrors Metal King,
+        isMetalPotatoMedley,
+        // Medley's own reward/penalty always denominate in potatoes (mirrors Metal King,
         // which has no starch-reward concept at all) — a normal loss already always does too,
         // so only a normal WIN needs the scenario's own currency pick.
-        currency: (!isMetalPotatoMeddley && won) ? scenario.currency : 'potato',
+        currency: (!isMetalPotatoMedley && won) ? scenario.currency : 'potato',
         rewardAmount: 0,
         penaltyAmount: 0,
         statReward: null,
@@ -204,23 +204,23 @@ async function resolveBountyAttempt(userDetails, mode) {
     };
 
     if (won) {
-        if (isMetalPotatoMeddley) {
+        if (isMetalPotatoMedley) {
             // Direct numeric copy of Guild Raid's own Metal King win math (same ×0.8-1.2
             // range roll, no raidRewardMultiplier term — Bounty has no guild-level reward
             // multiplier concept), ADDITIONALLY scaled by the mercenary's own
             // rankInfo.rewardMultiplier for consistency with every other Bounty win's reward
             // (the one deliberate departure from a pure Metal King copy — Guild Raid has no
             // per-member rank multiplier to apply in the first place). Deliberately skips the
-            // rare rollBountyStatReward roll and the Yukon drop roll below — Meddley's own
+            // rare rollBountyStatReward roll and the Yukon drop roll below — Medley's own
             // guaranteed flat stat grant (mirroring raidFactory.handleStatSplit's shape, one
             // mercenary instead of a roster) IS this win's whole stat-reward story, not an
             // addition on top of it.
             const rangeRoll = getRandomFromInterval(.8, 1.2);
-            result.rewardAmount = Math.round(meddleyBand.reward * rangeRoll * rankInfo.rewardMultiplier);
+            result.rewardAmount = Math.round(medleyBand.reward * rangeRoll * rankInfo.rewardMultiplier);
             result.statReward = [
-                { type: 'workMultiplierAmount', amount: meddleyBand.multiplierReward },
-                { type: 'passiveAmount', amount: meddleyBand.passiveReward },
-                { type: 'bankCapacity', amount: meddleyBand.capacityReward }
+                { type: 'workMultiplierAmount', amount: medleyBand.multiplierReward },
+                { type: 'passiveAmount', amount: medleyBand.passiveReward },
+                { type: 'bankCapacity', amount: medleyBand.capacityReward }
             ];
         } else {
             const yukonRewardBonus = companionFactory.getActivePerkValue(userDetails, "bountyRewardPercent");
@@ -240,11 +240,11 @@ async function resolveBountyAttempt(userDetails, mode) {
             result.statReward = rollBountyStatReward(bandLetter, userDetails);
             result.yukonHit = Math.random() < MercenaryCompanionDrop.YUKON_CHANCE[bandLetter];
         }
-    } else if (isMetalPotatoMeddley) {
-        // Bounty.METAL_POTATO_MEDDLEY_PENALTY (always 0) — overrides Bounty's own climbing
+    } else if (isMetalPotatoMedley) {
+        // Bounty.METAL_POTATO_MEDLEY_PENALTY (always 0) — overrides Bounty's own climbing
         // per-tier penalty entirely for this one roll, mirroring every Metal King bracket's
         // own "costs nothing win or lose" shape.
-        result.penaltyAmount = Bounty.METAL_POTATO_MEDDLEY_PENALTY;
+        result.penaltyAmount = Bounty.METAL_POTATO_MEDLEY_PENALTY;
     } else {
         // penaltyBase (Bounty.TIERS' own `penalty` field) already has the old
         // SOLO_BOUNTY_REWARD_SHARE (0.15) folded directly into its stored value (see
@@ -270,19 +270,19 @@ async function resolveBountyAttempt(userDetails, mode) {
 // why the NORMAL roll is flat rather than a power-scaled formula like Guild Stat Raid's
 // calculateRaidSuccessChance.
 //
-// Metal Potato Meddley for Stat Bounty (2026-10-03, direct instruction) — Stat Bounty's own
-// analog of the Regular-ladder Meddley above AND of Guild Stat Raid's own Metal King
+// Metal Potato Medley for Stat Bounty (2026-10-03, direct instruction) — Stat Bounty's own
+// analog of the Regular-ladder Medley above AND of Guild Stat Raid's own Metal King
 // bracket (startRaid.js's statRaidScenarios[0]), checked independently every attempt via the
-// SAME flat 1% roll (Bounty.METAL_POTATO_MEDDLEY_CHANCE). On a hit, this REPLACES the normal
+// SAME flat 1% roll (Bounty.METAL_POTATO_MEDLEY_CHANCE). On a hit, this REPLACES the normal
 // flat-50%-chance/cost/reward entirely for that one attempt (same "takes over completely"
-// shape the Regular ladder's own Meddley already has):
+// shape the Regular ladder's own Medley already has):
 // - Success chance switches from the flat, power-independent STAT_BOUNTY_SUCCESS_CHANCE to
 //   the normal raid-style power-ratio formula (effectiveBountyPower / difficulty), capped at
 //   Raid.MAXIMUM_STAT_RAID_SUCCESS_RATE (0.5) instead of the Regular ladder's own
 //   Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE (0.95) — mirrors Guild Stat Raid's own Metal King
 //   bracket exactly, which caps against MAXIMUM_STAT_RAID_SUCCESS_RATE while every OTHER
 //   Guild Raid mode caps against its own higher rate.
-// - Reuses Bounty's own Band I Meddley numbers (Bounty.METAL_POTATO_MEDDLEY.I — same
+// - Reuses Bounty's own Band I Medley numbers (Bounty.METAL_POTATO_MEDLEY.I — same
 //   difficulty, 2000, NOT scaled up for Elite/Legendary-equivalent stakes) as the base,
 //   mirroring Guild Stat Raid reusing ITS OWN regular-mode Metal King numbers rather than
 //   Elite's/Legendary's. Doubled at the point of use (not duplicated as a new constant),
@@ -294,14 +294,14 @@ async function resolveBountyAttempt(userDetails, mode) {
 //   Bounty never pays potatoes at all outside this branch, so this is the one place it does.
 // - Costs NOTHING at all, win or lose — bypasses Bounty.STAT_BOUNTY_COST's normal
 //   win-or-lose charge entirely, same "costs nothing win or lose" shape every Metal King
-//   bracket already has (including the Regular ladder's own Meddley, which zeroes the
-//   penalty the same way via METAL_POTATO_MEDDLEY_PENALTY).
+//   bracket already has (including the Regular ladder's own Medley, which zeroes the
+//   penalty the same way via METAL_POTATO_MEDLEY_PENALTY).
 async function resolveStatBounty(userDetails) {
-    const isMetalPotatoMeddley = Math.random() < Bounty.METAL_POTATO_MEDDLEY_CHANCE;
-    if (isMetalPotatoMeddley) {
+    const isMetalPotatoMedley = Math.random() < Bounty.METAL_POTATO_MEDLEY_CHANCE;
+    if (isMetalPotatoMedley) {
         const { effectiveBountyPower, rankInfo } = await computeEffectiveBountyPower(userDetails);
-        const meddleyBand = Bounty.METAL_POTATO_MEDDLEY.I;
-        const successChance = Math.min(effectiveBountyPower / meddleyBand.difficulty, Raid.MAXIMUM_STAT_RAID_SUCCESS_RATE);
+        const medleyBand = Bounty.METAL_POTATO_MEDLEY.I;
+        const successChance = Math.min(effectiveBountyPower / medleyBand.difficulty, Raid.MAXIMUM_STAT_RAID_SUCCESS_RATE);
         const won = Math.random() < successChance;
 
         const result = {
@@ -311,18 +311,18 @@ async function resolveStatBounty(userDetails) {
             cost: 0,
             statGrantAmount: 0,
             flavor: null,
-            isMetalPotatoMeddley: true,
+            isMetalPotatoMedley: true,
             rankInfo,
             rewardAmount: 0,
             statReward: null
         };
         if (won) {
             const rangeRoll = getRandomFromInterval(.8, 1.2);
-            result.rewardAmount = Math.round(meddleyBand.reward * 2 * rangeRoll * rankInfo.rewardMultiplier);
+            result.rewardAmount = Math.round(medleyBand.reward * 2 * rangeRoll * rankInfo.rewardMultiplier);
             result.statReward = [
-                { type: 'workMultiplierAmount', amount: meddleyBand.multiplierReward * 2 },
-                { type: 'passiveAmount', amount: meddleyBand.passiveReward * 2 },
-                { type: 'bankCapacity', amount: meddleyBand.capacityReward * 2 }
+                { type: 'workMultiplierAmount', amount: medleyBand.multiplierReward * 2 },
+                { type: 'passiveAmount', amount: medleyBand.passiveReward * 2 },
+                { type: 'bankCapacity', amount: medleyBand.capacityReward * 2 }
             ];
         }
         return result;
@@ -339,7 +339,7 @@ async function resolveStatBounty(userDetails) {
         cost: Bounty.STAT_BOUNTY_COST,
         statGrantAmount: won ? Bounty.STAT_BOUNTY_REWARD : 0,
         flavor,
-        isMetalPotatoMeddley: false,
+        isMetalPotatoMedley: false,
         rewardAmount: 0,
         statReward: null
     };

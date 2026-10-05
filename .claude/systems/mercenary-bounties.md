@@ -824,10 +824,10 @@ rewrite):
    insufficient funds (`guildBuy.js`'s `doesGuildHaveEnoughToPurchase`). Unlike `/rob`'s fine
    formula (a deliberate, already-decided penalty for a *different* mechanic that can put a
    player negative), a Stat Bounty attempt a player can't afford simply never starts — checked
-   against the normal cost regardless of whether the roll turns out to be a Meddley hit (see
-   this section's own Metal Potato Meddley subsection below).
+   against the normal cost regardless of whether the roll turns out to be a Medley hit (see
+   this section's own Metal Potato Medley subsection below).
 2. `mercenaryFactory.resolveStatBounty(userDetails)` — now `async` as of 2026-10-03 (it may
-   need to `await` a Meddley roll's own power computation) — rolls the independent 1% Meddley
+   need to `await` a Medley roll's own power computation) — rolls the independent 1% Medley
    check first, then either that branch or the flat 50% roll + one of 3 flavor-text variants
    (`StatBountyFlavor`, `constants.js`) — computation only, no writes; affordability is
    deliberately **not** this function's job (kept in `takeBounty.js` instead, same
@@ -872,7 +872,7 @@ fields every other Bounty result embed shows.
 12-tier table and Baby Bounty line — the flat 50%/300,000/+0.20 numbers, since there's no
 per-tier table to build for a flat-chance mode.
 
-## Metal Potato Meddley (`/take-bounty mode:regular`, 2026-10-03)
+## Metal Potato Medley (`/take-bounty mode:regular`, 2026-10-03)
 
 Bounty's own analog of Guild Raid's flat 1% Metal King roll (`Raid.METAL_KING_DIFFICULTY`
 etc., see [raids-and-world-events.md](raids-and-world-events.md)) — a rare jackpot encounter
@@ -880,26 +880,37 @@ layered on top of a normal Regular Bounty attempt, not a 13th tier of its own. P
 architect-scoped, user-confirmed design (summarized here; the shipped mechanic only — see
 [roadmap.md](../roadmap.md) for the full design-pass writeup).
 
+**Renamed "Meddley" → "Medley" (2026-10-05, direct instruction — a plain spelling fix, the
+encounter's own mechanics/odds/numbers are untouched).** Every constant, variable, test file,
+and piece of player-facing text originally shipped under the misspelling "Meddley" — this
+doc's own name included. `metalPotatoMedley` (`constants.js`) also gained `credit: 'Inspired
+by Rednaxela'`, surfaced in the result embed's footer the same `mob.credit`-overrides-the-
+default-footer convention `createRaidEmbed` already uses for Metal King. `thumbnailUrl` is
+still NOT set — this encounter shipped without an image at all (confirmed by direct code
+inspection when asked), and a real Discord CDN attachment URL is needed from the user before
+one can be added; `createBountyResultEmbed`/`createStatBountyResultEmbed` are already wired to
+show it the instant `metalPotatoMedley.thumbnailUrl` exists.
+
 **`'regular'` mode only, same as Metal King excludes Baby Raid.** Checked in
 `mercenaryFactory.resolveBountyAttempt` AFTER the normal tier/band is already rolled
-(`Math.random() < Bounty.METAL_POTATO_MEDDLEY_CHANCE`, 1%) — Baby Bounty's hardcoded
+(`Math.random() < Bounty.METAL_POTATO_MEDLEY_CHANCE`, 1%) — Baby Bounty's hardcoded
 `Bounty.TIERS[0]` never reaches this check at all (`mode === 'regular'` gates it), mirroring
 why a guaranteed-easy mode should never risk/reward a rare jackpot encounter.
 
 **No second band roll.** The already-rolled tier's own band (`mercenaryFactory.getBandLetter`
-— B1-4→I, B5-8→II, B9-12→III) selects which of `Bounty.METAL_POTATO_MEDDLEY`'s three entries
-applies; this is purely an independent "does this attempt become a Meddley instead" roll, not
+— B1-4→I, B5-8→II, B9-12→III) selects which of `Bounty.METAL_POTATO_MEDLEY`'s three entries
+applies; this is purely an independent "does this attempt become a Medley instead" roll, not
 a second tier/band selection.
 
 **Band numbers are literal, independently-named copies of Raid's own Metal King constants**
-(`constants.js`'s `Bounty.METAL_POTATO_MEDDLEY`), keyed by band instead of guild mode —
+(`constants.js`'s `Bounty.METAL_POTATO_MEDLEY`), keyed by band instead of guild mode —
 deliberately NOT a live cross-reference to the `Raid` object, so either side can be retuned
 later without silently affecting the other:
 
 ```js
-METAL_POTATO_MEDDLEY_CHANCE: 0.01,
-METAL_POTATO_MEDDLEY_PENALTY: 0,
-METAL_POTATO_MEDDLEY: {
+METAL_POTATO_MEDLEY_CHANCE: 0.01,
+METAL_POTATO_MEDLEY_PENALTY: 0,
+METAL_POTATO_MEDLEY: {
     I:   { difficulty: 900,  reward: 4500000,  multiplierReward: 2.0,  passiveReward: 1000000, capacityReward: 10000000 },  // 45% of Raid.METAL_KING_* difficulty/reward
     II:  { difficulty: 2700, reward: 13500000, multiplierReward: 6.0,  passiveReward: 3000000, capacityReward: 30000000 },  // 45% of Raid.ELITE_METAL_KING_* difficulty/reward
     III: { difficulty: 5400, reward: 27000000, multiplierReward: 12.0, passiveReward: 6000000, capacityReward: 60000000 }, // 45% of Raid.LEGENDARY_METAL_KING_* difficulty/reward
@@ -907,12 +918,12 @@ METAL_POTATO_MEDDLEY: {
 ```
 
 **Success chance** reuses the same `effectiveBountyPower` already computed for the normal
-tier roll, against the Meddley band's OWN (much higher) difficulty, capped at the same shared
+tier roll, against the Medley band's OWN (much higher) difficulty, capped at the same shared
 `Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE` every Bounty tier already uses (Bounty has only ever
 had the one Regular-mode-equivalent cap, unlike Metal King's three separate per-mode caps):
 
 ```
-successChance = min(effectiveBountyPower / METAL_POTATO_MEDDLEY[band].difficulty, Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE)
+successChance = min(effectiveBountyPower / METAL_POTATO_MEDLEY[band].difficulty, Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE)
 ```
 
 Difficulty/reward were originally a direct 1:1 copy of Guild Raid's own Metal King numbers
@@ -935,12 +946,12 @@ a pure Metal King copy, since Guild Raid has no per-member rank multiplier to ap
 first place):
 
 ```
-reward = round(METAL_POTATO_MEDDLEY[band].reward * getRandomFromInterval(.8, 1.2) * rankInfo.rewardMultiplier)
+reward = round(METAL_POTATO_MEDLEY[band].reward * getRandomFromInterval(.8, 1.2) * rankInfo.rewardMultiplier)
 ```
 
 Credited through the exact same generic reward-crediting path every other Bounty win already
 uses in `takeBounty.js` (gross → `Bounty.WIN_TAX_PERCENT` Kingdom Tax → net) — `result.currency`
-is always `'potato'` for a Meddley win (mirrors Metal King, which has no starch-reward concept
+is always `'potato'` for a Medley win (mirrors Metal King, which has no starch-reward concept
 at all), so no special-casing was needed there at all.
 
 **Permanent stat grants, flat (not Bounty's own rare `BountyStatReward` roll, which is
@@ -949,9 +960,9 @@ shape exactly, just for one mercenary instead of a roster:
 
 ```js
 result.statReward = [
-    { type: 'workMultiplierAmount', amount: METAL_POTATO_MEDDLEY[band].multiplierReward },
-    { type: 'passiveAmount', amount: METAL_POTATO_MEDDLEY[band].passiveReward },
-    { type: 'bankCapacity', amount: METAL_POTATO_MEDDLEY[band].capacityReward }
+    { type: 'workMultiplierAmount', amount: METAL_POTATO_MEDLEY[band].multiplierReward },
+    { type: 'passiveAmount', amount: METAL_POTATO_MEDLEY[band].passiveReward },
+    { type: 'bankCapacity', amount: METAL_POTATO_MEDLEY[band].capacityReward }
 ]
 ```
 
@@ -962,66 +973,66 @@ code path needed on the persistence side, same `workMultiplierAmount`/
 shape every other permanent-stat source in this codebase already uses.
 
 **Deliberately does NOT additionally roll** the rare `BountyStatReward` chance or the Yukon
-drop roll on a Meddley win — its own guaranteed flat 3-stat grant IS this win's whole
+drop roll on a Medley win — its own guaranteed flat 3-stat grant IS this win's whole
 stat-reward story, not a stack on top of it. (Flagged judgment call, not explicitly specified
 either way in the approved design: Guild Raid's own Metal King DOES still stack with the
 separate `GuildRaidStatReward` roll, but that roll is a blanket per-MODE bolt-on applied
 *outside* any specific bracket's own action function in `startRaid.js`, architecturally
 distinct from Bounty's `rollBountyStatReward`, which already lives *inside* every regular-mode
 win branch keyed by band. Stacking Bounty's own already-rare per-band roll on top of the
-already-rare 1% Meddley trigger was judged a materially different, unapproved amount of
+already-rare 1% Medley trigger was judged a materially different, unapproved amount of
 jackpot-on-jackpot stacking, so this ships as mutually exclusive instead — revisit if a future
-pass wants Meddley to behave as a true drop-in replacement for Metal King's full stacking
+pass wants Medley to behave as a true drop-in replacement for Metal King's full stacking
 behavior.)
 
-**Penalty is always 0 on a loss, regardless of band** (`Bounty.METAL_POTATO_MEDDLEY_PENALTY`)
+**Penalty is always 0 on a loss, regardless of band** (`Bounty.METAL_POTATO_MEDLEY_PENALTY`)
 — overrides Bounty's own climbing per-tier penalty entirely for this one roll, mirroring every
 Metal King bracket's own "costs nothing win or lose" shape. `takeBounty.js`'s existing generic
 loss-crediting path (`userPotatoes -= result.penaltyAmount`) needed no special-casing either,
 since subtracting 0 is already a no-op.
 
-**Flavor**: its own dedicated `metalPotatoMeddley` object in `constants.js` (name/description/
+**Flavor**: its own dedicated `metalPotatoMedley` object in `constants.js` (name/description/
 successDescription/failureDescription), mirroring `metalKingRaidBoss`'s exact shape — ONE
 flavor text regardless of which band it rolls into, framed as a lesser, stray cousin of the
 Metal King a lone mercenary could plausibly stumble into alone (where the King himself is
 squarely a guild-sized undertaking). Never reuses `BountyScenarios`' per-band wanted-poster
 flavor — `result.scenario` is `null` on this branch (no scenario roll happens at all, saving a
 `Math.random()` call), and `embedFactory.createBountyResultEmbed` branches on
-`result.isMetalPotatoMeddley` to read `metalPotatoMeddley.successDescription`/
+`result.isMetalPotatoMedley` to read `metalPotatoMedley.successDescription`/
 `failureDescription` instead of `scenario.winFlavor`/`loseFlavor`, with its own embed title
-(`"<player> stumbles into a Metal Potato Meddley! — Tier <n>"`) and a no-penalty-on-loss
+(`"<player> stumbles into a Metal Potato Medley! — Tier <n>"`) and a no-penalty-on-loss
 message (`"Nothing — this encounter costs nothing win or lose."`) — the same pattern
 `createRaidEmbed`'s own `metalKingRaidBoss` special-casing already establishes for Guild Raid.
 
-**Preview**: `/bounty-board` shows a dedicated "Metal Potato Meddley" field (NOT a 13th row in
+**Preview**: `/bounty-board` shows a dedicated "Metal Potato Medley" field (NOT a 13th row in
 the 12-tier table, since it's an independent roll rather than a tier of its own) listing all
 three bands' live success chance (off the viewer's own `effectiveBountyPower`) and reward/
 grant numbers, reward scaled by `rankInfo.rewardMultiplier` the same way the tier table above
-it already is — read straight off `Bounty.METAL_POTATO_MEDDLEY` so this preview can't drift
+it already is — read straight off `Bounty.METAL_POTATO_MEDLEY` so this preview can't drift
 from the real roll logic, same principle `startRaid.js`'s `buildRaidPreview` states for its
 own Metal King row.
 
-**Testing note on `Math.random()` call-sequence shifts**: adding the Meddley trigger roll
+**Testing note on `Math.random()` call-sequence shifts**: adding the Medley trigger roll
 (unconditional for every `'regular'`-mode attempt, right after the tier roll) inserts exactly
 one new `Math.random()` call into the existing 'regular' mode sequence — pre-existing tests
 in `mercenaryFactory.test.js` and `takeBountyTax.test.js` that hardcoded a `mockReturnValueOnce`
-chain for 'regular' mode needed one more entry spliced in (a "Meddley trigger miss," e.g. 0.99)
+chain for 'regular' mode needed one more entry spliced in (a "Medley trigger miss," e.g. 0.99)
 right after the tier-roll value; tests using a constant `mockReturnValue(...)` for every call
 were unaffected.
 
-### Metal Potato Meddley also applies to Stat Bounty (2026-10-03, direct instruction)
+### Metal Potato Medley also applies to Stat Bounty (2026-10-03, direct instruction)
 
-Same flat 1% roll (`Bounty.METAL_POTATO_MEDDLEY_CHANCE`), checked independently on **every**
+Same flat 1% roll (`Bounty.METAL_POTATO_MEDLEY_CHANCE`), checked independently on **every**
 Stat Bounty attempt — including every link of its own cooldown-skip chain (`resolveStatBounty`
 is called once per link inside `takeBounty.js`'s `resolveStatBountyChain`, same as the regular
-ladder's own Meddley rolls once per link of its chain). Folded into
+ladder's own Medley rolls once per link of its chain). Folded into
 `mercenaryFactory.resolveStatBounty` itself (now `async` — it needs
 `computeEffectiveBountyPower`, below, which awaits the World Boss buff read), not a separate
-function, mirroring how the regular ladder's own Meddley check lives inside
+function, mirroring how the regular ladder's own Medley check lives inside
 `resolveBountyAttempt` rather than a sibling.
 
 **Reuses Bounty's own Band I numbers, not Guild's Metal King numbers directly** — same
-`Bounty.METAL_POTATO_MEDDLEY.I` object the regular ladder's own Band I Meddley already reads,
+`Bounty.METAL_POTATO_MEDLEY.I` object the regular ladder's own Band I Medley already reads,
 doubled at the point of use (`* 2`, not a second constant) — mirrors Guild Stat Raid's own
 Metal King bracket (`startRaid.js`'s `statRaidScenarios[0]`) reusing ITS OWN regular-mode
 Metal King numbers (also doubled) rather than Elite's/Legendary's. Stat Bounty has no
@@ -1029,14 +1040,14 @@ tier/band concept to select II or III from in the first place, so Band I is the 
 candidate.
 
 **Success chance switches formulas entirely for this one roll** — Stat Bounty's own base
-roll is the flat, power-independent `Bounty.STAT_BOUNTY_SUCCESS_CHANCE` (50%), but a Meddley
+roll is the flat, power-independent `Bounty.STAT_BOUNTY_SUCCESS_CHANCE` (50%), but a Medley
 roll instead uses the normal raid-style power-ratio formula, capped at
 `Raid.MAXIMUM_STAT_RAID_SUCCESS_RATE` (also 50%, but for a structurally different reason —
 see below) rather than the regular ladder's own `Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE`
 (95%):
 
 ```
-successChance = min(effectiveBountyPower / Bounty.METAL_POTATO_MEDDLEY.I.difficulty, Raid.MAXIMUM_STAT_RAID_SUCCESS_RATE)
+successChance = min(effectiveBountyPower / Bounty.METAL_POTATO_MEDLEY.I.difficulty, Raid.MAXIMUM_STAT_RAID_SUCCESS_RATE)
 ```
 
 This mirrors Guild Stat Raid's own Metal King bracket exactly — `calculateRaidSuccessChance(totalMultiplier, Raid.METAL_KING_DIFFICULTY, Raid.MAXIMUM_STAT_RAID_SUCCESS_RATE)` —
@@ -1049,56 +1060,56 @@ Mercenary Buff selection, identical to the regular ladder's own figure.
 
 **Reward on a hit pays potatoes AND all three permanent stat grants — the one branch where
 Stat Bounty pays potatoes at all.** A normal Stat Bounty win only ever grants
-`Bounty.STAT_BOUNTY_REWARD` to `workMultiplierAmount`, nothing else; Meddley instead pays the
+`Bounty.STAT_BOUNTY_REWARD` to `workMultiplierAmount`, nothing else; Medley instead pays the
 full Band I bundle, doubled, through the same ×0.8-1.2 range roll and `rankInfo.rewardMultiplier`
 scaling every other Bounty win's reward already uses:
 
 ```
-reward = round(Bounty.METAL_POTATO_MEDDLEY.I.reward * 2 * getRandomFromInterval(.8, 1.2) * rankInfo.rewardMultiplier)
+reward = round(Bounty.METAL_POTATO_MEDLEY.I.reward * 2 * getRandomFromInterval(.8, 1.2) * rankInfo.rewardMultiplier)
 statReward = [
-    { type: 'workMultiplierAmount', amount: Bounty.METAL_POTATO_MEDDLEY.I.multiplierReward * 2 },
-    { type: 'passiveAmount', amount: Bounty.METAL_POTATO_MEDDLEY.I.passiveReward * 2 },
-    { type: 'bankCapacity', amount: Bounty.METAL_POTATO_MEDDLEY.I.capacityReward * 2 }
+    { type: 'workMultiplierAmount', amount: Bounty.METAL_POTATO_MEDLEY.I.multiplierReward * 2 },
+    { type: 'passiveAmount', amount: Bounty.METAL_POTATO_MEDLEY.I.passiveReward * 2 },
+    { type: 'bankCapacity', amount: Bounty.METAL_POTATO_MEDLEY.I.capacityReward * 2 }
 ]
 ```
 
 At today's (45%-rescaled) Band I numbers that's 9,000,000 potatoes, +4.0 work multiplier,
 +2,000,000 passive income, +20,000,000 bank capacity (before the range roll/rank multiplier
 scale the potato figure further) — the permanent grants stay the bigger single hit relative to
-the regular ladder's own Band I Meddley (the 2026-10-04 rescale only touched difficulty/reward,
+the regular ladder's own Band I Medley (the 2026-10-04 rescale only touched difficulty/reward,
 not the grants), intentional given Stat Bounty's own higher baseline stakes (a flat
 300,000-potato buy-in per attempt vs. the ladder's scaling-with-tier cost).
 
 **Costs nothing at all, win or lose** — bypasses `Bounty.STAT_BOUNTY_COST`'s normal
 win-or-lose charge entirely, same "costs nothing win or lose" shape every Metal King bracket
-already has (including the regular ladder's own Meddley). The upfront/per-link affordability
+already has (including the regular ladder's own Medley). The upfront/per-link affordability
 gate in `resolveStatBountyChain` is deliberately left checking against the NORMAL cost
-regardless of what the roll turns out to be — a Meddley hit is only ever reachable by a
+regardless of what the roll turns out to be — a Medley hit is only ever reachable by a
 mercenary who could have afforded the ordinary attempt anyway, a scoped judgment call (not
 explicitly specified either way) made to avoid opening a new "fish for a free jackpot with 0
 potatoes" grinding path for a destitute player.
 
 **Still increments `mercenaryBountyWinCount` on a win**, same as the regular ladder's own
-Meddley — a Meddley win still counts toward Mercenary Rank progress exactly like any other
+Medley — a Medley win still counts toward Mercenary Rank progress exactly like any other
 Bounty win.
 
-**Embed**: `createStatBountyResultEmbed` branches on `result.isMetalPotatoMeddley` the same
-way `createBountyResultEmbed` already does for the regular ladder — reuses the `metalPotatoMeddley`
+**Embed**: `createStatBountyResultEmbed` branches on `result.isMetalPotatoMedley` the same
+way `createBountyResultEmbed` already does for the regular ladder — reuses the `metalPotatoMedley`
 flavor object (not `StatBountyFlavor`'s pool) for the Result field, shows "Potatoes Spent:
 Nothing — this encounter costs nothing win or lose." instead of the normal cost line, and
 adds a "Potatoes Gained:" field plus all three stat grants (not just the single
 `statGrantAmount` line a normal win shows) on a hit. Title becomes "`<player> stumbles into a
-Metal Potato Meddley! (Stat Bounty)`".
+Metal Potato Medley! (Stat Bounty)`".
 
-**Tests**: `mercenaryFactory.test.js` gained a `resolveStatBounty Metal Potato Meddley`
+**Tests**: `mercenaryFactory.test.js` gained a `resolveStatBounty Metal Potato Medley`
 describe block (hit numbers/formula, the 50%-cap proof at very high power, a 0-cost loss, a
 miss falling through to the normal flat-50%-roll path) mirroring the regular ladder's own
-Meddley describe block's structure. `takeBountyStatMode.test.js` gained end-to-end hit/loss
+Medley describe block's structure. `takeBountyStatMode.test.js` gained end-to-end hit/loss
 tests through the real `callback`. Every PRE-EXISTING Stat Bounty test's `Math.random()`
-sequence needed one new leading "Meddley trigger miss" value spliced in (same shift the
-regular ladder's own Meddley rollout required of its own pre-existing tests, per the testing
+sequence needed one new leading "Medley trigger miss" value spliced in (same shift the
+regular ladder's own Medley rollout required of its own pre-existing tests, per the testing
 note above) — `resolveStatBounty` itself also moved from synchronous to `async` (it now needs
-to `await computeEffectiveBountyPower` on a Meddley roll), so every direct caller/test needed
+to `await computeEffectiveBountyPower` on a Medley roll), so every direct caller/test needed
 an `await` added.
 
 ## Flavor-text scenarios (`BountyScenarios`)
@@ -1631,8 +1642,8 @@ no `misc/`/`guilds/` category fits a Mercenary-track command):
 |---|---|
 | `/become-mercenary` | No args, no confirm. Rejects if guilded or already a mercenary. |
 | `/retire-mercenary` | No args. Rejects if not currently a mercenary. Confirm/cancel step (2026-09-07 — see "Guild ↔ Mercenary switch cooldown" above), 30s timeout. Progress persists. |
-| `/bounty-board` | No args, read-only (mirrors `/current-raid`/`/quests` — never snapshots/claims by viewing). Rejects if not a mercenary. Shows Mercenary Rank + reward multiplier + cooldown-reduction-on-a-win + wins-to-next-rank, a live roll-odds + success-chance line per Bounty tier (no tier is locked anymore — see the 12-Tier Bounty Ladder above), a 3-band Metal Potato Meddley breakdown (2026-10-03), and `bountyTimer` remaining. |
-| `/take-bounty mode:<Regular Bounty\|Baby Bounty>` (Regular listed first, 2026-08-30, direct instruction — "easier") | Rejects if not a mercenary or if `bountyTimer` hasn't elapsed — no more per-tier rank gate. Resolves immediately, no confirm step, same precedent `/start-raid` sets. Baby Bounty always resolves Tier 1; Regular Bounty dynamically rolls one of all 12 tiers by current power, with an independent flat 1% chance (2026-10-03) to instead become a Metal Potato Meddley (see its own section above) — Baby Bounty is never eligible. Win/loss + scenario flavor (or Meddley's own flavor) + amount/currency + stat-reward callout + Yukon callout + (on a win, Rank 2+) a cooldown-reduction callout, all in one result embed. |
+| `/bounty-board` | No args, read-only (mirrors `/current-raid`/`/quests` — never snapshots/claims by viewing). Rejects if not a mercenary. Shows Mercenary Rank + reward multiplier + cooldown-reduction-on-a-win + wins-to-next-rank, a live roll-odds + success-chance line per Bounty tier (no tier is locked anymore — see the 12-Tier Bounty Ladder above), a 3-band Metal Potato Medley breakdown (2026-10-03), and `bountyTimer` remaining. |
+| `/take-bounty mode:<Regular Bounty\|Baby Bounty>` (Regular listed first, 2026-08-30, direct instruction — "easier") | Rejects if not a mercenary or if `bountyTimer` hasn't elapsed — no more per-tier rank gate. Resolves immediately, no confirm step, same precedent `/start-raid` sets. Baby Bounty always resolves Tier 1; Regular Bounty dynamically rolls one of all 12 tiers by current power, with an independent flat 1% chance (2026-10-03) to instead become a Metal Potato Medley (see its own section above) — Baby Bounty is never eligible. Win/loss + scenario flavor (or Medley's own flavor) + amount/currency + stat-reward callout + Yukon callout + (on a win, Rank 2+) a cooldown-reduction callout, all in one result embed. |
 | `/rob-npc heist-type:<Market Stall\|Merchant's Wagon\|Noble's Vault\|The Royal Treasury>` | Rejects if not a mercenary, if the picked tier isn't unlocked at your Mercenary Rank, or if `npcRobTimer` hasn't elapsed. No confirm step. Dedicated result embed (win/loss + tier + amount or penalty + rare stat-grant callout on The Royal Treasury + (on a win, Rank 2+) a cooldown-reduction callout). |
 | `/set-mercenary-buff buff:<rob-chance\|work-timer\|work-multi\|bounty-timer>` | See [Mercenary Buff](#mercenary-buff-set-mercenary-buff-2026-09-09-direct-instruction) above. Rejects if not a mercenary, rejects a same-category re-pick as a no-op, else rejects if the switch cooldown (15min) hasn't elapsed. On success, sets `mercenaryBuff`/`mercenaryBuffSwitchTimer`. |
 
@@ -2191,11 +2202,11 @@ deferred-and-accumulated the same way as `houseTax`:
   same reason `/work`'s identical consolidation is: every one of these checks is a monotonic
   "did we newly cross a threshold" check.
 
-**Metal Potato Meddley (the 2026-10-03 same-day addition — see the 12-Tier Bounty Ladder
+**Metal Potato Medley (the 2026-10-03 same-day addition — see the 12-Tier Bounty Ladder
 section above) is untouched by this rewrite**, deliberately: `mercenaryFactory.
-resolveBountyAttempt` itself (where Meddley's own roll/reward/stat-grant logic lives) was
+resolveBountyAttempt` itself (where Medley's own roll/reward/stat-grant logic lives) was
 not modified at all — this rewrite only changed how `takeBounty.js` PERSISTS that function's
-already-unchanged output, never when Meddley triggers or what it pays.
+already-unchanged output, never when Medley triggers or what it pays.
 
 **Two tradeoffs, carried forward IDENTICALLY from `/work`'s own rewrite** — not re-litigated,
 same acceptance:
@@ -2246,7 +2257,7 @@ chain assertions (previously counting N separate `updateUserFields` calls, one p
 were rewritten to assert the new single-write-per-chain outcome instead — same final
 `bountyTimer`/`npcRobTimer` value, same message sequence (one `editReply` + N-1 `followUp`
 calls), just one write instead of N. `takeBountyStatMode.test.js`/
-`takeBountyMetalPotatoMeddley.test.js`/`rivalNotorietyAccrual.test.js` needed a smaller,
+`takeBountyMetalPotatoMedley.test.js`/`rivalNotorietyAccrual.test.js` needed a smaller,
 unrelated fix: several assertions computed their "expected" value by reading the mocked
 `user` object's OWN fields back out AFTER calling the command (e.g. `user.potatoes -
 Bounty.STAT_BOUNTY_COST`) — safe under the old per-link-write architecture (which never

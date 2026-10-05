@@ -110,7 +110,7 @@ describe('/take-bounty win tax', () => {
         // index 2 needs a roll in [0.2, 0.3).
         const randomSpy = jest.spyOn(Math, 'random')
             .mockReturnValueOnce(0.5)  // tier roll -> Tier 12
-            .mockReturnValueOnce(0.99) // Metal Potato Meddley trigger miss
+            .mockReturnValueOnce(0.99) // Metal Potato Medley trigger miss
             .mockReturnValueOnce(0)    // win check
             .mockReturnValueOnce(0.25) // scenario index -> starch entry
             .mockReturnValueOnce(0.5)  // range roll
@@ -146,7 +146,7 @@ describe('/take-bounty win tax', () => {
         const interaction = fakeInteraction({ mode: 'regular' });
         const randomSpy = jest.spyOn(Math, 'random')
             .mockReturnValueOnce(0.5)  // tier roll -> Tier 12
-            .mockReturnValueOnce(0.99) // Metal Potato Meddley trigger miss
+            .mockReturnValueOnce(0.99) // Metal Potato Medley trigger miss
             .mockReturnValueOnce(0)
             .mockReturnValueOnce(0.25)
             .mockReturnValueOnce(0.5)

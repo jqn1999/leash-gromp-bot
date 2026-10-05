@@ -74,7 +74,7 @@ describe('/take-bounty mode:stat', () => {
         dynamoHandler.findUser.mockResolvedValue(baseUser({ potatoes: Bounty.STAT_BOUNTY_COST }));
         const interaction = fakeInteraction({ mode: 'stat' });
         const randomSpy = jest.spyOn(Math, 'random')
-            .mockReturnValueOnce(0.99)     // Metal Potato Meddley trigger MISS (>= 1% chance)
+            .mockReturnValueOnce(0.99)     // Metal Potato Medley trigger MISS (>= 1% chance)
             .mockReturnValueOnce(0.999999) // win check fails (loss)
             .mockReturnValueOnce(0);       // flavor index
         try {
@@ -98,7 +98,7 @@ describe('/take-bounty mode:stat', () => {
         dynamoHandler.findUser.mockResolvedValue(user);
         const interaction = fakeInteraction({ mode: 'stat' });
         const randomSpy = jest.spyOn(Math, 'random')
-            .mockReturnValueOnce(0.99) // Metal Potato Meddley trigger MISS
+            .mockReturnValueOnce(0.99) // Metal Potato Medley trigger MISS
             .mockReturnValueOnce(0)    // win check succeeds (< 0.5)
             .mockReturnValueOnce(0)    // flavor index
             .mockReturnValueOnce(0.99); // cooldown skip roll miss (Rank 1 has 0% skip chance anyway)
@@ -141,7 +141,7 @@ describe('/take-bounty mode:stat', () => {
         dynamoHandler.findUser.mockResolvedValue(user);
         const interaction = fakeInteraction({ mode: 'stat' });
         const randomSpy = jest.spyOn(Math, 'random')
-            .mockReturnValueOnce(0.99)     // Metal Potato Meddley trigger MISS
+            .mockReturnValueOnce(0.99)     // Metal Potato Medley trigger MISS
             .mockReturnValueOnce(0.999999) // win check fails
             .mockReturnValueOnce(0);       // flavor index
         try {
@@ -167,13 +167,13 @@ describe('/take-bounty mode:stat', () => {
     test('cooldown skip is only ever rolled on a win, never on a loss', async () => {
         dynamoHandler.findUser.mockResolvedValue(baseUser());
         const interaction = fakeInteraction({ mode: 'stat' });
-        // Only 3 Math.random calls provided (Meddley trigger + win check + flavor index) — if
+        // Only 3 Math.random calls provided (Medley trigger + win check + flavor index) — if
         // a skip roll were attempted on this loss, a 4th call would be needed and the mock
         // would return undefined, which Math.random consumers here would coerce oddly;
         // instead we assert no crash AND that bountyTimer was set to "now" (full cooldown),
         // not backdated.
         const randomSpy = jest.spyOn(Math, 'random')
-            .mockReturnValueOnce(0.99)     // Metal Potato Meddley trigger MISS
+            .mockReturnValueOnce(0.99)     // Metal Potato Medley trigger MISS
             .mockReturnValueOnce(0.999999) // win check fails
             .mockReturnValueOnce(0);       // flavor index
         try {
@@ -200,13 +200,13 @@ describe('/take-bounty mode:stat', () => {
         dynamoHandler.findUser.mockResolvedValue(user);
         const interaction = fakeInteraction({ mode: 'stat' });
         const randomSpy = jest.spyOn(Math, 'random')
-            .mockReturnValueOnce(0.99) // Metal Potato Meddley trigger MISS
+            .mockReturnValueOnce(0.99) // Metal Potato Medley trigger MISS
             .mockReturnValueOnce(0)    // win check succeeds
             .mockReturnValueOnce(0)    // flavor index
             .mockReturnValueOnce(0)    // skip roll HIT
             .mockReturnValueOnce(0.5)  // pickSkipSource attribution
             // Chained link (isChainedReply=true) resolves as a LOSS, ending the chain there:
-            .mockReturnValueOnce(0.99)     // Metal Potato Meddley trigger MISS
+            .mockReturnValueOnce(0.99)     // Metal Potato Medley trigger MISS
             .mockReturnValueOnce(0.999999) // win check fails
             .mockReturnValueOnce(0);       // flavor index
         try {
@@ -236,7 +236,7 @@ describe('/take-bounty mode:stat', () => {
         dynamoHandler.findUser.mockResolvedValue(user);
         const interaction = fakeInteraction({ mode: 'stat' });
 
-        // Per-link win+hit sequence: Meddley trigger MISS(.99), win check succeeds(0),
+        // Per-link win+hit sequence: Medley trigger MISS(.99), win check succeeds(0),
         // flavor index(0), skip roll HIT(0), pickSkipSource attribution(.5) — the same
         // 5-value sequence the "auto-chains one more attempt" test above uses for its own
         // first (hit) resolution. Repeated once per link, MAX_BOUNTY_RAID_COOLDOWN_SKIP_
@@ -263,11 +263,11 @@ describe('/take-bounty mode:stat', () => {
         expect(capField.value.toLowerCase()).toContain('not');
     });
 
-    // Metal Potato Meddley for Stat Bounty (2026-10-03, direct instruction) — same flat 1%
-    // roll as the regular ladder's own Meddley, reusing Bounty's own Band I numbers doubled
+    // Metal Potato Medley for Stat Bounty (2026-10-03, direct instruction) — same flat 1%
+    // roll as the regular ladder's own Medley, reusing Bounty's own Band I numbers doubled
     // and Guild Stat Raid's own power-ratio-capped-at-50% success formula. See
     // mercenaryFactory.resolveStatBounty's own comment for the full mechanic.
-    test('a Meddley hit costs nothing, pays doubled Band I potatoes, and grants all three permanent stats', async () => {
+    test('a Medley hit costs nothing, pays doubled Band I potatoes, and grants all three permanent stats', async () => {
         const user = baseUser({ workMultiplierAmount: 90 }); // successChance = 90/900 = .1 (difficulty rescaled to 45% for solo play)
         const originalPotatoes = user.potatoes;
         const originalTotalEarnings = user.totalEarnings;
@@ -277,7 +277,7 @@ describe('/take-bounty mode:stat', () => {
         dynamoHandler.findUser.mockResolvedValue(user);
         const interaction = fakeInteraction({ mode: 'stat' });
         const randomSpy = jest.spyOn(Math, 'random')
-            .mockReturnValueOnce(0.005) // Metal Potato Meddley trigger HIT (< 1%)
+            .mockReturnValueOnce(0.005) // Metal Potato Medley trigger HIT (< 1%)
             .mockReturnValueOnce(0)     // win check: .045 > 0 -> win
             .mockReturnValueOnce(0.5)   // reward rangeRoll -> 1.0
             .mockReturnValueOnce(0.99); // cooldown skip roll miss (Rank 1 has 0% skip chance anyway)
@@ -308,7 +308,7 @@ describe('/take-bounty mode:stat', () => {
         expect(setFields.sweetPotatoBuffs.bankCapacity).toBe(20000000);
 
         const resultEmbed = interaction.editReply.mock.calls[0][0].embeds[0];
-        expect(resultEmbed.data.title).toContain('Metal Potato Meddley');
+        expect(resultEmbed.data.title).toContain('Metal Potato Medley');
         expect(resultEmbed.data.description).toBe('Success!');
         const potatoesField = resultEmbed.data.fields.find(f => f.name === 'Potatoes Gained:');
         expect(potatoesField).toBeDefined();
@@ -317,13 +317,13 @@ describe('/take-bounty mode:stat', () => {
         expect(costField.value).toContain('Nothing');
     });
 
-    test('a Meddley loss costs nothing at all, overriding the normal STAT_BOUNTY_COST charge', async () => {
+    test('a Medley loss costs nothing at all, overriding the normal STAT_BOUNTY_COST charge', async () => {
         const user = baseUser({ workMultiplierAmount: 90 });
         const originalPotatoes = user.potatoes;
         dynamoHandler.findUser.mockResolvedValue(user);
         const interaction = fakeInteraction({ mode: 'stat' });
         const randomSpy = jest.spyOn(Math, 'random')
-            .mockReturnValueOnce(0.005)     // Metal Potato Meddley trigger HIT
+            .mockReturnValueOnce(0.005)     // Metal Potato Medley trigger HIT
             .mockReturnValueOnce(0.999999); // win check fails
         try {
             await callback(fakeClient, interaction);

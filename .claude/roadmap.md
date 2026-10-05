@@ -20308,7 +20308,7 @@ fully skipped) / 2306 tests (18 skipped, 2288 passing)** — net +4 new tests, 0
 equivalents) would need the same fix if they independently implement this chain-cap logic; not
 yet audited in this session, flagged per CLAUDE.md's sibling-repo rule.
 
-## Metal Potato Meddley — a rare jackpot encounter for Mercenary Bounty
+## Metal Potato Medley — a rare jackpot encounter for Mercenary Bounty
 
 **Asked**: a product/design pass (already scoped by the product owner and architect, grounded
 directly in the live `Raid` constants, confirmed by the project owner before implementation) —
@@ -20319,20 +20319,20 @@ rolling a fresh band, with the three bands' numbers a literal copy of Guild Raid
 Elite/Legendary Metal King constants.
 
 **What changed**:
-- `constants.js`'s `Bounty` block gained `METAL_POTATO_MEDDLEY_CHANCE` (0.01),
-  `METAL_POTATO_MEDDLEY_PENALTY` (0), and `METAL_POTATO_MEDDLEY` (an `{ I, II, III }` map of
+- `constants.js`'s `Bounty` block gained `METAL_POTATO_MEDLEY_CHANCE` (0.01),
+  `METAL_POTATO_MEDLEY_PENALTY` (0), and `METAL_POTATO_MEDLEY` (an `{ I, II, III }` map of
   `{ difficulty, reward, multiplierReward, passiveReward, capacityReward }`) — independently-
   named numeric copies of `Raid.METAL_KING_*`/`ELITE_METAL_KING_*`/`LEGENDARY_METAL_KING_*`,
   not live cross-references, so either system can be retuned later without silently affecting
   the other (this codebase's own established convention for cross-system "mirrors X" constants).
-  Also added `metalPotatoMeddley` (name/description/successDescription/failureDescription),
+  Also added `metalPotatoMedley` (name/description/successDescription/failureDescription),
   mirroring `metalKingRaidBoss`'s exact shape — one flavor text regardless of band, voiced as a
   lesser, stray cousin of the Metal King a lone mercenary could plausibly run into alone.
 - `mercenaryFactory.js`'s `resolveBountyAttempt` rolls the new 1% trigger right after the
   normal tier/band is resolved, `'regular'` mode only (`mode === 'regular' && Math.random() <
-  Bounty.METAL_POTATO_MEDDLEY_CHANCE`) — Baby Bounty's hardcoded Tier 1 never reaches this
+  Bounty.METAL_POTATO_MEDLEY_CHANCE`) — Baby Bounty's hardcoded Tier 1 never reaches this
   check at all, mirroring Metal King's own exclusion of Baby Raid. On a hit, the attempt's own
-  success chance/difficulty, reward, and stat grants are entirely replaced by the Meddley
+  success chance/difficulty, reward, and stat grants are entirely replaced by the Medley
   band's own numbers (reward scaled by the same ×0.8-1.2 range roll and the mercenary's own
   `rankInfo.rewardMultiplier`, verified consistent with how every other Bounty win's reward is
   scaled before deciding to apply it here too); on a miss or in `'baby'` mode, the attempt
@@ -20344,16 +20344,16 @@ Elite/Legendary Metal King constants.
   persistence code path was needed on the command side at all. `result.scenario` is `null` and
   `result.currency` is always `'potato'` on this branch; no scenario roll happens (saves a
   `Math.random()` call).
-- `embedFactory.js`'s `createBountyResultEmbed` branches on the new `result.isMetalPotatoMeddley`
-  flag to read `metalPotatoMeddley`'s own flavor instead of `scenario.winFlavor`/`loseFlavor`,
+- `embedFactory.js`'s `createBountyResultEmbed` branches on the new `result.isMetalPotatoMedley`
+  flag to read `metalPotatoMedley`'s own flavor instead of `scenario.winFlavor`/`loseFlavor`,
   shows a distinct title and a "Nothing — this encounter costs nothing win or lose" no-penalty
-  message on a loss, and labels the stat-grant field "Metal Potato Meddley — Permanent Stat
+  message on a loss, and labels the stat-grant field "Metal Potato Medley — Permanent Stat
   Reward!" instead of Bounty's usual "Bounty Bonus" label — mirrors `createRaidEmbed`'s own
   `metalKingRaidBoss` special-casing.
-- `bountyBoard.js`/`createBountyBoardEmbed` gained a dedicated "Metal Potato Meddley" preview
+- `bountyBoard.js`/`createBountyBoardEmbed` gained a dedicated "Metal Potato Medley" preview
   field showing all three bands' live success chance and reward/grant numbers (not a 13th row
   in the 12-tier table, since it's an independent roll rather than a tier of its own), read
-  straight off the real `Bounty.METAL_POTATO_MEDDLEY` constants and reward-scaled by
+  straight off the real `Bounty.METAL_POTATO_MEDLEY` constants and reward-scaled by
   `rankInfo.rewardMultiplier` the same way the tier table above it already is, so the preview
   can't drift from the real roll logic — same principle `startRaid.js`'s `buildRaidPreview`
   states for its own Metal King row.
@@ -20371,7 +20371,7 @@ Bounty-specific scale, with the sole deliberate departure being the added
 multiplier to apply in the first place, so this isn't a case of "copy drifted" — it's the one
 genuinely new term this port needed).
 
-**Judgment call, flagged rather than silently decided**: a Meddley win deliberately does NOT
+**Judgment call, flagged rather than silently decided**: a Medley win deliberately does NOT
 additionally roll Bounty's own rare `BountyStatReward` chance or the Yukon drop roll — its
 guaranteed flat 3-stat grant is treated as the win's entire stat-reward story, not a stack on
 top of it. Guild Raid's own Metal King DOES still stack with the separate, later-added
@@ -20379,28 +20379,28 @@ top of it. Guild Raid's own Metal King DOES still stack with the separate, later
 outside any specific bracket's own action function in `startRaid.js` — a materially different
 shape from Bounty's `rollBountyStatReward`, which already lives inside every regular-mode win
 branch keyed by band. Stacking Bounty's own already-rare per-band roll on top of the
-already-rare 1% Meddley trigger would be a meaningfully deeper jackpot-on-jackpot stack than
+already-rare 1% Medley trigger would be a meaningfully deeper jackpot-on-jackpot stack than
 anything explicitly approved, so this ships as mutually exclusive instead; revisit if a future
-pass wants Meddley to behave as a true drop-in replacement for Metal King's full stacking
+pass wants Medley to behave as a true drop-in replacement for Metal King's full stacking
 behavior.
 
-**Tests**: a new `describe('Metal Potato Meddley', ...)` block in `mercenaryFactory.test.js`
+**Tests**: a new `describe('Metal Potato Medley', ...)` block in `mercenaryFactory.test.js`
 (never triggers in `'baby'` mode even when every roll would otherwise hit it; each band's own
 difficulty/reward/grant numbers on a win; a loss always costs exactly 0 regardless of band; the
 trigger roll is independent of, and doesn't disturb, a normal miss's existing tier/scenario
-flow), a new `takeBountyMetalPotatoMeddley.test.js` exercising the full `/take-bounty` callback
+flow), a new `takeBountyMetalPotatoMedley.test.js` exercising the full `/take-bounty` callback
 end to end (win credits net-of-Kingdom-Tax reward plus all three flat stat writes; a loss writes
 back the player's own unchanged `potatoes`, confirming the override of the normal tier penalty),
 and a new case in `bountyBoard.test.js` asserting the preview embed's 3-band field. Pre-existing
 `'regular'`-mode tests in `mercenaryFactory.test.js` and `takeBountyTax.test.js` that hardcoded
-an exact `Math.random()` mock sequence needed one new spliced-in "Meddley trigger miss" value
+an exact `Math.random()` mock sequence needed one new spliced-in "Medley trigger miss" value
 (e.g. `0.99`) right after the tier-roll value, since the new trigger check consumes one
 additional `Math.random()` call on every `'regular'`-mode attempt regardless of hit or miss —
 tests using a constant `mockReturnValue(...)` for every call were unaffected. Full suite: 2293
 run / 18 skipped, all green after the splice.
 
 **Cross-repo note.** This changes a Bounty formula/data shape (`resolveBountyAttempt`'s result
-shape gained `isMetalPotatoMeddley`, and a new reward/stat-grant branch) that `financial-project`'s
+shape gained `isMetalPotatoMedley`, and a new reward/stat-grant branch) that `financial-project`'s
 own `/gromp` page would need an equivalent for if it re-implements Mercenary Bounty's win/loss
 math server-side — not yet ported; flagged per this repo's own `CLAUDE.md` cross-repo-sync rule,
 not yet actioned in the same session.
@@ -20658,7 +20658,7 @@ chain-cap regression tests (pinning the exact post-cap timer value) caught it im
 **Tests.** `takeBountyCooldownSkip.test.js`/`robNpcCooldownSkip.test.js`'s own multi-link
 chain assertions (previously counting N separate `updateUserFields` calls) were rewritten to
 assert the new single-write outcome instead, same final timer value and message sequence.
-`takeBountyStatMode.test.js`/`takeBountyMetalPotatoMeddley.test.js`/
+`takeBountyStatMode.test.js`/`takeBountyMetalPotatoMedley.test.js`/
 `rivalNotorietyAccrual.test.js` needed a smaller, unrelated fix: several assertions computed
 their expected value by reading the mocked `user` object's own fields back out AFTER calling
 the command — safe under the old architecture (which never mutated the caller's own
@@ -20682,11 +20682,11 @@ flag above for the full reasoning (multi-actor guild state + the live `claimGuil
 race guard). Nothing in `src/` under `startRaid.js`/`raidFactory.js` was touched by this
 pass.
 
-**Follow-up, same day: Metal Potato Meddley extended to Stat Bounty.** A separate, smaller
+**Follow-up, same day: Metal Potato Medley extended to Stat Bounty.** A separate, smaller
 ask landed in the same session/branch — folded into this entry rather than given its own,
 per direct instruction ("don't create a third, separate roadmap entry for an instruction
-this small"). Applies the identical regular-ladder-Meddley transformation to `/take-bounty
-mode:stat`: the same flat 1% roll (`Bounty.METAL_POTATO_MEDDLEY_CHANCE`), checked
+this small"). Applies the identical regular-ladder-Medley transformation to `/take-bounty
+mode:stat`: the same flat 1% roll (`Bounty.METAL_POTATO_MEDLEY_CHANCE`), checked
 independently on every attempt (including every link of Stat Bounty's own cooldown-skip
 chain), reusing Bounty's own Band I numbers DOUBLED (not Band II/III — Stat Bounty has no
 tier concept to select a band from, and never scaled up to Elite/Legendary-equivalent
@@ -20705,17 +20705,17 @@ constant. `mercenaryFactory.resolveStatBounty` moved from synchronous to `async`
 this (it needs the same `computeEffectiveBountyPower` helper `resolveBountyAttempt` already
 used, factored out of that function so the two formulas can't drift) — every existing direct
 caller/test needed an `await` added, and every pre-existing Stat Bounty test's `Math.random()`
-sequence needed one new leading "Meddley trigger miss" value spliced in, the exact same
-mechanical shift the original regular-ladder Meddley rollout required of ITS own pre-existing
-tests. New tests: a `resolveStatBounty Metal Potato Meddley` describe block in
+sequence needed one new leading "Medley trigger miss" value spliced in, the exact same
+mechanical shift the original regular-ladder Medley rollout required of ITS own pre-existing
+tests. New tests: a `resolveStatBounty Metal Potato Medley` describe block in
 `mercenaryFactory.test.js` (hit formula/numbers, the cap-at-high-power proof, a 0-cost loss, a
 miss falling through to the normal roll), plus end-to-end hit/loss tests in
 `takeBountyStatMode.test.js` through the real command `callback`. Full suite: **127 of 128
 suites (1 pre-existing skip) / 2327 tests (18 pre-existing skips, 2309 passing)**.
 
-## Metal Potato Meddley rescaled to 45% of its guild-derived difficulty/reward — solo mercs have no team-power multiplier (2026-10-04, direct instruction: "scale the difficulty and potato reward to 45% for the merc potato meddley since they're solo")
+## Metal Potato Medley rescaled to 45% of its guild-derived difficulty/reward — solo mercs have no team-power multiplier (2026-10-04, direct instruction: "scale the difficulty and potato reward to 45% for the merc potato medley since they're solo")
 
-Every Meddley band's `difficulty`/`reward` in `Bounty.METAL_POTATO_MEDDLEY` were literal copies of
+Every Medley band's `difficulty`/`reward` in `Bounty.METAL_POTATO_MEDLEY` were literal copies of
 Guild Raid's own Regular/Elite/Legendary Metal King numbers (see the feature's own original
 roadmap entry above) — a straight 1:1 reuse, unadjusted for the fact that a solo mercenary's
 `effectiveBountyPower` has no 4-person team-power multiplier the way a guild raider's
@@ -20725,7 +20725,7 @@ bonus at 4 members). Reusing Guild's raw difficulty verbatim meant a solo player
 meaningfully MORE raw personal power than an equivalent guild raider to reach the same odds on
 what was supposed to be the directly-comparable solo encounter — not the intended parity.
 
-**Changed** (`Bounty.METAL_POTATO_MEDDLEY` in `src/utils/constants.js`): `difficulty` and
+**Changed** (`Bounty.METAL_POTATO_MEDLEY` in `src/utils/constants.js`): `difficulty` and
 `reward` scaled to 45% of their previous (guild-derived) values, per band:
 - Band I: 2000 → 900 difficulty, 10,000,000 → 4,500,000 reward
 - Band II: 6000 → 2700 difficulty, 30,000,000 → 13,500,000 reward
@@ -20733,7 +20733,7 @@ what was supposed to be the directly-comparable solo encounter — not the inten
 
 `multiplierReward`/`passiveReward`/`capacityReward` (the permanent stat grants) are UNCHANGED —
 the instruction named only difficulty and potato reward, not the permanent grants. Stat Bounty's
-own Meddley (added the same day, see the entry above) derives its numbers from Band I doubled at
+own Medley (added the same day, see the entry above) derives its numbers from Band I doubled at
 the point of use rather than its own duplicated constant, so it automatically follows this
 rescale too: difficulty 2000 → 900 (still capped at `Raid.MAXIMUM_STAT_RAID_SUCCESS_RATE`, 50%,
 not the regular ladder's 95%), reward 20,000,000 → 9,000,000 — no separate edit needed there,
@@ -20742,13 +20742,13 @@ confirmed by the pre-existing "derive, don't duplicate" comment on that doubling
 **Tests updated** (5 pre-existing assertions pinned the old guild-derived numbers, all fixed to
 assert the new rescaled values and their resulting success chances): the three Band I/II/III hit
 tests and the Stat Bounty hit test in `mercenaryFactory.test.js`, and the end-to-end Stat Bounty
-Meddley test in `takeBountyStatMode.test.js`. No new tests needed — same formulas, same code
+Medley test in `takeBountyStatMode.test.js`. No new tests needed — same formulas, same code
 paths, only the constants moved. Full suite re-run clean: **127 of 128 suites (1 pre-existing
 skip) / 2327 tests (18 pre-existing skips, 2309 passing)** — identical pass count to before this
 change, confirming nothing else depended on the old literal values.
 
 Not yet ported to `financial-project` as of this entry — same constants need the identical 45%
-rescale applied wherever that port's own `Bounty.METAL_POTATO_MEDDLEY` copy lives (`gromp-
+rescale applied wherever that port's own `Bounty.METAL_POTATO_MEDLEY` copy lives (`gromp-
 mercenary/handler.ts`), whether that currently sits on `master` (if the regular-ladder port
 already merged) or on the in-progress chain-write-batching branch.
 
@@ -20884,3 +20884,64 @@ confirmed via 20 repeated runs on a clean, unmodified checkout to already fail i
 Not yet ported to `financial-project` — if its own `gromp-economy`/`gromp-guilds`/
 `gromp-mercenary` Lambdas have an equivalent chain-cap branch that still shows the old "skipped!"
 text on the capped link, it needs the identical wording fix to stay in sync.
+
+## Metal Potato Medley: fixed the "Meddley" misspelling, added a Rednaxela credit, confirmed it never got an image (2026-10-05, direct instruction: "did metal meddley not get a picture set? also its medley, also credit it to inspired by Rednaxela at the bottom")
+
+**Asked**: three things in one message — (1) a factual check on whether Metal Potato
+Medley's result embed has an image, (2) a spelling correction ("Meddley" → "Medley", the
+encounter was misnamed from its very first commit), (3) a credit line, "Inspired by
+Rednaxela," matching the precedent already set by Guild Raid's own Metal King
+(`metalKingRaidBoss.credit` in `constants.js`, rendered via the `mob.credit`-overrides-the-
+footer convention `createRaidEmbed` already uses).
+
+**(1) Confirmed, by direct code inspection**: no, it never got a picture. `metalPotatoMedley`
+(`constants.js`) had `name`/`description`/`successDescription`/`failureDescription` only —
+never a `thumbnailUrl` — and both of its own embed builders
+(`createBountyResultEmbed`/`createStatBountyResultEmbed` in `embedFactory.js`) only ever
+called `.setFooter({ text: "Made by Beggar" })` with no `.setThumbnail()` call at all,
+unlike every guild raid mob embed, which always sets one off its own `mob.thumbnailUrl`. The
+original feature's own roadmap entry (this file, "Metal Potato Medley — a rare jackpot
+encounter for Mercenary Bounty") never mentions a thumbnail either — it genuinely shipped
+without one.
+
+**(2) Renamed "Meddley" → "Medley" everywhere**, a pure spelling fix with zero change to any
+mechanic, number, or odds. Case-preserving find/replace (`MEDDLEY`→`MEDLEY`,
+`Meddley`→`Medley`, `meddley`→`medley`) across every file that had it: `constants.js`
+(`Bounty.METAL_POTATO_MEDLEY_CHANCE`/`_PENALTY`/`METAL_POTATO_MEDLEY`, the
+`metalPotatoMedley` flavor object), `mercenaryFactory.js` (`isMetalPotatoMedley` and every
+comment), `embedFactory.js`, `takeBounty.js`, `bountyBoard.js`,
+`.claude/roadmap.md`/`.claude/reference/constants.md`/`.claude/systems/mercenary-bounties.md`
+(including that doc's own section heading), and every test file that referenced it
+(`mercenaryFactory.test.js`, `takeBountyStatMode.test.js`, `takeBountyTax.test.js`,
+`takeBountyChainWriteCount.test.js`, `bountyBoard.test.js`). `takeBountyMetalPotatoMeddley.
+test.js` was renamed to `takeBountyMetalPotatoMedley.test.js` via `git mv` to match. Verified
+zero remaining case-insensitive matches of "meddley" anywhere in the repo after the pass.
+
+**(3) Added `credit: 'Inspired by Rednaxela'`** to the `metalPotatoMedley` object, and wired
+both of its embed builders to show it in the footer (overriding the default "Made by Beggar")
+whenever `isMetalPotatoMedley` is true — the exact same `mob.credit` pattern `createRaidEmbed`
+already established for Metal King, just applied to a flat constant object instead of a mob
+array entry. `thumbnailUrl` was deliberately left unset, with a comment in `constants.js`
+explaining why (awaiting a real Discord CDN attachment URL from the user — never guess or
+fabricate a URL) — both embed builders already conditionally call `.setThumbnail(...)` the
+instant it's set, so adding the real URL later needs no further code change.
+
+**Tests**: new `createBountyResultEmbed Metal Potato Medley credit/thumbnail` describe block
+in `embedFactory.test.js` — the credit footer shows for a Medley result and the default footer
+still shows for a non-Medley one; a temporarily-set `metalPotatoMedley.thumbnailUrl` (restored
+immediately after, so it doesn't leak into other tests) proves the thumbnail wiring itself is
+correct; a fourth test locks down that no thumbnail is set at all while the real constant
+still has none. Full suite re-run clean: **127 of 128 suites (1 pre-existing skip) / 2338
+tests (18 pre-existing skips, 2320 passing)** — net +4 new tests, 0 broken. (One run during
+this pass hit the same pre-existing flaky `rivalNotorietyAccrual.test.js` case flagged in the
+previous entry — re-ran clean immediately after, consistent with that already-confirmed,
+unrelated ~10-15% flake rate.)
+
+**Still open**: the user needs to supply a real image URL before `metalPotatoMedley.
+thumbnailUrl` can actually be set — asked directly, not guessed.
+
+Not yet ported to `financial-project` — `gromp-mercenary/handler.ts`'s own `Bounty.
+METAL_POTATO_MEDDLEY_CHANCE`/`_PENALTY`/`METAL_POTATO_MEDDLEY` (and whatever flavor-text
+object it uses) carries the same misspelling and needs the identical rename, plus the same
+credit addition once ported, though the website has no embed-footer/thumbnail concept to
+mirror the image side of this change against.

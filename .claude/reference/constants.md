@@ -136,16 +136,16 @@ replacing the retired `Bounty.STARCH_TIER_MULTIPLIER`, which scaled starch rewar
 WINNER's own power instead of being tier-fixed like the potato side). Full derivation:
 [systems/mercenary-bounties.md](../systems/mercenary-bounties.md#the-12-tier-bounty-ladder-bountytiers-2026-08-28-rework).
 
-### `Bounty.METAL_POTATO_MEDDLEY` (2026-10-03, Bounty's own Metal King analog)
+### `Bounty.METAL_POTATO_MEDLEY` (2026-10-03, Bounty's own Metal King analog)
 
-A flat 1% roll (`Bounty.METAL_POTATO_MEDDLEY_CHANCE`), `'regular'` mode only, checked AFTER
+A flat 1% roll (`Bounty.METAL_POTATO_MEDLEY_CHANCE`), `'regular'` mode only, checked AFTER
 `Bounty.TIERS`' own tier/band roll — reuses whichever band (I/II/III) the tier roll already
-landed in rather than rolling a fresh one. `Bounty.METAL_POTATO_MEDDLEY` is an `{ I, II, III }`
+landed in rather than rolling a fresh one. `Bounty.METAL_POTATO_MEDLEY` is an `{ I, II, III }`
 map of `{ difficulty, reward, multiplierReward, passiveReward, capacityReward }`, each entry a
 literal, independently-named numeric copy of `Raid.METAL_KING_*`/`ELITE_METAL_KING_*`/
 `LEGENDARY_METAL_KING_*` respectively (band I↔Regular, II↔Elite, III↔Legendary) — not a live
 cross-reference, so either side can be retuned without affecting the other.
-`Bounty.METAL_POTATO_MEDDLEY_PENALTY` is always 0, overriding `Bounty.TIERS`' own climbing
+`Bounty.METAL_POTATO_MEDLEY_PENALTY` is always 0, overriding `Bounty.TIERS`' own climbing
 per-tier penalty for this one roll, mirroring every Metal King bracket's "costs nothing win or
 lose" shape. **Rescaled to 45% of the guild-derived values, 2026-10-04** (difficulty/reward
 only, not the stat grants) — a solo mercenary has no 4-person team-power multiplier, so the
@@ -155,7 +155,7 @@ at comparable individual power. Current values: I 900/4,500,000, II 2700/13,500,
 by the mercenary's own `rankInfo.rewardMultiplier` (the one departure from a pure copy — Guild
 Raid has no per-member rank multiplier to apply). Stat grants are flat adds (mirrors
 `raidFactory.handleStatSplit`'s shape, not Bounty's own percentage-of-current `BountyStatReward`
-roll). Full derivation: [systems/mercenary-bounties.md](../systems/mercenary-bounties.md#metal-potato-meddley-take-bounty-moderegular-2026-10-03).
+roll). Full derivation: [systems/mercenary-bounties.md](../systems/mercenary-bounties.md#metal-potato-medley-take-bounty-moderegular-2026-10-03).
 
 ### `Raid.RAID_TIER_WEIGHT_SHARPNESS` (3, 2026-08-27 dynamic tier weighting)
 

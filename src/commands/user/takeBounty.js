@@ -424,9 +424,9 @@ async function resolveRegularBountyChain(client, interaction, userId, username, 
 // a long skip-chain run can legitimately run out of potatoes mid-chain, same as the old
 // recursive version's own fresh per-call check.
 //
-// Metal Potato Meddley for Stat Bounty (2026-10-03, direct instruction) — checked on every
+// Metal Potato Medley for Stat Bounty (2026-10-03, direct instruction) — checked on every
 // link via mercenaryFactory.resolveStatBounty's own independent 1% roll, same as the regular
-// ladder's own Meddley. See that function's comment for the full mechanic (reuses Band I's
+// ladder's own Medley. See that function's comment for the full mechanic (reuses Band I's
 // numbers doubled, Guild Stat Raid's own power-ratio-capped-at-50% success formula instead
 // of the flat 50% roll, costs nothing win or lose, pays potatoes AND all three permanent
 // stat grants on a hit instead of just workMultiplierAmount).
@@ -459,18 +459,18 @@ async function resolveStatBountyChain(client, interaction, userId, username, use
             const result = await mercenaryFactory.resolveStatBounty(userDetails);
             const rankInfo = mercenaryFactory.getMercenaryRankInfo(userDetails.mercenaryBountyWinCount);
 
-            // Metal Potato Meddley (2026-10-03) costs NOTHING at all, win or lose — bypasses
+            // Metal Potato Medley (2026-10-03) costs NOTHING at all, win or lose — bypasses
             // STAT_BOUNTY_COST's normal win-or-lose charge entirely, same shape every other
             // Metal King bracket already has. The upfront/per-link affordability gate above
             // this loop is deliberately left checking against the NORMAL cost regardless —
             // an attempt still has to clear that gate before it can roll at all, so a
-            // Meddley hit is only ever reachable by a mercenary who could have afforded the
+            // Medley hit is only ever reachable by a mercenary who could have afforded the
             // ordinary roll anyway, not a new "fish for a free jackpot with 0 potatoes" path.
-            if (!result.isMetalPotatoMeddley) {
+            if (!result.isMetalPotatoMedley) {
                 userDetails.potatoes -= Bounty.STAT_BOUNTY_COST;
                 userDetails.totalLosses -= Bounty.STAT_BOUNTY_COST;
             } else if (result.won) {
-                // Meddley is the one Stat Bounty branch that pays potatoes at all — a normal
+                // Medley is the one Stat Bounty branch that pays potatoes at all — a normal
                 // Stat Bounty win never credits potatoes, only the permanent stat grant below.
                 userDetails.potatoes += result.rewardAmount;
                 userDetails.totalEarnings += result.rewardAmount;
@@ -489,9 +489,9 @@ async function resolveStatBountyChain(client, interaction, userId, username, use
             aggregatedSetFields.companions = leveledCompanions;
 
             if (result.won) {
-                if (result.isMetalPotatoMeddley) {
+                if (result.isMetalPotatoMedley) {
                     // All three permanent stat grants (not just workMultiplierAmount) — see
-                    // mercenaryFactory.resolveStatBounty's own comment on why Meddley pays
+                    // mercenaryFactory.resolveStatBounty's own comment on why Medley pays
                     // Bounty's full Band I bundle, doubled, instead of the single
                     // workMultiplierAmount grant a normal Stat Bounty win pays.
                     for (const grant of result.statReward) {

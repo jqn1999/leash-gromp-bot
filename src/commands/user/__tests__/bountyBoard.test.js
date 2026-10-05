@@ -33,10 +33,10 @@ describe('/bounty-board', () => {
         expect(interaction.deferReply).toHaveBeenCalledWith({ ephemeral: true });
     });
 
-    // Metal Potato Meddley (2026-10-03) — never a 13th row in the tier table (it's an
+    // Metal Potato Medley (2026-10-03) — never a 13th row in the tier table (it's an
     // independent roll checked AFTER a tier/band is already resolved, not a tier of its
     // own), shown instead as its own 3-band breakdown field.
-    test('shows a Metal Potato Meddley field with all three bands', async () => {
+    test('shows a Metal Potato Medley field with all three bands', async () => {
         dynamoHandler.findUser.mockResolvedValue({
             userId: 'user-1', username: 'User', isMercenary: true,
             mercenaryBountyWinCount: 0, workMultiplierAmount: 90, rebirthCount: 0,
@@ -47,10 +47,10 @@ describe('/bounty-board', () => {
         await callback({}, interaction);
 
         const embed = interaction.editReply.mock.calls[0][0].embeds[0];
-        const meddleyField = embed.data.fields.find(f => f.name.includes('Metal Potato Meddley'));
-        expect(meddleyField).toBeDefined();
-        expect(meddleyField.value).toContain('Band I');
-        expect(meddleyField.value).toContain('Band II');
-        expect(meddleyField.value).toContain('Band III');
+        const medleyField = embed.data.fields.find(f => f.name.includes('Metal Potato Medley'));
+        expect(medleyField).toBeDefined();
+        expect(medleyField.value).toContain('Band I');
+        expect(medleyField.value).toContain('Band II');
+        expect(medleyField.value).toContain('Band III');
     });
 });
