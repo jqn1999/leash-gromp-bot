@@ -1126,26 +1126,75 @@ describe("execElite's Elite-kill potato reward is rerouted through creditRunPayo
     });
 });
 
-// Bastion, the Tower Warden (2026-09-13, direct instruction) — towerRewardBonus's multiplier
-// hook into scaleReward. See that method's own comment for why folding in here for free
-// excludes PAYOUT.WORK_MULTIPLIER/MODIFIER.WORK_MULTIPLIER without any separate check.
-describe('scaleReward — Bastion towerRewardBonus multiplier (2026-09-13)', () => {
-    test('defaults to 0 (a pure no-op) when no rewardBonus is passed — existing behavior fully unchanged', () => {
-        const tF = new towerFactory({ editReply: jest.fn(), user: { id: 'u1' } }, 'tester', tC.ENTRY_GATE_MULTI);
-        expect(tF.scaleReward(tC.PAYOUT.POTATOES, 30000)).toBe(Math.round(30000 * tF.scalingFactor));
+// Bastion, the Tower Warden (2026-09-13) — towerRewardBonus used to multiply straight into
+// scaleReward; scaleReward is now bonus-independent regardless of what rewardBonus the
+// constructor was given (moved out 2026-10-06, see applyEndOfRunRewardBonus's own describe
+// block below for where the bonus actually lives now).
+describe('scaleReward — no longer touched by rewardBonus (moved to applyEndOfRunRewardBonus, 2026-10-06)', () => {
+    test('is identical with or without a rewardBonus — the bonus plays no role here anymore', () => {
+        const plain = new towerFactory({ editReply: jest.fn(), user: { id: 'u1' } }, 'tester', tC.ENTRY_GATE_MULTI);
+        const boosted = new towerFactory({ editReply: jest.fn(), user: { id: 'u1' } }, 'tester', tC.ENTRY_GATE_MULTI, false, 0.50);
+        expect(boosted.scaleReward(tC.PAYOUT.POTATOES, 30000)).toBe(plain.scaleReward(tC.PAYOUT.POTATOES, 30000));
+        expect(boosted.scaleReward(tC.PAYOUT.PASSIVE_INCOME, 1000)).toBe(plain.scaleReward(tC.PAYOUT.PASSIVE_INCOME, 1000));
+        expect(boosted.scaleReward(tC.PAYOUT.BANK_CAPACITY, 1000)).toBe(plain.scaleReward(tC.PAYOUT.BANK_CAPACITY, 1000));
     });
 
-    test('multiplies the three SCALED_PAYOUT_TYPES (potatoes/passive income/bank capacity) by (1 + rewardBonus)', () => {
-        const tF = new towerFactory({ editReply: jest.fn(), user: { id: 'u1' } }, 'tester', tC.ENTRY_GATE_MULTI, false, 0.10);
-        expect(tF.scaleReward(tC.PAYOUT.POTATOES, 30000)).toBe(Math.round(30000 * tF.scalingFactor * 1.10));
-        expect(tF.scaleReward(tC.PAYOUT.PASSIVE_INCOME, 1000)).toBe(Math.round(1000 * tF.scalingFactor * 1.10));
-        expect(tF.scaleReward(tC.PAYOUT.BANK_CAPACITY, 1000)).toBe(Math.round(1000 * tF.scalingFactor * 1.10));
-    });
-
-    test('never applies to PAYOUT.WORK_MULTIPLIER or MODIFIER.WORK_MULTIPLIER — inherited for free from the SCALED_PAYOUT_TYPES exclusion', () => {
+    test('never applies to PAYOUT.WORK_MULTIPLIER or MODIFIER.WORK_MULTIPLIER', () => {
         const tF = new towerFactory({ editReply: jest.fn(), user: { id: 'u1' } }, 'tester', tC.ENTRY_GATE_MULTI, false, 0.50);
         expect(tF.scaleReward(tC.PAYOUT.WORK_MULTIPLIER, 5)).toBe(5);
         expect(tF.scaleReward(tC.MODIFIER.WORK_MULTIPLIER, 0.2)).toBe(0.2);
+    });
+});
+
+// applyEndOfRunRewardBonus (2026-10-06, player-reported: "it seems like it is not" boosting
+// Tower rewards) — Bastion's towerRewardBonus, applied exactly once at the true end of a run
+// (see startRun()'s own call site), AFTER every floor's own getTowerRunCap-clamped credit is
+// already final, specifically so it can push the run's final total past that cap instead of
+// being silently absorbed by it the way the old per-credit (inside scaleReward) application was.
+describe('applyEndOfRunRewardBonus (2026-10-06)', () => {
+    test('is a no-op when rewardBonus is 0 (no Bastion equipped) — this.run is left byte-for-byte unchanged', () => {
+        const tF = new towerFactory({ editReply: jest.fn(), user: { id: 'u1' } }, 'tester', tC.ENTRY_GATE_MULTI);
+        tF.run[tC.PAYOUT.POTATOES] = 12345;
+        tF.run[tC.PAYOUT.PASSIVE_INCOME] = 678;
+        tF.run[tC.PAYOUT.BANK_CAPACITY] = 910;
+        tF.run[tC.PAYOUT.WORK_MULTIPLIER] = 1.23;
+        tF.applyEndOfRunRewardBonus();
+        expect(tF.run[tC.PAYOUT.POTATOES]).toBe(12345);
+        expect(tF.run[tC.PAYOUT.PASSIVE_INCOME]).toBe(678);
+        expect(tF.run[tC.PAYOUT.BANK_CAPACITY]).toBe(910);
+        expect(tF.run[tC.PAYOUT.WORK_MULTIPLIER]).toBe(1.23);
+    });
+
+    test('multiplies the three SCALED_PAYOUT_TYPES by (1 + rewardBonus), rounded', () => {
+        const tF = new towerFactory({ editReply: jest.fn(), user: { id: 'u1' } }, 'tester', tC.ENTRY_GATE_MULTI, false, 0.10);
+        tF.run[tC.PAYOUT.POTATOES] = 30000;
+        tF.run[tC.PAYOUT.PASSIVE_INCOME] = 1000;
+        tF.run[tC.PAYOUT.BANK_CAPACITY] = 1000;
+        tF.applyEndOfRunRewardBonus();
+        expect(tF.run[tC.PAYOUT.POTATOES]).toBe(Math.round(30000 * 1.10));
+        expect(tF.run[tC.PAYOUT.PASSIVE_INCOME]).toBe(Math.round(1000 * 1.10));
+        expect(tF.run[tC.PAYOUT.BANK_CAPACITY]).toBe(Math.round(1000 * 1.10));
+    });
+
+    test('never touches PAYOUT.WORK_MULTIPLIER or MODIFIER.WORK_MULTIPLIER', () => {
+        const tF = new towerFactory({ editReply: jest.fn(), user: { id: 'u1' } }, 'tester', tC.ENTRY_GATE_MULTI, false, 0.50);
+        tF.run[tC.PAYOUT.WORK_MULTIPLIER] = 2.5;
+        tF.run[tC.MODIFIER.WORK_MULTIPLIER] = 0.8;
+        tF.applyEndOfRunRewardBonus();
+        expect(tF.run[tC.PAYOUT.WORK_MULTIPLIER]).toBe(2.5);
+        expect(tF.run[tC.MODIFIER.WORK_MULTIPLIER]).toBe(0.8);
+    });
+
+    // The literal point of this whole change — a run whose cap-clamped total already sits
+    // exactly at getTowerRunCap's ceiling still gets boosted past it, since this method never
+    // routes back through creditRunPayout/getTowerRunCap at all.
+    test('can push the final total past getTowerRunCap — the whole reason this moved out of scaleReward', () => {
+        const tF = new towerFactory({ editReply: jest.fn(), user: { id: 'u1' } }, 'tester', tC.ENTRY_GATE_MULTI, false, 0.10);
+        const cap = tC.getTowerRunCap(tC.PAYOUT.POTATOES, tF.floor);
+        tF.run[tC.PAYOUT.POTATOES] = cap; // simulates a run that already capped out during the climb
+        tF.applyEndOfRunRewardBonus();
+        expect(tF.run[tC.PAYOUT.POTATOES]).toBe(Math.round(cap * 1.10));
+        expect(tF.run[tC.PAYOUT.POTATOES]).toBeGreaterThan(cap);
     });
 });
 

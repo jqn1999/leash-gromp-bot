@@ -1938,13 +1938,19 @@ const Companions = [
         // boosts Tower's own three VALUE-SCALED reward types (potatoes, passive income, bank
         // capacity — see towerConstants.SCALED_PAYOUT_TYPES) by this percentage. Deliberately
         // excludes work-multiplier rewards (PAYOUT.WORK_MULTIPLIER/MODIFIER.WORK_MULTIPLIER) —
-        // those already bypass scaleReward's own scaling multiplication entirely (they're not
-        // in SCALED_PAYOUT_TYPES), so towerFactory.scaleReward's bonus multiplier naturally
-        // never touches them, matching this codebase's own established "a percentage-type
-        // stat gain doesn't get boosted by another percentage" convention (the same reasoning
-        // Tower's own player-power scalingFactor already uses). 10% at level 1, scaling to
-        // 14.5% at level 10 via the standard +5%/level curve — anchored below Yukon's own
-        // 13.5% bountyRewardPercent since Bastion carries a second, more novel perk alongside it.
+        // those were never in SCALED_PAYOUT_TYPES, matching this codebase's own established
+        // "a percentage-type stat gain doesn't get boosted by another percentage" convention
+        // (the same reasoning Tower's own player-power scalingFactor already uses). 10% at
+        // level 1, scaling to 14.5% at level 10 via the standard +5%/level curve — anchored
+        // below Yukon's own 13.5% bountyRewardPercent since Bastion carries a second, more
+        // novel perk alongside it. Applied ONCE, at the true end of a run (towerFactory.
+        // applyEndOfRunRewardBonus), not per-credit during the climb — moved there 2026-10-06
+        // (player-reported: "it seems like it is not" boosting rewards) after its original
+        // per-credit home inside scaleReward turned out to get silently absorbed by
+        // getTowerRunCap's own clamping before a strong, well-progressed run — exactly the
+        // kind of run most likely to have Bastion equipped — ever actually banked it. Applying
+        // it once, after the run's own cap-clamped total is already final, lets the bonus
+        // genuinely exceed that cap instead.
         //
         // towerDeathWard (binary — no `value`, same shape as Guinea Pig's own poisonImmunity
         // entry) — once per day (userDetails.towerWardUsedToday, reset on the same 8pm ET

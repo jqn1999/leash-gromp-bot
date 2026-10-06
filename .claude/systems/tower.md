@@ -1858,14 +1858,27 @@ choice between them):
 
 - **`towerRewardBonus`** (+10% base, `PERK_BONUS_PER_LEVEL`-scaled like every other perk) — a
   straight multiplier on the three SCALED_PAYOUT_TYPES (potatoes/passive income/bank
-  capacity), folded directly into `towerFactory.scaleReward`'s existing
-  `Math.round(rawValue * this.scalingFactor * (1 + this.rewardBonus))` — since it only ever
-  multiplies inside that same branch, it automatically inherits the exact same exclusion
-  `PAYOUT.WORK_MULTIPLIER`/`MODIFIER.WORK_MULTIPLIER` already has from `scaleReward`, with
-  zero separate exclusion logic needed. `rewardBonus` defaults to `0` (a pure no-op,
-  `* (1 + 0)` = `* 1`) so a run without Bastion equipped is byte-for-byte unchanged from
-  before this feature. One of `MimicryCompanion.PERK_TYPES` (mirrorable by Yamimic) since it's
-  an ordinary "one number, bigger is better" value.
+  capacity). `rewardBonus` defaults to `0` (a pure no-op) so a run without Bastion equipped is
+  byte-for-byte unchanged from before this feature. One of `MimicryCompanion.PERK_TYPES`
+  (mirrorable by Yamimic) since it's an ordinary "one number, bigger is better" value.
+
+  **Moved to end-of-run (2026-10-06, player-reported: "it seems like it is not" boosting Tower
+  rewards — see this doc's own "Bastion's towerRewardBonus moved to end-of-run" entry below for
+  the full writeup).** Originally folded directly into `towerFactory.scaleReward`'s
+  `Math.round(rawValue * this.scalingFactor * (1 + this.rewardBonus))`, applied PER CREDIT,
+  before `creditRunPayout`'s own `getTowerRunCap` clamping ever ran — which meant the bonus's
+  marginal value was silently absorbed by that cap for exactly the well-progressed players most
+  likely to have Bastion equipped (the cap is deliberately calibrated so a median strong run
+  already lands at/near it — see `towerConstants.js`'s own `TOWER_FLOOR_CAP_STEP` comment). Now
+  applied exactly ONCE, in `startRun()`, via `applyEndOfRunRewardBonus()`, after the run has
+  genuinely concluded and every floor's own cap-clamped credit to `this.run` is already final —
+  deliberately NOT routed back through `creditRunPayout`/`getTowerRunCap`, so it can push the
+  run's final total past whatever cap applied during the climb. `scaleReward` itself is now
+  byte-for-byte what it was before Bastion existed; `this.rewardBonus` plays no role there
+  anymore. Still excludes `PAYOUT.WORK_MULTIPLIER`/`MODIFIER.WORK_MULTIPLIER` (now via iterating
+  `tC.SCALED_PAYOUT_TYPES` directly rather than inheriting the exclusion from `scaleReward`'s own
+  branch) — the deliberate "a percentage stat gain doesn't get boosted by another percentage"
+  reasoning is unchanged, only the TIMING of the boost moved.
 - **`towerDeathWard`** — a binary once-per-day save, deliberately **excluded** from
   `MimicryCompanion.PERK_TYPES` (it isn't a numeric value Yamimic's max-comparison mirroring
   can meaningfully apply — same reasoning Guinea Pig's `poisonImmunity` is already excluded
@@ -3579,3 +3592,85 @@ new tests, 0 broken.
 **financial-project scope note.** Not ported — an admin-only Discord moderation command reading a
 Discord-specific tower_leaderboard doc shape, with no web equivalent and no game logic, balance, or
 data shape `/gromp` implements.
+
+## Bastion's `towerRewardBonus` moved to end-of-run, so it can actually exceed the per-run cap (2026-10-06, player-reported then direct instruction)
+
+**Reported**: "is bastion applying the stat boost to tower rewards? it seems like players are
+saying it is not." Investigated by direct code read rather than assumption — the wiring from
+`companionFactory.getActivePerkValue('towerRewardBonus')` through `enter-tower.js` into
+`towerFactory`'s constructor was all correct, and `scaleReward`'s own multiplication was
+confirmed correct by passing tests. The real cause was one layer away: `scaleReward`'s boosted
+value fed straight into `creditRunPayout`, which clamps against `getTowerRunCap(type, floor)` —
+a cumulative PER-RUN cap, deliberately calibrated (see the "Per-Run POTATOES Cap: Shipped"
+section above) so a **median, well-progressed run already lands at/near it**. That meant
+Bastion's 10-14.5% bonus on potatoes was mostly clamped away entirely (overflow discarded, not
+converted) for exactly the players strong/deep enough to have found and equipped a Legendary
+tower-exclusive companion in the first place — the bonus computed correctly and then vanished
+into the cap before ever reaching the player's real balance. Passive income/bank capacity fared
+only slightly better (overflow converts to potatoes, but at a steep discount rate — see
+`TOWER_OVERFLOW_SHOP_RATE`). Confirmed as a real design collision, not a code bug, and reported
+back as such — direct instruction followed: "have the bastion rewards apply at the end of a
+tower run boosting the final stats/potatoes not during the run so that it can exceed the caps at
+the tower conclusion."
+
+**Fix**: moved the bonus's application point from PER-CREDIT (inside `scaleReward`, before any
+capping) to ONCE, at the true end of a run (inside `startRun()`, after every credit/clamp this
+run will ever see is already final).
+
+- `towerFactory.js`'s `scaleReward` — the `* (1 + this.rewardBonus)` term removed entirely. The
+  method is now byte-for-byte identical to its pre-Bastion form; `this.rewardBonus` plays no
+  role here anymore.
+- New method `applyEndOfRunRewardBonus()` — a no-op short-circuit when `rewardBonus === 0` (no
+  Bastion equipped), otherwise iterates `tC.SCALED_PAYOUT_TYPES` itself (the exact same `Set`
+  `scaleReward` already checks against, so the two can never desync on which types are
+  affected) and does `this.run[type] = Math.round(this.run[type] * (1 + this.rewardBonus))` for
+  each. Deliberately does NOT call `creditRunPayout`/`getTowerRunCap` — bypassing that clamp
+  entirely is the whole point of this change. `PAYOUT.WORK_MULTIPLIER`/`MODIFIER.WORK_MULTIPLIER`
+  are never in `SCALED_PAYOUT_TYPES`, so they're untouched here too, same deliberate exclusion
+  the perk always had (a percentage stat gain still doesn't get boosted by another percentage —
+  only the TIMING of the potatoes/passive/bank boost changed, not its scope).
+- `startRun()` — one new call, `this.applyEndOfRunRewardBonus()`, immediately before the
+  function's own single terminal `return [this.run, ...]` statement. `startRun()` has exactly
+  one such return (confirmed by grep before relying on it) — the whole multi-floor climb runs
+  inside one long-lived `while` loop that only exits once the run has genuinely concluded
+  (death, voluntary leave, Bastion's own Ward save, or any other way `cont` goes false), so this
+  is a true "apply exactly once, at the real end" point, not something that could double-apply
+  across floors or chain links.
+
+**Why this is safe against every other run-ending path**: a death zeroes
+`WORK_MULTIPLIER`/`PASSIVE_INCOME`/`BANK_CAPACITY` to `0` BEFORE `startRun()` returns (see the
+Death Ward section above) — `applyEndOfRunRewardBonus` still runs after that, but
+`Math.round(0 * (1 + x))` is still `0`, so a death correctly keeps potatoes earned so far
+boosted while the zeroed stat fields stay zero. Mid-run checkpointing (`checkpoint()`, called
+once per floor) snapshots `this.run` BEFORE this new end-of-run step ever runs, so a resumed
+crashed run still resumes from genuinely raw, unboosted totals — the bonus is only ever applied
+once, at the actual final conclusion, never baked into an intermediate checkpoint.
+
+**Known, accepted display consequence**: every INTERMEDIATE floor embed during a run (the
+"Potatoes:"/"Passive Income:"/"Bank Capacity:" fields shown after each floor) reads directly off
+`this.run[...]`, which no longer reflects Bastion's bonus until the very end — a player with
+Bastion equipped now watches the same, honest, unboosted running tally the whole climb, then
+sees a one-time jump at the final result. This is the direct, necessary consequence of moving
+the bonus to end-of-run as asked (there's no way to preview an "exceeds the cap" number
+mid-climb without either computing it twice or showing a number that doesn't match what's
+actually banked at that point) — not flagged as a problem to fix, just documented so a future
+reader isn't confused by the mid-run numbers no longer including Bastion's bonus.
+
+**Tests** (`towerFactory.test.js`): the old `scaleReward — Bastion towerRewardBonus multiplier`
+describe block (asserted the bonus multiplying inside `scaleReward`) rewritten to `scaleReward —
+no longer touched by rewardBonus`, proving a boosted and unboosted instance now produce identical
+`scaleReward` output. New `applyEndOfRunRewardBonus` describe block (4 tests): a no-op at
+`rewardBonus === 0` leaves `this.run` byte-for-byte unchanged; multiplies the three scaled types
+by `(1 + rewardBonus)`, rounded; never touches either `WORK_MULTIPLIER` field; and — the
+regression test that most directly proves the fix — a `this.run[POTATOES]` value set exactly to
+`getTowerRunCap`'s own ceiling still ends up strictly greater than that ceiling after the bonus
+applies, confirming it genuinely bypasses the cap rather than being silently reabsorbed by it
+again. Full suite re-run clean: **127 of 128 suites (1 pre-existing skip) / 2341 tests (18
+pre-existing skips, 2323 passing)**.
+
+Updated `constants.js`'s own `Companions` entry for Bastion and this doc's own perk description
+above to describe the new end-of-run timing.
+
+Not yet ported to `financial-project` — that port doesn't implement Tower at all (reconfirmed
+by the "Admin: `/admin tower` `resume-from-leaderboard`" entry above's own scope note), so
+there's nothing to port this change into.

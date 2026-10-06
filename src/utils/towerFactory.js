@@ -106,10 +106,19 @@ class towerFactory{
         // the player's own equipped companion BEFORE the run starts (companionFactory.
         // getActivePerkValue/hasTowerDeathWard), so this class stays a pure run simulator with
         // no companion/DB knowledge of its own, matching its existing "enter-tower.js persists,
-        // towerFactory computes" division of labor. rewardBonus multiplies straight into
-        // scaleReward (see that method's own comment); hasWard gates whether a loss THIS run is
-        // even eligible to be warded at all (still further gated per-Elite by !this.wardUsed
-        // inside execElite — no floor restriction, see that check's own comment for why).
+        // towerFactory computes" division of labor. rewardBonus is applied ONCE, at the very
+        // end of startRun() (see that method's own comment, and applyEndOfRunRewardBonus) —
+        // moved there 2026-10-06 (player-reported: "it seems like it is not" boosting Tower
+        // rewards) from its original home inside scaleReward, where it multiplied every
+        // individual credit BEFORE getTowerRunCap's own clamping — meaning the bonus's
+        // marginal value was silently absorbed by the cap for exactly the well-progressed
+        // players most likely to have Bastion equipped (the cap is deliberately calibrated so
+        // a median strong run already lands at/near it — see towerConstants.js's own
+        // TOWER_FLOOR_CAP_STEP comment). Applying it once, after the run's own cap-clamped
+        // total is already final, lets it genuinely exceed the cap instead of being eaten by
+        // it. hasWard gates whether a loss THIS run is even eligible to be warded at all
+        // (still further gated per-Elite by !this.wardUsed inside execElite — no floor
+        // restriction, see that check's own comment for why).
         this.rewardBonus = rewardBonus
         this.hasWard = hasWard
         // Consumed at most once per run (enter-tower.js persists userDetails.towerWardUsedToday
@@ -188,6 +197,11 @@ class towerFactory{
             // half-resolved one.
             await this.checkpoint()
         }
+        // Bastion's towerRewardBonus (2026-10-06, moved here from scaleReward — see this
+        // method's own comment above and applyEndOfRunRewardBonus's) — applied exactly once,
+        // after the run has genuinely concluded (died, voluntarily left, warded, or any other
+        // way `cont` goes false) and every floor's own cap-clamped credit is already final.
+        this.applyEndOfRunRewardBonus()
         // Tower Pet fields appended at the end (2026-09-13) — every existing caller that
         // destructures only `[run, floor, died]` is unaffected (extra trailing elements are
         // simply never read); enter-tower.js is the only consumer that needs the rest.
@@ -502,19 +516,44 @@ class towerFactory{
     // actual currency balance (potatoes/passiveAmount/bankCapacity are real money, not a
     // display-only stat) never lands on a fractional value — was previously left fractional
     // and credited straight to the DB (e.g. a live run crediting 692,258.284 passive income).
-    // Bastion, the Tower Warden's towerRewardBonus (2026-09-13) folds in here as a straight
-    // multiplier alongside this.scalingFactor — since it only ever multiplies inside this
-    // same `if` branch, it automatically only ever applies to the three SCALED_PAYOUT_TYPES
-    // (potatoes/passive income/bank capacity), never PAYOUT.WORK_MULTIPLIER/MODIFIER.
-    // WORK_MULTIPLIER, for free — no separate exclusion needed, see the Companions entry's
-    // own comment for why that exclusion is deliberate. Defaults to 0 (a pure no-op,
-    // `* (1 + 0)` = `* 1`) when nothing's equipped, so this method's existing behavior is
-    // completely unchanged for every run without Bastion active.
+    // Bastion, the Tower Warden's towerRewardBonus (2026-09-13) used to fold in here as a
+    // straight multiplier alongside this.scalingFactor — moved out 2026-10-06 to
+    // applyEndOfRunRewardBonus (see that method's own comment, and the constructor's) once
+    // live play showed its per-credit application here was getting silently absorbed by
+    // getTowerRunCap's own clamping before a strong run ever banked it. This method is now
+    // byte-for-byte what it was before Bastion existed — this.rewardBonus plays no part here
+    // at all anymore.
     scaleReward(outcomeIndex, rawValue){
         if(!tC.SCALED_PAYOUT_TYPES.has(outcomeIndex)){
             return rawValue
         }
-        return Math.round(rawValue * this.scalingFactor * (1 + this.rewardBonus))
+        return Math.round(rawValue * this.scalingFactor)
+    }
+
+    // Bastion, the Tower Warden's towerRewardBonus — end-of-run application (2026-10-06,
+    // player-reported: "it seems like it is not" boosting Tower rewards). Applied exactly
+    // once, in startRun(), after the run has genuinely concluded and every floor's own
+    // getTowerRunCap-clamped credit to this.run is already final — deliberately NOT routed
+    // back through creditRunPayout/getTowerRunCap, since the entire point of moving this here
+    // is to let the bonus push the run's final total past whatever cap applied during the
+    // climb (the cap is calibrated so a median strong run already sits at/near it — see
+    // towerConstants.js's own TOWER_FLOOR_CAP_STEP comment — which is exactly what made the
+    // bonus invisible when it used to apply per-credit, inside scaleReward, BEFORE that
+    // clamping). Iterates tC.SCALED_PAYOUT_TYPES itself (the same Set scaleReward already
+    // checks against) rather than a hardcoded list, so the two stay impossible to desync —
+    // WORK_MULTIPLIER/MODIFIER.WORK_MULTIPLIER are never in that Set and so never touched
+    // here either, same deliberate exclusion the perk always had (see the Companions entry's
+    // own comment on why a percentage stat gain doesn't get boosted by another percentage).
+    // Math.round mirrors scaleReward's own precedent — these three are real currency/capacity
+    // balances, never left fractional. A no-op (`* (1 + 0)` = `* 1`, floors unchanged by
+    // Math.round on an already-integer value) for every run without Bastion equipped.
+    applyEndOfRunRewardBonus(){
+        if(this.rewardBonus === 0){
+            return
+        }
+        for(const type of tC.SCALED_PAYOUT_TYPES){
+            this.run[type] = Math.round(this.run[type] * (1 + this.rewardBonus))
+        }
     }
 
     // Per-run maximum gain cap (2026-09-04, direct instruction) — the single point every
