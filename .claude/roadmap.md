@@ -21007,3 +21007,31 @@ end-of-run timing.
 Not yet ported to `financial-project` — that port doesn't implement Tower at all, so there's
 nothing to port this into (reconfirmed against the most recent Tower entry's own scope note
 before writing this one).
+
+## Ward-saved runs excluded from the daily leaderboard (2026-10-08, player-raised design question then direct instruction: "should bastion still count towards leaderboard? or lose chance of leaderboard since they effectively go until they 'die'")
+
+Reverses a deliberate call made in the original 2026-09-13 Bastion feature (a Ward-saved run
+used to count as "a genuine survival, not a loss" for the leaderboard, same as any voluntary
+leave). Presented the tradeoff before implementing: the leaderboard's own documented intent is
+rewarding deliberate restraint ("survive deliberately, don't just brute-force floors"), but a
+Ward save is mechanically a LOSS that Bastion only softens — the player didn't choose to stop,
+they lost and got bailed out. Left eligible, a Bastion holder could push to failure every day,
+guaranteed a save on the first loss, and land a leaderboard entry at their exact power ceiling
+with zero actual risk judgment — the opposite of what the eligibility rule exists to reward.
+Recommended excluding ward-saved runs specifically (keeping `highestTowerFloor` and the run's
+own reward/stats unaffected, since those exist to honor the Ward's safety-net purpose, not to
+rank competitive skill); confirmed.
+
+**Changed** (`enter-tower.js`): `if (!died)` → `if (!died && !wardUsed)` on the
+`recordTowerLeaderboardEntry` gate. Nothing else touched. Updated the now-stale comments this
+reverses in both `enter-tower.js` and `towerFactory.js`'s `createWardedRetreatEmbed`.
+
+**Tests**: split the old single "voluntary leave OR ward save, both identical" test
+(`enter-tower.test.js`) into two, now that they diverge — a genuine voluntary leave still gets a
+leaderboard entry; a ward-saved run gets `highestTowerFloor` updated but explicitly does NOT
+get a leaderboard entry. Full suite re-run clean: **127 of 128 suites (1 pre-existing skip) /
+2342 tests (18 pre-existing skips, 2324 passing)**.
+
+Updated `.claude/systems/tower.md` (a new dated section, plus the "Daily leaderboard" and
+Bastion perk sections' own stale notes). Not yet ported to `financial-project` — doesn't
+implement Tower at all.

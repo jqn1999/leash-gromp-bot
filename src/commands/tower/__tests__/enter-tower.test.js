@@ -702,18 +702,14 @@ describe('admin bypass while tower_access is disabled/unset', () => {
     });
 
     // Leaderboard/personal-best eligibility (direct instruction, following up on the
-    // checkpointing feature above): a checkpoint-credited CRASH must never count, but the two
-    // ways a run can genuinely CONCLUDE should be unaffected by that exclusion — a voluntary
-    // leave, and an Elite death saved by Bastion's ward (towerFactory.js keeps `died` false in
-    // that case specifically so it resolves exactly like a voluntary leave — see execElite's
-    // own comment). Both reach the SAME tail-bookkeeping block (`died` false either way), so
-    // one test covers both without needing to fake which specific path produced it.
-    test("an Elite death saved by Bastion's ward (died stays false) counts toward highestTowerFloor and the daily leaderboard, same as a voluntary leave", async () => {
+    // checkpointing feature above): a checkpoint-credited CRASH must never count, but a
+    // genuine voluntary leave should be unaffected by that exclusion — `died` stays false,
+    // `wardUsed` stays false, both eligibility checks pass.
+    test("a voluntary leave (died stays false, wardUsed stays false) counts toward highestTowerFloor and the daily leaderboard", async () => {
         dynamoHandler.findUser.mockResolvedValue(baseUser({ userId: awsConfigurations.devs[0], workMultiplierAmount: tC.ENTRY_GATE_MULTI, rebirthCount: 0 }));
         towerFactory.mockImplementation(() => ({
-            // [rewards, floor, died, elitesSurvivedCount, towerCompanionHits, wardUsed] — died
-            // is false (the ward saved it), wardUsed is true.
-            startRun: jest.fn().mockResolvedValue([[5000, 0, 0, 0], 10, false, 1, 0, true]),
+            // [rewards, floor, died, elitesSurvivedCount, towerCompanionHits, wardUsed]
+            startRun: jest.fn().mockResolvedValue([[5000, 0, 0, 0], 10, false, 1, 0, false]),
         }));
         const interaction = adminInteraction();
 
@@ -724,6 +720,27 @@ describe('admin bypass while tower_access is disabled/unset', () => {
             userId: awsConfigurations.devs[0],
             floor: 10,
         }));
+    });
+
+    // 2026-10-08, direct instruction, reversing the original design above (a warded retreat
+    // used to be treated as "a genuine survival" for the leaderboard too) — a Ward save means
+    // the player LOST this Elite fight and Bastion only softened the consequence; it still
+    // counts toward highestTowerFloor and the run's own reward/stats (the Ward's actual
+    // safety-net purpose), but no longer toward the daily leaderboard specifically, since that
+    // one thing is meant to reward choosing to stop through deliberate restraint, which a
+    // loss-then-saved run never did.
+    test("an Elite death saved by Bastion's ward (died stays false, wardUsed true) counts toward highestTowerFloor but NOT the daily leaderboard", async () => {
+        dynamoHandler.findUser.mockResolvedValue(baseUser({ userId: awsConfigurations.devs[0], workMultiplierAmount: tC.ENTRY_GATE_MULTI, rebirthCount: 0 }));
+        towerFactory.mockImplementation(() => ({
+            // died is false (the ward saved it), wardUsed is true.
+            startRun: jest.fn().mockResolvedValue([[5000, 0, 0, 0], 10, false, 1, 0, true]),
+        }));
+        const interaction = adminInteraction();
+
+        await callback({}, interaction);
+
+        expect(dynamoHandler.updateIfNewRecord).toHaveBeenCalledWith(awsConfigurations.devs[0], 'highestTowerFloor', 10);
+        expect(dynamoHandler.recordTowerLeaderboardEntry).not.toHaveBeenCalled();
         expect(dynamoHandler.updateUserDatabase).toHaveBeenCalledWith(awsConfigurations.devs[0], 'towerWardUsedToday', true);
     });
 

@@ -151,10 +151,20 @@ the same 8pm ET `canEnterTower` reset — see [systems/raids-and-world-events.md
 **Survival-only eligibility.** `towerFactory.js` tracks a `this.died` flag, set `true` only in
 `execElite`'s actual loss branch (failed the `Math.random() < success` roll) — declining to fight an
 Elite at all (`!fight`) is a voluntary retreat, not a death, and still counts. `startRun()` returns
-`[run, floor, died]`; `enter-tower.js` only calls `dynamoHandler.recordTowerLeaderboardEntry(...)`
-when `!died`. A run that reaches floor 39 and then loses an Elite doesn't rank at all, even though
-it went deeper than someone's careful floor-25 survival — dying forfeits leaderboard eligibility
-entirely, which is the intended incentive (survive deliberately, don't just brute-force floors).
+`[run, floor, died, elitesSurvivedCount, towerCompanionHits, wardUsed]`; `enter-tower.js` calls
+`dynamoHandler.recordTowerLeaderboardEntry(...)` only when `!died && !wardUsed`. A run that reaches
+floor 39 and then loses an Elite doesn't rank at all, even though it went deeper than someone's
+careful floor-25 survival — dying forfeits leaderboard eligibility entirely, which is the intended
+incentive (survive deliberately, don't just brute-force floors).
+
+**Ward-saved runs excluded too (2026-10-08, direct instruction — reversing the original
+2026-09-13 design, see this doc's own dated section further down for the full writeup).** A
+Bastion Ward save keeps `died` false (the run ends like a voluntary leave for every OTHER
+purpose — `highestTowerFloor`, the run's own reward/stats), but the player genuinely LOST that
+Elite fight; only the consequence was softened. Since the leaderboard specifically rewards
+choosing to stop through deliberate restraint — exactly what a loss-then-saved run never did —
+`wardUsed` is checked as its own, separate exclusion alongside `!died`, not folded into what
+`died` means.
 
 **Ranking order** (2026-09-23, direct instruction): floor reached first, then `elitesKilled`
 (`this.elitesSurvivedCount` from `towerFactory.js`, incremented once per Elite fight actually won —
@@ -1906,12 +1916,17 @@ required no code change, since the shared-function architecture already covered 
 `this.wardUsed = true`
 (consumed for the rest of THIS run, regardless of how many more forced Elites it reaches), the
 run ends via `createWardedRetreatEmbed` (Gold, Bastion-flavored) exactly like a voluntary
-Leave for every downstream purpose — `this.floor--` still happens (same attribution as a real
-death for `highestTowerFloor`), and the daily leaderboard's `!died` eligibility check still
-counts it (a warded retreat IS a genuine survival, not a loss) — but critically, `this.died`
-is never set and the WORK_MULTIPLIER/PASSIVE_INCOME/BANK_CAPACITY wipe is skipped entirely:
-everything earned so far in the run is kept. `wardUsed` is persisted to
-`userDetails.towerWardUsedToday` only when `true` (`enter-tower.js`'s
+Leave for every downstream purpose EXCEPT the daily leaderboard — `this.floor--` still happens
+(same attribution as a real death for `highestTowerFloor`), and `this.died` is never set, so
+the run's own reward/stats are credited same as any survival (critically, the
+WORK_MULTIPLIER/PASSIVE_INCOME/BANK_CAPACITY wipe is skipped entirely: everything earned so far
+in the run is kept). The daily leaderboard is the one exception (2026-10-08, reversed from this
+section's original same-day call that a warded retreat "IS a genuine survival, not a loss" for
+that purpose too — see the "Daily leaderboard" section's own dated note and the dedicated
+writeup further down): `enter-tower.js` checks `wardUsed` as its own separate exclusion
+alongside `!died`, since the player genuinely lost this fight and the leaderboard specifically
+rewards stopping through deliberate restraint, not being bailed out of a loss. `wardUsed` is
+persisted to `userDetails.towerWardUsedToday` only when `true` (`enter-tower.js`'s
 `processTowerCompanionRewards`), so a run that never needed the ward makes no extra write.
 
 **Daily reset**: `towerWardUsedToday` follows the exact same 8pm ET (America/New_York, DST-safe) cadence as
@@ -3674,3 +3689,46 @@ above to describe the new end-of-run timing.
 Not yet ported to `financial-project` — that port doesn't implement Tower at all (reconfirmed
 by the "Admin: `/admin tower` `resume-from-leaderboard`" entry above's own scope note), so
 there's nothing to port this change into.
+
+## Ward-saved runs excluded from the daily leaderboard (2026-10-08, player-raised design question then direct instruction)
+
+**Raised**: "should bastion still count towards leaderboard? or lose chance of leaderboard since
+they effectively go until they 'die'" — a direct challenge to the original 2026-09-13 design
+call (see the "Bastion, the Tower Warden" section above), which had deliberately counted a
+Ward-saved run as "a genuine survival, not a loss" for the leaderboard, same as any other
+non-death ending.
+
+**Analysis presented before implementing** (exploratory design question, not a bug report):
+the leaderboard's own documented rationale is "dying forfeits leaderboard eligibility entirely
+... survive deliberately, don't just brute-force floors" (this doc's "Daily leaderboard"
+section). A Ward save is mechanically a LOSS at that Elite fight — the player didn't choose to
+stop there through restraint, they lost and Bastion softened the consequence. Since the Ward
+triggers on the very first forced Elite (floor 10) and recharges daily, leaving it leaderboard-
+eligible meant a Bastion holder could simply push to failure every single day, guaranteed a
+save on the first loss, and land a leaderboard entry at their exact power ceiling with zero
+actual risk judgment involved — exactly the "brute-force floors" behavior the eligibility rule
+exists to disincentivize. Presented both sides (the counter-case: Bastion was pitched as a pure
+safety net, and withholding the leaderboard could read as "doesn't actually help competitively"
+— similar in flavor to the reward-bonus-vs-cap issue fixed the same week) and recommended
+excluding ward-saved runs specifically. Confirmed: "yes."
+
+**Changed** (`enter-tower.js`): the leaderboard-eligibility check
+`if (!died)` → `if (!died && !wardUsed)`. Nothing else changed — `highestTowerFloor` (the
+broader personal-best) and the run's own reward/stat crediting via `processRewardPayouts` are
+both still gated on `!died` alone, exactly as before, since those exist to honor the Ward's
+actual "safety net" purpose (don't punish a saved loss), not to rank competitive skill. Updated
+the stale comment this reverses, in both `enter-tower.js` (the eligibility check itself) and
+`towerFactory.js` (`createWardedRetreatEmbed`'s own comment, which previously asserted the
+leaderboard "still counts it").
+
+**Tests** (`enter-tower.test.js`): the old single test covering "a voluntary leave OR a
+ward-saved run, both treated identically" (since both used to produce the same outcome) was
+split into two, now that they diverge — a genuine voluntary leave (`died: false, wardUsed:
+false`) still gets a leaderboard entry; a ward-saved run (`died: false, wardUsed: true`) gets
+`highestTowerFloor` updated but asserts `recordTowerLeaderboardEntry` is explicitly NOT called.
+Full suite re-run clean: **127 of 128 suites (1 pre-existing skip) / 2342 tests (18 pre-existing
+skips, 2324 passing)**. (One run during this pass hit the same pre-existing flaky
+`rivalNotorietyAccrual.test.js` case flagged in an earlier entry this week — re-ran clean
+immediately after, consistent with that already-confirmed, unrelated flake.)
+
+Not yet ported to `financial-project` — doesn't implement Tower at all, nothing to port.

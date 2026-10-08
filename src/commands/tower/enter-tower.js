@@ -419,7 +419,19 @@ module.exports = {
 
             // Only a survived run (voluntarily left, not lost to an Elite) counts for the
             // daily leaderboard — see towerLeaderboardFactory.js for how it's ranked/paid out.
-            if (!died) {
+            // Ward-saved runs excluded too (2026-10-08, direct instruction, reversing the
+            // original 2026-09-13 call that a warded retreat "IS a genuine survival") — a
+            // Ward save means the player LOST an Elite fight and Bastion only softened the
+            // consequence (loot/stats kept); they didn't choose to stop through deliberate
+            // restraint, which is specifically what this leaderboard is meant to reward (see
+            // this file's own comment two lines up). Without this exclusion, a Bastion holder
+            // could push to failure every single day — guaranteed a save on the first loss —
+            // and land a leaderboard entry at their exact power ceiling with zero actual
+            // judgment involved. highestTowerFloor just above, and the run's own
+            // reward/stats via processRewardPayouts, are UNCHANGED by this — the Ward still
+            // fully honors its "safety net" purpose there; only the competitive-ranking
+            // leaderboard withholds credit for a loss, warded or not.
+            if (!died && !wardUsed) {
                 await dynamoHandler.recordTowerLeaderboardEntry({
                     userId,
                     username,

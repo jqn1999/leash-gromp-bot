@@ -992,10 +992,16 @@ class towerFactory{
     // purely-informational shape createDeathEmbed uses (a warded loss is still a real ending,
     // not a decision point), just Bastion-flavored and gold instead of the skull. Deliberately
     // does NOT wipe this.run's WORK_MULTIPLIER/PASSIVE_INCOME/BANK_CAPACITY (the whole point of
-    // the ward) and does NOT set this.died — the run ends exactly like a voluntary Leave for
-    // every downstream purpose (highestTowerFloor still counts it via this.floor--, matching a
-    // real death's own attribution; the daily leaderboard's `!died` eligibility check also
-    // still counts it, since a warded retreat IS a genuine survival, not a loss).
+    // the ward) and does NOT set this.died — highestTowerFloor still counts it via
+    // this.floor--, matching a real death's own attribution, and the run's own reward/stats
+    // are credited same as any survival. The daily leaderboard is the one exception (2026-10-08,
+    // direct instruction, reversing this method's original 2026-09-13 reasoning that a warded
+    // retreat "IS a genuine survival, not a loss" for THAT purpose too) — enter-tower.js now
+    // excludes a ward-saved run from recordTowerLeaderboardEntry via its own separate
+    // `wardUsed` check, since the player genuinely LOST this Elite fight and only the
+    // consequence was softened; the leaderboard specifically rewards choosing to stop through
+    // deliberate restraint, which a loss-then-saved run never did (see that check's own
+    // comment in enter-tower.js for the full reasoning).
     async createWardedRetreatEmbed(description){
         const embed = new EmbedBuilder()
             .setTitle(`FLOOR ${this.floor.toLocaleString()}: Bastion Intervenes!`)
