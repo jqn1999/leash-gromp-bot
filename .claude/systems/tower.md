@@ -2656,6 +2656,91 @@ Full suite: **95 test suites / 1800 tests, all passing** (up from 95/1794 pre-ch
 `financial-project` re-confirmed not touched (per the scoping pass's own conclusion): it doesn't
 implement Tower at all, no port needed.
 
+## Potato-gain nerf + TRANSACTIONS price scaling (2026-10-09, player question then direct instruction)
+
+**Asked**: a player report ("a user with 300+ power gets like 2.5 billion potatoes from tower which
+seems extremely high") led to "can we just do an overall rebalance of tower potato gain? It's just
+too high compared to other methods of potato gain I want it nerfed. Also costs in the tower for
+things like work multi or other upgrades that cost potatoes maybe the cost should also scale."
+
+**Investigation, not assumption.** Dispatched a `balance-auditor` agent to simulate real Tower runs
+(driving the actual `towerFactory` class, stubbing only Discord plumbing — same approach every
+Monte Carlo in this file already uses) rather than trust the player's one reported number. Findings:
+2.5B at power 300 was a top-2% lucky outcome (99th percentile ≈2.61B), not the typical result —
+median was ~1.72B (Safe) / ~1.36B (Greedy), and the per-run cap wasn't even binding at that power.
+But comparing Tower's TYPICAL output against solo mercenary's own 24/7 EV ceiling — the fairer
+same-track comparison, since both require only individual power, no guild — surfaced a real,
+structural problem: Tower's median exceeded merc's daily ceiling across nearly the whole power
+range, peaking at **~4.9x merc around power 400**, not just in rare outlier runs.
+
+**Root cause.** The per-run POTATOES cap (`TOWER_FLOOR_CAP_STEP[PAYOUT.POTATOES]`, 350,000,000/band
+as of the 2026-09-20 fix above) is an ABSOLUTE value, while raw per-floor rewards grow with
+`scalingFactor^0.83`. Confirmed by direct simulation that scaling raw reward VALUEs down alone
+doesn't shrink the capped ceiling proportionally — it just delays which power the cap starts
+binding at, shifting the peak ratio-to-merc to a HIGHER power rather than lowering it. Both the raw
+rewards AND the cap had to move by the same factor for the fix to actually flatten the curve.
+
+**Fix: flat K=0.40 cut on every raw `PAYOUT.POTATOES` value** across `COMBATS`/`ENCOUNTERS`/
+`REWARDS`/`ELITES` (e.g. Baby Broccoli 30,000 → 12,000, every Elite's flat 150,000 → 60,000,
+Fairy Fig's "pile of potatoes" 500,000 → 200,000), **and the same K=0.40 cut on the per-run cap
+itself** (`TOWER_FLOOR_CAP_STEP[PAYOUT.POTATOES]` 350,000,000 → 140,000,000). `SCALING_EXPONENT`
+(0.83) and `SCALING_ANCHOR_TABLE` deliberately untouched — `SCALING_EXPONENT` has its own
+separately-documented purpose (dampening EV/investment drift, see that constant's own comment),
+unrelated to the merc-comparison problem being solved here. Re-simulated post-fix: peak ratio drops
+to **~1.95x merc** (around the same power 400), in line with the ~1.5-2x premium the same-day Guild
+Elite/Legendary re-raise rework targeted — deliberate cross-system consistency, not a coincidence.
+Deliberately a flat multiplier, not power-gated: confirmed and accepted that the already-weak low
+end (power <150, already below merc pre-cut) gets proportionally weaker too, per direct instruction
+("let low power get weaker too") rather than engineering a more surgical, power-gated curve.
+
+**TRANSACTIONS price scaling — a genuinely new mechanic, not a retune.** Confirmed directly
+(`towerFactory.js:704-706`'s own pre-existing comment) that `choice.price` on every `TRANSACTIONS`
+floor (300K-1M potatoes) was hardcoded flat, explicitly never scaled by player power the way
+rewards are — meaning these optional purchases (Sales Spinach's work multiplier, the Wizard Lime's
+elite-avoidance payment, the Baron's Beet's bank capacity) became pocket change at any meaningfully
+progressed power. Walked the player through what full `scalingFactor`-based scaling would look
+like at power 300 (the Wizard Lime's 1,000,000 price → 340,696,189) before landing on the actual
+request: **price × `max(1, scalingFactor^0.83 × 0.20)`** — the exact same scaling basis/exponent
+rewards already use, just taking a flat 20% of the full-scale result, with today's raw price as an
+explicit floor (binds only right at `ENTRY_GATE_MULTI`, where `scalingFactor` is exactly 1.0).
+Direct instruction's own worked example pinned the formula precisely: "the wizard lime at 340
+million would instead be 20% of that. so 20% of 340 million" → confirmed computationally at
+68,139,238. At power 300, the four prices become: Sales Spinach 300,000→20,441,771; Wizard Lime
+1,000,000→68,139,238; Traveling Turnip 600,000→40,883,543; Baron's Beet 450,000→30,662,657.
+
+**`towerFactory.js`**: new `scaledTransactionPrice(rawPrice)` method, the single funnel point both
+real call sites read through — `execNormalFloor`'s TRANSACTION-affordability filter and
+`updateTransaction`'s own afford-check/deduction/notableText — so they can't silently drift apart
+the same way the old `buildRaidPreview` multiplier-table bug did for a different system (see that
+bug's own regression test in `raidFactory.test.js`).
+
+**`towerConstants.js`**: new `TRANSACTION_PRICE_SCALE_RATE = 0.20` constant (exported). The four
+`TRANSACTIONS` entries' `description` text reworded to drop their now-inaccurate hardcoded price
+figures ("for 300,000 potatoes" → "in exchange for a pile of your potatoes"), the exact same
+"describe by kind, not by number" treatment the 2026-09-04 REWARD wording fix already applied to
+scaled VALUE figures — now extended to the PRICE side for the same reason. No live price number is
+shown anywhere in the interactive UI before or after a purchase (button labels are static) — same
+gap scaled VALUEs already had, which that 2026-09-04 fix explicitly chose not to close. The silent/
+fast-forward summary path IS exact: its own `notableText` reports the real price actually paid.
+
+**Tests** (`src/utils/__tests__/towerFactory.test.js`): 7 pre-existing tests updated for the new raw
+values/cap (Baby Broccoli's 9-floor fast-forward total, the entry-gate unscaled-reward check, the
+Elite-win-under-cap check, both `getTowerRunCap`/cap-clamp tests, and two comment-only fixes where
+the hardcoded regression-guard math itself needed the new numbers even though the assertions still
+passed). 5 new tests added in a dedicated `scaledTransactionPrice` describe block: the entry-gate
+floor binding exactly, the real-power formula matching the exact worked example (68,139,238), the
+floor never lowering a price, `updateTransaction` deducting the scaled (not raw) price at a real
+power level, and `execNormalFloor`'s affordability filter correctly excluding a transaction the
+scaled price makes unaffordable even when the raw price alone would have been affordable (the
+existing pre-change tests all happened to run at `ENTRY_GATE_MULTI` or `potatoes===0`, where scaling
+is a no-op either way — none of them actually exercised the new behavior at a real power level,
+hence the new coverage rather than relying on the old tests passing unchanged). Full suite re-run
+clean: **127 of 128 suites (1 pre-existing skip) / 2347 tests (18 pre-existing skips, 2329
+passing)**.
+
+`financial-project` doesn't implement Tower at all (reconfirmed, same as every prior Tower pass) —
+no port needed.
+
 ## Root cause found: `processRewardPayouts`'s reward credit desyncing a player's base stats over repeated runs (2026-09-23, player-reported: a specific player's `/buy`/`/regrade` kept breaking, "I've had to fix her once before already")
 
 A player's `/user-stats` showed "N/A" as the current shop tier name on all three permanent stat

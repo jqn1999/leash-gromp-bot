@@ -453,11 +453,11 @@ describe('reward value scaling — live end-to-end wiring', () => {
     test('a multi well above the entry gate (100) yields a larger scaled reward than the raw, unscaled value', async () => {
         const tF = new towerFactory({ editReply: jest.fn(), user: { id: 'u1' } }, 'tester', 100);
         tF.floor = 1; // well within the no-decay grace window, isolates scaling from decay
-        const fl = tC.COMBATS.find(c => c.name === 'Baby Broccoli'); // choices[0].value = 30000
+        const fl = tC.COMBATS.find(c => c.name === 'Baby Broccoli'); // choices[0].value = 12000 (2026-10-09 K=0.40 potato-gain cut, was 30000)
         const outcome = await tF.updateValue(fl, 0, 'Orange', true);
 
-        expect(outcome.amount).toBeGreaterThan(30000);
-        expect(outcome.amount).toBe(Math.round(30000 * tF.scalingFactor));
+        expect(outcome.amount).toBeGreaterThan(12000);
+        expect(outcome.amount).toBe(Math.round(12000 * tF.scalingFactor));
         expect(Number.isInteger(outcome.amount)).toBe(true);
         expect(tF.run[tC.PAYOUT.POTATOES]).toBe(outcome.amount);
     });
@@ -468,7 +468,73 @@ describe('reward value scaling — live end-to-end wiring', () => {
         const fl = tC.COMBATS.find(c => c.name === 'Baby Broccoli');
         const outcome = await tF.updateValue(fl, 0, 'Orange', true);
 
-        expect(outcome.amount).toBe(30000);
+        expect(outcome.amount).toBe(12000);
+    });
+});
+
+// TRANSACTIONS price scaling (2026-10-09, direct instruction) — scaledTransactionPrice itself,
+// plus the two real call sites it's wired into (execNormalFloor's affordability filter and
+// updateTransaction's afford-check/deduction). The pre-existing TRANSACTION tests above all
+// happen to run at ENTRY_GATE_MULTI (where the floor makes scaling a no-op, since 20% of
+// scalingFactor===1 is less than the raw price) or at potatoes===0 (scale-invariant — "poor"
+// either way), so none of them actually exercise scaling at a real power level. These do.
+describe('scaledTransactionPrice — TRANSACTIONS price scaling', () => {
+    test('at the entry gate, the floor binds exactly — scaled price equals the raw price', () => {
+        const tF = new towerFactory({ editReply: jest.fn(), user: { id: 'u1' } }, 'tester', tC.ENTRY_GATE_MULTI);
+        expect(tF.scalingFactor).toBe(1);
+        expect(tF.scaledTransactionPrice(1000000)).toBe(1000000);
+    });
+
+    test('at a real power level, scaled price is price * scalingFactor * 0.20, rounded', () => {
+        const tF = new towerFactory({ editReply: jest.fn(), user: { id: 'u1' } }, 'tester', 300);
+        const expected = Math.round(1000000 * tF.scalingFactor * tC.TRANSACTION_PRICE_SCALE_RATE);
+        expect(tF.scaledTransactionPrice(1000000)).toBe(expected);
+        // Direct instruction's own worked example: "the wizard lime at 340 million would
+        // instead be 20% of that. so 20% of 340 million" — pins the exact real number, not
+        // just the formula shape.
+        expect(tF.scaledTransactionPrice(1000000)).toBe(68139238);
+    });
+
+    test('the floor only ever raises the price, never lowers it below the raw value', () => {
+        const tF = new towerFactory({ editReply: jest.fn(), user: { id: 'u1' } }, 'tester', 300);
+        expect(tF.scaledTransactionPrice(1000000)).toBeGreaterThanOrEqual(1000000);
+    });
+
+    test('updateTransaction deducts the SCALED price, not the raw constants.js price, at a real power level', async () => {
+        const tF = new towerFactory({ editReply: jest.fn(), user: { id: 'u1' } }, 'tester', 300);
+        tF.run[tC.PAYOUT.POTATOES] = 100000000;
+        const fl = tC.TRANSACTIONS.find(t => t.name === 'The Wizard Lime');
+        const payIndex = fl.choices.findIndex(c => c.outcome === tC.PAYOUT.POTATOES);
+        const outcome = await tF.updateTransaction(fl, payIndex, 'Blue', true);
+
+        const scaledPrice = tF.scaledTransactionPrice(fl.choices[payIndex].price);
+        expect(scaledPrice).toBeGreaterThan(fl.choices[payIndex].price); // actually scaled, not a no-op
+        expect(outcome.pricePaid).toBe(scaledPrice);
+        expect(tF.run[tC.PAYOUT.POTATOES]).toBe(100000000 - scaledPrice);
+    });
+
+    test("execNormalFloor's TRANSACTION affordability filter checks the SCALED price, not the raw price", async () => {
+        // At power 300, Sales Spinach's scaled price (~1.22M, 20% of ~10.2M full-scale) is
+        // affordable; the raw price (300,000) alone would have been affordable too, so pick a
+        // potato balance strictly between the raw and scaled price — only correct under
+        // scaled-price filtering does this read as "cannot afford it yet".
+        const tF = new towerFactory({ editReply: jest.fn(), user: { id: 'u1' } }, 'tester', 300);
+        const spinach = tC.TRANSACTIONS.find(t => t.name === 'Sales Spinach');
+        const rawPrice = spinach.choices[0].price;
+        const scaledPrice = tF.scaledTransactionPrice(rawPrice);
+        expect(scaledPrice).toBeGreaterThan(rawPrice);
+
+        tF.run[tC.PAYOUT.POTATOES] = rawPrice + 1; // affords the raw price, not the scaled one
+        const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0);
+        try {
+            const outcome = await tF.execNormalFloor('TRANSACTION', true);
+            // Falls back to a real COMBAT floor rather than offering a TRANSACTION the scaled
+            // price makes unaffordable — if the filter used the raw price instead, Sales
+            // Spinach (and likely others) would wrongly be offered here.
+            expect(tC.TRANSACTIONS.map(t => t.name)).not.toContain(outcome.name);
+        } finally {
+            randomSpy.mockRestore();
+        }
     });
 });
 
@@ -512,9 +578,10 @@ describe('towerFactory Discord-interaction flows', () => {
         expect(tF.policy).toBe(tC.POLICY.SAFE);
         expect(died).toBe(false);
         expect(floor).toBe(10);
-        // 9 Baby Broccoli COMBAT floors (1-9) at 30,000 each, no decay this early, plus
-        // Celerity's 150,000 Elite reward (tier 1, Math.random=0 always picks candidate 0).
-        expect(run[tC.PAYOUT.POTATOES]).toBe(9 * 30000 + 150000);
+        // 9 Baby Broccoli COMBAT floors (1-9) at 12,000 each (2026-10-09 K=0.40 cut, was
+        // 30,000), no decay this early, plus Celerity's 60,000 Elite reward (2026-10-09
+        // K=0.40 cut, was 150,000; tier 1, Math.random=0 always picks candidate 0).
+        expect(run[tC.PAYOUT.POTATOES]).toBe(9 * 12000 + 60000);
         // Difficulty advanced exactly once, for the one forced Elite actually fought.
         expect(tF.difficulty).toBeCloseTo(tC.TOWER_ELITE_DIFFICULTY_INITIAL * tC.TOWER_ELITE_DIFFICULTY_RATIO);
         // policy + floor-1 + elite + post-elite-continue = 4 collector round-trips, plus the
@@ -562,8 +629,9 @@ describe('towerFactory Discord-interaction flows', () => {
 
         expect(died).toBe(false);
         expect(floor).toBe(2);
-        // Floor 1's own payout still applied even though its result screen was skipped.
-        expect(run[tC.PAYOUT.POTATOES]).toBe(30000);
+        // Floor 1's own payout still applied even though its result screen was skipped
+        // (2026-10-09 K=0.40 cut, was 30000).
+        expect(run[tC.PAYOUT.POTATOES]).toBe(12000);
         // No dedicated createNextEmbed round trip for floor 1 — just: policy, floor1, floor2.
         expect(interaction.editReply).toHaveBeenCalledTimes(3);
         // Floor 2's own embed should have floor 1's result text prefaced onto its description.
@@ -849,7 +917,7 @@ describe('towerFactory.creditRunPayout — per-run maximum gain caps (2026-09-04
         const cap = tC.getTowerRunCap(tC.PAYOUT.POTATOES, tF.floor);
         const applied = tF.creditRunPayout(tC.PAYOUT.POTATOES, 999999999);
 
-        expect(cap).toBe(350000000);
+        expect(cap).toBe(140000000); // 2026-10-09 K=0.40 cut, was 350000000
         expect(applied).toBe(cap);
         expect(tF.run[tC.PAYOUT.POTATOES]).toBe(cap);
     });
@@ -863,12 +931,12 @@ describe('towerFactory.creditRunPayout — per-run maximum gain caps (2026-09-04
         expect(tF.run[tC.PAYOUT.POTATOES]).toBe(1000000);
     });
 
-    test('getTowerRunCap bands PAYOUT.POTATOES every 10 floors, growing +350,000,000/band (mirrors the PASSIVE_INCOME/BANK_CAPACITY band test below)', () => {
-        expect(tC.getTowerRunCap(tC.PAYOUT.POTATOES, 1)).toBe(350000000);
-        expect(tC.getTowerRunCap(tC.PAYOUT.POTATOES, 9)).toBe(350000000);
-        expect(tC.getTowerRunCap(tC.PAYOUT.POTATOES, 10)).toBe(700000000);
-        expect(tC.getTowerRunCap(tC.PAYOUT.POTATOES, 95)).toBe(3500000000);
-        expect(tC.getTowerRunCap(tC.PAYOUT.POTATOES, 109)).toBe(3850000000);
+    test('getTowerRunCap bands PAYOUT.POTATOES every 10 floors, growing +140,000,000/band (2026-10-09 K=0.40 cut, was +350,000,000/band — mirrors the PASSIVE_INCOME/BANK_CAPACITY band test below)', () => {
+        expect(tC.getTowerRunCap(tC.PAYOUT.POTATOES, 1)).toBe(140000000);
+        expect(tC.getTowerRunCap(tC.PAYOUT.POTATOES, 9)).toBe(140000000);
+        expect(tC.getTowerRunCap(tC.PAYOUT.POTATOES, 10)).toBe(280000000);
+        expect(tC.getTowerRunCap(tC.PAYOUT.POTATOES, 95)).toBe(1400000000);
+        expect(tC.getTowerRunCap(tC.PAYOUT.POTATOES, 109)).toBe(1540000000);
     });
 
     test('a POTATOES credit that would exceed the cap is clamped exactly at the room available, with the overflow NOT redirected anywhere (unlike PASSIVE_INCOME/BANK_CAPACITY)', () => {
@@ -1084,11 +1152,11 @@ describe("execElite's Elite-kill potato reward is rerouted through creditRunPayo
     test('an Elite win with little room left under the cap is clamped, not added in full', async () => {
         const interaction = fakeInteraction([choice('fight'), choice('leave')]);
         const tF = new towerFactory(interaction, 'tester', tC.ENTRY_GATE_MULTI);
-        tF.floor = 10; // forced Elite N=1, band 0 -> POTATOES cap = 350,000,000
+        tF.floor = 10; // forced Elite N=1, band 0 -> POTATOES cap = 140,000,000 (2026-10-09 K=0.40 cut, was 350,000,000)
         const cap = tC.getTowerRunCap(tC.PAYOUT.POTATOES, tF.floor);
-        // Leave only 50,000 of room — less than Celerity's raw 150,000 Elite reward (and
-        // ENTRY_GATE_MULTI's scalingFactor === 1, so the raw value is exactly what would be
-        // credited if this bypassed the cap).
+        // Leave only 50,000 of room — less than Celerity's raw 60,000 Elite reward (2026-10-09
+        // K=0.40 cut, was 150,000; ENTRY_GATE_MULTI's scalingFactor === 1, so the raw value is
+        // exactly what would be credited if this bypassed the cap).
         tF.run[tC.PAYOUT.POTATOES] = cap - 50000;
         const randomSpy = jest.spyOn(Math, 'random')
             .mockReturnValueOnce(0)     // pickElite candidate index
@@ -1102,9 +1170,9 @@ describe("execElite's Elite-kill potato reward is rerouted through creditRunPayo
         }
 
         // If this ever regresses back to a direct `+=`, run[POTATOES] would be
-        // cap - 50,000 + 150,000 = cap + 100,000, exceeding the cap.
+        // cap - 50,000 + 60,000 = cap + 10,000, exceeding the cap.
         expect(tF.run[tC.PAYOUT.POTATOES]).toBe(cap);
-        expect(tF.run[tC.PAYOUT.POTATOES]).not.toBe(cap - 50000 + 150000);
+        expect(tF.run[tC.PAYOUT.POTATOES]).not.toBe(cap - 50000 + 60000);
     });
 
     test('an Elite win comfortably under the cap still credits its full scaled reward (the reroute is a no-op when there is room)', async () => {
@@ -1122,7 +1190,7 @@ describe("execElite's Elite-kill potato reward is rerouted through creditRunPayo
             randomSpy.mockRestore();
         }
 
-        expect(tF.run[tC.PAYOUT.POTATOES]).toBe(150000);
+        expect(tF.run[tC.PAYOUT.POTATOES]).toBe(60000); // 2026-10-09 K=0.40 cut, was 150000
     });
 });
 

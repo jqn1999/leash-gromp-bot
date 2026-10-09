@@ -21180,3 +21180,53 @@ Legendary are gated by a flat guild-level requirement" bullet's own stale number
 Cross-repo note: pending — `financial-project` implements Guild Raid (confirmed earlier this
 session, see the previous roadmap entry) and should get this same gate change ported before
 this is considered fully closed out.
+
+## Tower potato-gain nerf + TRANSACTIONS price scaling (2026-10-09, player question then direct instruction)
+
+**Asked**: "A user with 300+ power gets like 2.5 billion potatoes from tower which seems extremely
+high. Should we nerf taters from tower" → after investigation → "Can we just do an overall
+rebalance of tower potato gain? It's just too high compared to other methods of potato gain I want
+it nerfed. Also costs in the tower for things like work multi or other upgrades that cost potatoes
+maybe the cost should also scale."
+
+**Investigation**: dispatched a `balance-auditor` agent to simulate real Tower runs via the actual
+`towerFactory` class (not estimation). Found 2.5B at power 300 was a top-2% lucky outcome (median
+was ~1.72B Safe / ~1.36B Greedy), not representative — but comparing Tower's TYPICAL output against
+solo merc's own 24/7 EV ceiling (the fairer comparison, since both require only individual power,
+no guild) surfaced a real problem: Tower's median exceeded merc's daily ceiling by 1.1x-4.9x across
+almost the entire power range, peaking at ~4.9x around power 400. Root cause: the per-run POTATOES
+cap (350,000,000/floor-band, shipped 2026-09-20) is an absolute value while raw rewards grow with
+`scalingFactor^0.83` — confirmed by simulation that cutting raw rewards alone just shifts the peak
+to a higher power rather than lowering it; the cap has to move by the same factor too.
+
+**Changed** (`towerConstants.js`/`towerFactory.js`):
+- Every raw `PAYOUT.POTATOES` value across `COMBATS`/`ENCOUNTERS`/`REWARDS`/`ELITES` cut by a flat
+  K=0.40 (e.g. Baby Broccoli 30,000→12,000, every Elite's flat 150,000→60,000), and
+  `TOWER_FLOOR_CAP_STEP[PAYOUT.POTATOES]` cut by the same K (350,000,000→140,000,000) — both
+  needed together for the fix to actually flatten the curve. `SCALING_EXPONENT` left untouched
+  (separately-documented purpose, unrelated to this). Peak ratio-to-merc drops from ~4.9x to
+  ~1.95x, consistent with the ~1.5-2x premium the same-day Guild Elite/Legendary re-raise rework
+  targeted. Deliberately flat, not power-gated — confirmed with the user that the already-weak low
+  end gets proportionally weaker too ("let low power get weaker too").
+- New `scaledTransactionPrice(rawPrice)` method on `towerFactory`: `price × max(1, scalingFactor^0.83
+  × TRANSACTION_PRICE_SCALE_RATE)` where `TRANSACTION_PRICE_SCALE_RATE = 0.20` (new exported
+  constant) — same scaling basis rewards already use, taking 20% of the full-scale result, floored
+  at today's raw price. Wired into both real call sites (`execNormalFloor`'s affordability filter,
+  `updateTransaction`'s afford-check/deduction/notableText) through one shared method so they can't
+  drift apart. Direct instruction's own worked example pinned the exact formula: "the wizard lime
+  at 340 million would instead be 20% of that. so 20% of 340 million" → 68,139,238, confirmed
+  computationally. `TRANSACTIONS`' four descriptions reworded to drop their now-inaccurate
+  hardcoded price figures, same treatment the 2026-09-04 REWARD wording fix already applied to
+  scaled VALUE figures.
+
+**Tests**: 7 pre-existing `towerFactory.test.js` tests updated for the new raw values/cap; 5 new
+tests added for `scaledTransactionPrice` (entry-gate floor, real-power formula pinned to the exact
+68,139,238 worked example, the floor never lowering a price, `updateTransaction` deducting the
+scaled price, and the affordability filter correctly excluding a transaction only the scaled price
+makes unaffordable). Full suite re-run clean: **127 of 128 suites (1 pre-existing skip) / 2347
+tests (18 pre-existing skips, 2329 passing)**.
+
+Updated `.claude/systems/tower.md` with a full dated section.
+
+Cross-repo note: `financial-project` doesn't implement Tower at all (reconfirmed, same as every
+prior Tower pass) — no port needed.

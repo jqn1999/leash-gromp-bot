@@ -204,29 +204,32 @@ const TOWER_FLOOR_CAP_STEP = {
     // Per-run POTATOES cap (2026-09-20, product-owner-confirmed, per-run cap ONLY — an
     // additional overall potato-generation cut was raised in the same discussion and
     // explicitly retracted, do not add one here). See tower.md's "Per-Run POTATOES Cap:
-    // Technical Design" section for the full derivation; summarized here so this number
-    // is never mistaken for a round guess:
+    // Technical Design" section for the full original derivation (350,000,000/band,
+    // targeting the raid-EV ceiling of that era). Unlike PASSIVE_INCOME/BANK_CAPACITY,
+    // overflow past this cap has nowhere further to convert to (potatoes is already this
+    // game's terminal currency) and is simply discarded — creditRunPayout's existing
+    // overflow branch already only fires for PASSIVE_INCOME/BANK_CAPACITY, so this needs
+    // NO new entry in TOWER_OVERFLOW_SHOP_RATE; do not add one.
     //
-    // A real 500-run Monte Carlo at power (workMultiplierAmount) 600 found a single Tower
-    // run's MEDIAN payout was 6.3-8.3 BILLION potatoes — recouping the real cumulative
-    // ~460,201,102,807-potato cost to reach power 600 (SCALING_ANCHOR_TABLE's own 600
-    // entry) in just ~56-73 days from ONE free, once-daily action, versus the
-    // ~2.9-4.1-billion/day realistic ceiling for a maxed guild member grinding every raid
-    // cooldown 24/7 (balance-audit.md's newest Raid EV re-derivation) — that raid ceiling
-    // itself implies a sane ~112-159-day payback horizon for "the single best other daily
-    // income source, maxed." 350,000,000/band was picked so a power-600 run's CAPPED total
-    // lands inside that same 2.9-4.1B target band (~3.15B Greedy/band 8, ~3.85B Safe/band
-    // 10 at that power's real median stopping floors of 87/100) while leaving powers
-    // 100/250 (well below band 8-10) completely untouched — verified against three power
-    // points, not just 600. Grows the identical way PASSIVE_INCOME/BANK_CAPACITY already
-    // do (flat +350,000,000 per 10-floor band via getTowerRunCap) — deliberately no new
-    // growth curve, since the reward-decay safeguard already handles the floor-DEPTH axis;
-    // this only needs to solve the floor-independent scalingFactor/POWER axis. Unlike
-    // PASSIVE_INCOME/BANK_CAPACITY, overflow past this cap has nowhere further to convert
-    // to (potatoes is already this game's terminal currency) and is simply discarded —
-    // creditRunPayout's existing overflow branch already only fires for PASSIVE_INCOME/
-    // BANK_CAPACITY, so this needs NO new entry in TOWER_OVERFLOW_SHOP_RATE; do not add one.
-    [PAYOUT.POTATOES]: 350000000
+    // Cut 350,000,000 -> 140,000,000 (2026-10-09, direct instruction: "it's just too high
+    // compared to other methods of potato gain I want it nerfed"). Root cause (confirmed by
+    // direct simulation against the real towerFactory.js code, not estimation): this cap is
+    // an ABSOLUTE value, so scaling raw reward VALUEs down alone (see COMBATS/ENCOUNTERS/
+    // REWARDS/ELITES below) doesn't shrink the CAPPED ceiling by the same factor — it just
+    // delays which power the cap starts binding at, shifting the peak ratio-to-merc to a
+    // HIGHER power instead of lowering it. The cap has to move by the SAME factor as the
+    // raw rewards (both cut by K=0.40) for the fix to actually flatten the curve rather than
+    // relocate its peak. Simulated against solo merc's own 24/7 EV ceiling (same
+    // individual-only-progression track Tower itself requires, unlike a guild raid ceiling
+    // which needs a maxed guild on top) as the comparison baseline: pre-cut, Tower's median
+    // run exceeded merc's daily ceiling by 1.1x-4.9x across the whole power range, peaking
+    // at ~4.9x around power 400; post-cut (this value, combined with the K=0.40 raw-reward
+    // scale), the peak drops to ~1.95x — in line with the ~1.5-2x premium the same-day Guild
+    // Elite/Legendary re-raise rework targeted, for cross-system consistency. Deliberately a
+    // flat multiplier (not power-gated), so the already-weak low end (power <150, already
+    // below merc's own ceiling pre-cut) gets proportionally weaker too — confirmed and
+    // accepted, not an overlooked side effect.
+    [PAYOUT.POTATOES]: 140000000
 }
 
 // Overflow-to-potato discount rate (2026-09-19, product owner picked type-specific rates —
@@ -271,6 +274,16 @@ function getTowerRunCap(type, floor) {
 // own body needs no separate awareness of it.
 const SCALING_EXPONENT = 0.83
 
+// TRANSACTIONS price scaling (2026-10-09, direct instruction) — see towerFactory.js's
+// scaledTransactionPrice for the formula this feeds: price * this.scalingFactor *
+// TRANSACTION_PRICE_SCALE_RATE, floored at the raw price. Reuses the exact same
+// this.scalingFactor (investment-ratio ^ SCALING_EXPONENT) rewards already scale by, just
+// taking a flat 20% of the result rather than the full amount — direct instruction's own
+// worked example: "the wizard lime at 340 million would instead be 20% of that. so 20% of
+// 340 million" (1,000,000 * scalingFactor(300) ≈ 340,696,189 full-scale; this constant turns
+// that into ≈68,139,238 instead).
+const TRANSACTION_PRICE_SCALE_RATE = 0.20
+
 //const
 
 const RUN = {
@@ -284,37 +297,45 @@ const RUN = {
 
 const FLOOR_TYPES = ["COMBAT", "ENCOUNTER", "TRANSACTION", "REWARD", "ELITE"]
 const FLOOR_WEIGHTS = [9, 12, 15, 18]
+
+// Every raw PAYOUT.POTATOES `value` across COMBATS/ENCOUNTERS/REWARDS/ELITES below cut by a
+// flat K=0.40 (2026-10-09, direct instruction: "it's just too high compared to other methods
+// of potato gain I want it nerfed") — see TOWER_FLOOR_CAP_STEP's own POTATOES entry (further
+// down this file) for the full derivation and why the per-run cap had to move by the SAME
+// factor for this to actually flatten the ratio-to-merc curve rather than just relocate its
+// peak to a higher power. PASSIVE_INCOME/BANK_CAPACITY/WORK_MULTIPLIER values are untouched —
+// this is specifically a potato-gain nerf, not a full-economy rebalance.
 const COMBATS = [
     {
         name: "Baby Broccoli",
         thumbnailUrl: "https://banner2.cleanpng.com/20231112/oze/transparent-vegetable-cartoon-cartoon-broccoli-head-with-single-eyeball-kawaii6550d690299e20.5817524016997966241705.jpg",
         description: `As you ascend the tower's floors, you encounter an innocent Baby Broccoli, its small stature and innocent demeanor bringing a touch of warmth to the stone walls. However, you know this is no place for such an innocent creature. Prepare for combat!`,
-        choices: [{ name: "Fight", outcome: PAYOUT.POTATOES, value: 30000, result: "You slay the Baby Broccoli in a single strike and continue to ascend the tower, unsure whether you've made a mistake or not." }]
+        choices: [{ name: "Fight", outcome: PAYOUT.POTATOES, value: 12000, result: "You slay the Baby Broccoli in a single strike and continue to ascend the tower, unsure whether you've made a mistake or not." }]
     },
     {
         name: "Malevolent Pineapple",
         thumbnailUrl: "https://cdn.discordapp.com/attachments/1187561420406136843/1208520322609848330/image.png?ex=65e39542&is=65d12042&hm=32442c7b1cd2b37d59df9989915c32237019e62c8926d48d12f659b8edbe6e3b&",
         description: `As you ascend the tower's floors, you encounter the Malevolent Pineapple, its sinister aura permeating the air with a sense of dread. Prepare for combat!`,
-        choices: [{ name: "Fight", outcome: PAYOUT.POTATOES, value: 60000, result: "With the defeat of the Malevolent Pineapple, its malevolent grip on this tower floor dissipates, allowing you to ascend higher with renewed determination." }]
+        choices: [{ name: "Fight", outcome: PAYOUT.POTATOES, value: 24000, result: "With the defeat of the Malevolent Pineapple, its malevolent grip on this tower floor dissipates, allowing you to ascend higher with renewed determination." }]
     },
     {
         name: "Blighted Broccoli",
         thumbnailUrl: "https://cdn.discordapp.com/attachments/1187561420406136843/1208522991315587132/pngtree-image-of-broccoli-angry-vector-or-color-illustration-png-image_5274821.png?ex=65e397be&is=65d122be&hm=5b0e7253cfa86ed6fe7c168fb69beaf8292c7be0c16e988a842b7223c27c990e&",
         description: `As you ascend the tower's winding floors, you encounter a Blighted Broccoli, once an innocent baby broccoli now twisted by a dark curse, its presence unsettling. Prepare for combat!`,
-        choices: [{ name: "Fight", outcome: PAYOUT.POTATOES, value: 45000, result: "With the defeat of the Blighted Broccoli, the curse that plagued the baby broccoli lifts, allowing the tower floor to regain its tranquility and purity." }]
+        choices: [{ name: "Fight", outcome: PAYOUT.POTATOES, value: 18000, result: "With the defeat of the Blighted Broccoli, the curse that plagued the baby broccoli lifts, allowing the tower floor to regain its tranquility and purity." }]
     },
     {
         // Content widening (2026-08-31) — see tower.md part 3.
         name: "Ferocious Fennel",
         thumbnailUrl: "https://cdn.discordapp.com/attachments/1187561420406136843/1208522991315587132/pngtree-image-of-broccoli-angry-vector-or-color-illustration-png-image_5274821.png?ex=65e397be&is=65d122be&hm=5b0e7253cfa86ed6fe7c168fb69beaf8292c7be0c16e988a842b7223c27c990e&",
         description: `As you ascend the tower's floors, you encounter a Ferocious Fennel, bristling with sharpened fronds. Prepare for combat!`,
-        choices: [{ name: "Fight", outcome: PAYOUT.POTATOES, value: 40000, result: "With the defeat of the Ferocious Fennel, its bristling fronds go still and the tower floor grows quiet once more." }]
+        choices: [{ name: "Fight", outcome: PAYOUT.POTATOES, value: 16000, result: "With the defeat of the Ferocious Fennel, its bristling fronds go still and the tower floor grows quiet once more." }]
     },
     {
         name: "Ravenous Rhubarb",
         thumbnailUrl: "https://cdn.discordapp.com/attachments/1187561420406136843/1208520322609848330/image.png?ex=65e39542&is=65d12042&hm=32442c7b1cd2b37d59df9989915c32237019e62c8926d48d12f659b8edbe6e3b&",
         description: `As you ascend the tower's floors, you encounter a Ravenous Rhubarb, snapping wildly at anything within reach. Prepare for combat!`,
-        choices: [{ name: "Fight", outcome: PAYOUT.POTATOES, value: 50000, result: "With the defeat of the Ravenous Rhubarb, its wild snapping finally stops." }]
+        choices: [{ name: "Fight", outcome: PAYOUT.POTATOES, value: 20000, result: "With the defeat of the Ravenous Rhubarb, its wild snapping finally stops." }]
     }
 ]
 
@@ -351,15 +372,15 @@ const ENCOUNTERS = [
         name: "Despicable Dragonfruit",
         thumbnailUrl: "https://cdn.discordapp.com/attachments/1013160515897397289/1207538767741845514/isolated-mussels-seafood-cartoon_1308-126259.png?ex=65e0031d&is=65cd8e1d&hm=81b5cc137ba52355567e8c8ad7a8eed4d985ca57faeb798b3e0ffb2576b7b10d&",
         description: "An evil looking dragonfruit appears before you! What will you do?",
-        choices: [{ name: 'Stab it!', outcome: PAYOUT.POTATOES, value: 100000, result: "You plunge your knife into the dragonfruit, causing its demise.\n\nYou collect 100,000 potatoes from the deceased fruit." },
-        { name: 'Compliment it!', outcome: PAYOUT.POTATOES, value: -100000, result: `You try complimenting the dragonfruit's charming flaps, but you only seem to anger it. It overpowers you and steals your potatoes.\n\nYou have lost 100,000 potatoes.` }]
+        choices: [{ name: 'Stab it!', outcome: PAYOUT.POTATOES, value: 40000, result: "You plunge your knife into the dragonfruit, causing its demise.\n\nYou collect 100,000 potatoes from the deceased fruit." },
+        { name: 'Compliment it!', outcome: PAYOUT.POTATOES, value: -40000, result: `You try complimenting the dragonfruit's charming flaps, but you only seem to anger it. It overpowers you and steals your potatoes.\n\nYou have lost 100,000 potatoes.` }]
     },
     {
         name: "Despicable Dragonfruit",
         thumbnailUrl: "https://cdn.discordapp.com/attachments/1013160515897397289/1207538767741845514/isolated-mussels-seafood-cartoon_1308-126259.png?ex=65e0031d&is=65cd8e1d&hm=81b5cc137ba52355567e8c8ad7a8eed4d985ca57faeb798b3e0ffb2576b7b10d&",
         description: "An evil looking dragonfruit appears before you! What will you do?",
-        choices: [{ name: 'Stab it!', outcome: PAYOUT.POTATOES, value: -100000, result: "You attempt to stab the dragonfruit, but your blade shatters against the tough dragonfruit skin. The dragonfruit attacks, clearly angered by your actions.\n\nYou have lost 100,000 potatoes." },
-        { name: 'Compliment it!', outcome: PAYOUT.POTATOES, value: 100000, result: `You tell the dragonfruit that you love its pink complexion. The dragonfruit blushes at your compliment and leaves you some potatoes for your adventure!\n\nYou have gained 100,000 potatoes!` }]
+        choices: [{ name: 'Stab it!', outcome: PAYOUT.POTATOES, value: -40000, result: "You attempt to stab the dragonfruit, but your blade shatters against the tough dragonfruit skin. The dragonfruit attacks, clearly angered by your actions.\n\nYou have lost 100,000 potatoes." },
+        { name: 'Compliment it!', outcome: PAYOUT.POTATOES, value: 40000, result: `You tell the dragonfruit that you love its pink complexion. The dragonfruit blushes at your compliment and leaves you some potatoes for your adventure!\n\nYou have gained 100,000 potatoes!` }]
     },
     {
         name: "Wandering Woods",
@@ -398,23 +419,33 @@ const ENCOUNTERS = [
         name: "Ominous Onion",
         thumbnailUrl: "https://cdn.discordapp.com/attachments/1013160515897397289/1207538767741845514/isolated-mussels-seafood-cartoon_1308-126259.png?ex=65e0031d&is=65cd8e1d&hm=81b5cc137ba52355567e8c8ad7a8eed4d985ca57faeb798b3e0ffb2576b7b10d&",
         description: "An ominous onion rolls to a stop in front of you, layers rustling. What will you do?",
-        choices: [{ name: 'Peel it!', outcome: PAYOUT.POTATOES, value: 100000, result: "You peel back its layers and find 100,000 potatoes tucked inside." },
-        { name: 'Kick it!', outcome: PAYOUT.POTATOES, value: -100000, result: "You kick the onion and it bursts into stinging fumes, forcing you to drop 100,000 potatoes as you flee." }]
+        choices: [{ name: 'Peel it!', outcome: PAYOUT.POTATOES, value: 40000, result: "You peel back its layers and find 100,000 potatoes tucked inside." },
+        { name: 'Kick it!', outcome: PAYOUT.POTATOES, value: -40000, result: "You kick the onion and it bursts into stinging fumes, forcing you to drop 100,000 potatoes as you flee." }]
     },
     {
         name: "Ominous Onion",
         thumbnailUrl: "https://cdn.discordapp.com/attachments/1013160515897397289/1207538767741845514/isolated-mussels-seafood-cartoon_1308-126259.png?ex=65e0031d&is=65cd8e1d&hm=81b5cc137ba52355567e8c8ad7a8eed4d985ca57faeb798b3e0ffb2576b7b10d&",
         description: "An ominous onion rolls to a stop in front of you, layers rustling. What will you do?",
-        choices: [{ name: 'Peel it!', outcome: PAYOUT.POTATOES, value: -100000, result: "You peel back its layers and it bursts into stinging fumes, forcing you to drop 100,000 potatoes as you flee." },
-        { name: 'Kick it!', outcome: PAYOUT.POTATOES, value: 100000, result: "You kick the onion and it splits open, revealing 100,000 potatoes inside." }]
+        choices: [{ name: 'Peel it!', outcome: PAYOUT.POTATOES, value: -40000, result: "You peel back its layers and it bursts into stinging fumes, forcing you to drop 100,000 potatoes as you flee." },
+        { name: 'Kick it!', outcome: PAYOUT.POTATOES, value: 40000, result: "You kick the onion and it splits open, revealing 100,000 potatoes inside." }]
     }
 ]
 
+// Descriptions reworded (2026-10-09) to drop every hardcoded price figure, same "describe by
+// kind, not by number" treatment the 2026-09-04 REWARD wording fix already applied to scaled
+// VALUE figures (see that fix's own comment, still attached to The Baron's Beet below) — now
+// extended to the PRICE side too, since TRANSACTIONS prices stopped being a flat hard number
+// the moment scaledTransactionPrice (towerFactory.js) started scaling them by player power.
+// No live number is shown anywhere in the UI before or after a purchase in the interactive
+// path (button labels below are static, e.g. "Pay up"/"Yes") — same gap scaled VALUEs already
+// had and the 2026-09-04 fix explicitly chose not to close (see that fix's own "drop the
+// figures" decision). The silent/fast-forward summary path IS exact: its own notableText
+// (towerFactory.js's updateTransaction) reports the real scaledTransactionPrice actually paid.
 const TRANSACTIONS = [
     {
         name: "Sales Spinach",
         thumbnailUrl: "https://cdn.discordapp.com/attachments/932528787407642625/1209336128164073512/cute-spinach-on-white-background-vector-27328402.png?ex=65e68d09&is=65d41809&hm=91e5bf1c2d53606aeff23a1f5a23776558e5bee71666c75ee0faab720da45b2b&",
-        description: "A spinach comes up and offers you 5x work modifier for 300,000 potatoes.\n\nWill you take the offer?",
+        description: "A spinach comes up and offers you 5x work modifier in exchange for a pile of your potatoes.\n\nWill you take the offer?",
         choices: [{ name: "Buy the work modifier", outcome: MODIFIER.WORK_MULTIPLIER, value: 5, price: 300000, result: "You agree to the spinach's deal and receive the work modifier!" },
         { name: "Leave", outcome: CHOICES.EXIT, result: "You decline the spinach's offer and move onto the next floor." }],
         poor: "You try to pay the spinach, but realize you don't have enough potatoes. The spinach leaves... get it?",
@@ -423,7 +454,7 @@ const TRANSACTIONS = [
     {
         name: "The Wizard Lime",
         thumbnailUrl: "https://cdn.discordapp.com/attachments/1146091052781011026/1208231024673161257/ori_3803828_982lh0b0qiq0s1eoiek9fii8bxlopkodr0ztvhnz_lime-fruit-wizard-cartoon-character.png?ex=65e287d4&is=65d012d4&hm=61a1fdd22142d6915596ffa043cf931f02b042b3f8cc61b4eb9afba0e7fc3c7b&",
-        description: "A magical looking lime threatens to send you to an elite if you don't pay 1,000,000 potatoes.\n\nWhat will you do?",
+        description: "A magical looking lime threatens to send you to an elite unless you pay up a heap of potatoes.\n\nWhat will you do?",
         choices: [{ name: 'Pay up', outcome: PAYOUT.POTATOES, value: 0, price: 1000000, result: `You pay the wizard who graciously takes the potatoes and leaves.` },
         { name: 'Keep your potatoes', outcome: CHOICES.ELITE, result: `The lime casts a spell on you, sending you straight to a dangerous elite!` }],
         poor: "You try to pay up but you do not have enough potatoes! The lime laughs as it starts casting a spell on you.......",
@@ -432,7 +463,7 @@ const TRANSACTIONS = [
     {
         name: "The Traveling Turnip",
         thumbnailUrl: "https://cdn.discordapp.com/attachments/1146091052781011026/1208231024673161257/ori_3803828_982lh0b0qiq0s1eoiek9fii8bxlopkodr0ztvhnz_lime-fruit-wizard-cartoon-character.png?ex=65e287d4&is=65d012d4&hm=61a1fdd22142d6915596ffa043cf931f02b042b3f8cc61b4eb9afba0e7fc3c7b&",
-        description: "A traveling turnip salesman is offering you 0.2 PERMANENT work multiplier for 600,000 potatoes.\n\nWill you take the offer?",
+        description: "A traveling turnip salesman is offering you 0.2 PERMANENT work multiplier for a sack of potatoes.\n\nWill you take the offer?",
         choices: [{ name: 'Yes', outcome: PAYOUT.WORK_MULTIPLIER, value: 0.2, price: 600000, result: `You buy the permanent work multiplier from the turnip!` },
         { name: 'No', outcome: CHOICES.EXIT, result: `You choose not to take the turnip's offer and depart` }],
         poor: "As much as you want to buy the work multiplier, you don't have enough potatoes to buy it",
@@ -444,10 +475,11 @@ const TRANSACTIONS = [
         // SCALED_PAYOUT_TYPE, so the actual amount granted is scaleReward(this.decayValue(...))
         // at the floor where it's bought, not the raw constants.js value; the old text promised a
         // fixed number that was only ever true right at the entry-gate anchor multi on an early
-        // floor. Only the price (450,000, never decayed/scaled) stays a hard number. See tower.md.
+        // floor. Reworded again (2026-10-09) to also drop the price figure (450,000), now that
+        // the price itself scales too — see this file's own TRANSACTIONS comment above.
         name: "The Baron's Beet",
         thumbnailUrl: "https://cdn.discordapp.com/attachments/1146091052781011026/1208231024673161257/ori_3803828_982lh0b0qiq0s1eoiek9fii8bxlopkodr0ztvhnz_lime-fruit-wizard-cartoon-character.png?ex=65e287d4&is=65d012d4&hm=61a1fdd22142d6915596ffa043cf931f02b042b3f8cc61b4eb9afba0e7fc3c7b&",
-        description: "A well-dressed beet offers you a permanent boost to your bank capacity for 450,000 potatoes.\n\nWill you take the offer?",
+        description: "A well-dressed beet offers you a permanent boost to your bank capacity in exchange for some potatoes.\n\nWill you take the offer?",
         choices: [{ name: 'Yes', outcome: PAYOUT.BANK_CAPACITY, value: 1000000, price: 450000, result: `You buy the permanent bank capacity upgrade from the baron!` },
         { name: 'No', outcome: CHOICES.EXIT, result: `You choose not to take the baron's offer and depart` }],
         poor: "As much as you want to buy the bank capacity, you don't have enough potatoes to buy it",
@@ -470,7 +502,7 @@ const REWARDS = [
         thumbnailUrl: "https://cdn.discordapp.com/attachments/1146091052781011026/1206040896672370759/cover4.png?ex=65da901c&is=65c81b1c&hm=3c2f67f963960013fd5cecf2fcf8e79a8b0a8c32e12f157fbc2e2fcc24d3c406&",
         description: "A flying fig offers you a pile of potatoes or 5 work modifier on this run.\n\nWhat will you take?",
         kill_elite: false,
-        choices: [{ name: 'A pile of potatoes', outcome: PAYOUT.POTATOES, value: 500000, result: "The fig turned into dust and granted you a pile of potatoes!" },
+        choices: [{ name: 'A pile of potatoes', outcome: PAYOUT.POTATOES, value: 200000, result: "The fig turned into dust and granted you a pile of potatoes!" },
         { name: '5 work multiplier', outcome: MODIFIER.WORK_MULTIPLIER, value: 5, result: "The fig turned into dust and granted you 5 work modifier!" }],
     },
     {
@@ -504,7 +536,7 @@ const ELITES = [
         name: "Celerity, the Swift Stalk",
         thumbnailUrl: "https://cdn.discordapp.com/attachments/1198660167168962693/1198683921672589363/celerity.png?ex=65bfcc65&is=65ad5765&hm=68e1484d6b97fa790c14950998de10cf5527abe766c90e53bd0a39f8d43ebb90&",
         description: `You encounter the powerful Celerity. Prepare for combat!`,
-        choices: [{ name: "Fight", outcome: PAYOUT.POTATOES, value: 150000, result: "You have triumphed over Celerity!" }],
+        choices: [{ name: "Fight", outcome: PAYOUT.POTATOES, value: 60000, result: "You have triumphed over Celerity!" }],
         difficulty: 10.0,
         lose: "You lost, better luck next time!",
         tier: 1
@@ -513,7 +545,7 @@ const ELITES = [
         name: "Rancid Radish",
         thumbnailUrl: "https://cdn.discordapp.com/attachments/1198660167168962693/1198683921672589363/celerity.png?ex=65bfcc65&is=65ad5765&hm=68e1484d6b97fa790c14950998de10cf5527abe766c90e53bd0a39f8d43ebb90&",
         description: `You encounter the reeking Rancid Radish. Prepare for combat!`,
-        choices: [{ name: "Fight", outcome: PAYOUT.POTATOES, value: 150000, result: "You have triumphed over the Rancid Radish!" }],
+        choices: [{ name: "Fight", outcome: PAYOUT.POTATOES, value: 60000, result: "You have triumphed over the Rancid Radish!" }],
         difficulty: 10.0,
         lose: "You lost, better luck next time!",
         tier: 1
@@ -522,7 +554,7 @@ const ELITES = [
         name: "Grumpy Gourd",
         thumbnailUrl: "https://cdn.discordapp.com/attachments/1198660167168962693/1198683921672589363/celerity.png?ex=65bfcc65&is=65ad5765&hm=68e1484d6b97fa790c14950998de10cf5527abe766c90e53bd0a39f8d43ebb90&",
         description: `You encounter the towering Grumpy Gourd. Prepare for combat!`,
-        choices: [{ name: "Fight", outcome: PAYOUT.POTATOES, value: 150000, result: "You have triumphed over the Grumpy Gourd!" }],
+        choices: [{ name: "Fight", outcome: PAYOUT.POTATOES, value: 60000, result: "You have triumphed over the Grumpy Gourd!" }],
         difficulty: 10.0,
         lose: "You lost, better luck next time!",
         tier: 2
@@ -531,7 +563,7 @@ const ELITES = [
         name: "Sour Squash",
         thumbnailUrl: "https://cdn.discordapp.com/attachments/1198660167168962693/1198683921672589363/celerity.png?ex=65bfcc65&is=65ad5765&hm=68e1484d6b97fa790c14950998de10cf5527abe766c90e53bd0a39f8d43ebb90&",
         description: `You encounter the venomous Sour Squash. Prepare for combat!`,
-        choices: [{ name: "Fight", outcome: PAYOUT.POTATOES, value: 150000, result: "You have triumphed over the Sour Squash!" }],
+        choices: [{ name: "Fight", outcome: PAYOUT.POTATOES, value: 60000, result: "You have triumphed over the Sour Squash!" }],
         difficulty: 10.0,
         lose: "You lost, better luck next time!",
         tier: 2
@@ -540,7 +572,7 @@ const ELITES = [
         name: "Ancient Artichoke",
         thumbnailUrl: "https://cdn.discordapp.com/attachments/1198660167168962693/1198683921672589363/celerity.png?ex=65bfcc65&is=65ad5765&hm=68e1484d6b97fa790c14950998de10cf5527abe766c90e53bd0a39f8d43ebb90&",
         description: `You encounter the ageless Ancient Artichoke. Prepare for combat!`,
-        choices: [{ name: "Fight", outcome: PAYOUT.POTATOES, value: 150000, result: "You have triumphed over the Ancient Artichoke!" }],
+        choices: [{ name: "Fight", outcome: PAYOUT.POTATOES, value: 60000, result: "You have triumphed over the Ancient Artichoke!" }],
         difficulty: 10.0,
         lose: "You lost, better luck next time!",
         tier: 3
@@ -549,7 +581,7 @@ const ELITES = [
         name: "Corrupted Cauliflower",
         thumbnailUrl: "https://cdn.discordapp.com/attachments/1198660167168962693/1198683921672589363/celerity.png?ex=65bfcc65&is=65ad5765&hm=68e1484d6b97fa790c14950998de10cf5527abe766c90e53bd0a39f8d43ebb90&",
         description: `You encounter the writhing Corrupted Cauliflower. Prepare for combat!`,
-        choices: [{ name: "Fight", outcome: PAYOUT.POTATOES, value: 150000, result: "You have triumphed over the Corrupted Cauliflower!" }],
+        choices: [{ name: "Fight", outcome: PAYOUT.POTATOES, value: 60000, result: "You have triumphed over the Corrupted Cauliflower!" }],
         difficulty: 10.0,
         lose: "You lost, better luck next time!",
         tier: 3
@@ -558,7 +590,7 @@ const ELITES = [
         name: "The Eternal Eggplant",
         thumbnailUrl: "https://cdn.discordapp.com/attachments/1198660167168962693/1198683921672589363/celerity.png?ex=65bfcc65&is=65ad5765&hm=68e1484d6b97fa790c14950998de10cf5527abe766c90e53bd0a39f8d43ebb90&",
         description: `You encounter the unending Eternal Eggplant. Prepare for combat!`,
-        choices: [{ name: "Fight", outcome: PAYOUT.POTATOES, value: 150000, result: "You have triumphed over the Eternal Eggplant!" }],
+        choices: [{ name: "Fight", outcome: PAYOUT.POTATOES, value: 60000, result: "You have triumphed over the Eternal Eggplant!" }],
         difficulty: 10.0,
         lose: "You lost, better luck next time!",
         tier: 4
@@ -626,6 +658,7 @@ module.exports = {
     SCALING_ANCHOR_INVESTMENT,
     SCALED_PAYOUT_TYPES,
     SCALING_EXPONENT,
+    TRANSACTION_PRICE_SCALE_RATE,
     TOWER_RUN_CAPS,
     TOWER_FLOOR_CAP_BAND_SIZE,
     TOWER_OVERFLOW_SHOP_RATE,

@@ -304,7 +304,7 @@ class towerFactory{
                 // affordable, rather than showing a Transaction with no real transaction to
                 // make.
                 const affordable = tC.TRANSACTIONS.filter(t =>
-                    t.choices.some(c => c.price !== undefined && c.price <= this.run[tC.PAYOUT.POTATOES]));
+                    t.choices.some(c => c.price !== undefined && this.scaledTransactionPrice(c.price) <= this.run[tC.PAYOUT.POTATOES]));
                 if (affordable.length === 0) {
                     fl = tC.COMBATS[Math.floor(Math.random() * tC.COMBATS.length)]
                     floor_type = "COMBAT"
@@ -530,6 +530,24 @@ class towerFactory{
         return Math.round(rawValue * this.scalingFactor)
     }
 
+    // TRANSACTIONS price scaling (2026-10-09, direct instruction) — until now every
+    // TRANSACTIONS floor's `choice.price` was a hardcoded flat number (300K-1M), completely
+    // disconnected from this.scalingFactor even though POTATOES/PASSIVE_INCOME/BANK_CAPACITY
+    // rewards all scale by it — meaning these optional purchases became pocket change at any
+    // meaningfully progressed power. Direct instruction: scale the price too, but at only 20%
+    // of the rate rewards scale at ("the wizard lime at 340 million would instead be 20% of
+    // that"), with today's flat price as a floor it can never drop below (binds only right at
+    // ENTRY_GATE_MULTI, where this.scalingFactor is exactly 1.0 and 20% of it would otherwise
+    // undercut the raw price). The single funnel point both TRANSACTION usage sites (the
+    // floor-eligibility filter in execNormalFloor and the afford-check/deduction in
+    // updateTransaction) read through, so they can't drift apart the way the old
+    // buildRaidPreview multiplier-table bug did for a different system — see that bug's own
+    // regression test in raidFactory.test.js for why this codebase is careful about exactly
+    // this kind of duplication.
+    scaledTransactionPrice(rawPrice){
+        return Math.max(rawPrice, Math.round(rawPrice * this.scalingFactor * tC.TRANSACTION_PRICE_SCALE_RATE))
+    }
+
     // Bastion, the Tower Warden's towerRewardBonus — end-of-run application (2026-10-06,
     // player-reported: "it seems like it is not" boosting Tower rewards). Applied exactly
     // once, in startRun(), after the run has genuinely concluded and every floor's own
@@ -671,7 +689,8 @@ class towerFactory{
 
     async updateTransaction(fl, index, color = "Green", silent = false){
         const choice = fl.choices[index]
-        let poor = this.run[tC.PAYOUT.POTATOES] < choice.price
+        const price = this.scaledTransactionPrice(choice.price)
+        let poor = this.run[tC.PAYOUT.POTATOES] < price
         if(choice.outcome == tC.CHOICES.EXIT){
             if(silent){
                 return { name: fl.name, resultText: choice.result, outcome: null, amount: 0 }
@@ -701,14 +720,15 @@ class towerFactory{
             return this.resolveNext(fl, fl.poor, color)
         }
 
-        // update outcome + value then subtract price — only the value bought decays/scales,
-        // never the price itself (see tower.md's reward-safeguard scope and the reward-value-
-        // scaling section's identical scope decision for the same field).
+        // update outcome + value then subtract price — only the value bought decays/scales
+        // by the usual reward formula; the price itself scales by its own, much gentler
+        // scaledTransactionPrice formula (see that method's own comment) rather than
+        // scaleReward's.
         let value = this.scaleReward(choice.outcome, this.decayValue(choice.outcome, choice.value))
         let applied = this.creditRunPayout(choice.outcome, value)
-        this.run[tC.PAYOUT.POTATOES]-= choice.price
+        this.run[tC.PAYOUT.POTATOES]-= price
         if(silent){
-            return { name: fl.name, resultText: choice.result, outcome: choice.outcome, amount: applied, pricePaid: choice.price, notableText: `Bought "${fl.name}" for ${choice.price.toLocaleString()} potatoes` }
+            return { name: fl.name, resultText: choice.result, outcome: choice.outcome, amount: applied, pricePaid: price, notableText: `Bought "${fl.name}" for ${price.toLocaleString()} potatoes` }
         }
         return this.resolveNext(fl, choice.result, color)
     }
