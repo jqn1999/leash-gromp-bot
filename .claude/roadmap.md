@@ -21125,3 +21125,58 @@ cross-referenced against this one).
 Cross-repo note: `financial-project` DOES implement Guild Raid (`amplify/functions/gromp-guilds/
 handler.ts`'s own `Raid` constants block, which has tracked prior bot rebalances before) — ported
 in the same session, see that repo's `NOTES_GROMP_WEB_INTEGRATION.md` for the matching entry.
+
+## Raid unlock gates moved: Regular T4 to level 6, Legendary to level 8, each mode's T4 now unlocks with the mode itself (2026-10-09, player question then direct instruction)
+
+**Asked**: a player question about where Elite/Legendary and their own T4 brackets unlock,
+followed by: "make regular t4 unlock at lvl 6, elite unlock at lvl 7 + t4 elite at lvl 7,
+legendary unlock at lvl 8 + t4 legendary at level 8."
+
+**Analysis**: answering the original question surfaced a real design wrinkle worth flagging
+before implementing. Elite's own T4 used to sit one level above Elite's own mode unlock (level
+8 vs level 7) via a shared `Raid.RAID_T4_MIN_LEVEL_TARGET_WINS` constant Legendary's T4 also
+read — a real, intentional one-level gap. But Legendary itself didn't unlock until level 9,
+a full level PAST that same level-8 T4 gate — so Legendary's T4 was already unlocked, with no
+gap at all, the instant a guild reached Legendary in the first place. That redundancy (not by
+design, just an artifact of both modes sharing one T4 constant while their own mode-unlock
+levels diverged) is what the direct instruction fixed: now every mode's T4 unlocks at the exact
+same level the mode itself does.
+
+**Changed** (`constants.js`): `LEGENDARY_MIN_GUILD_LEVEL` 9→8. `REGULAR_T4_MIN_LEVEL_TARGET_WINS`
+375 (level 7)→200 (level 6). The old shared `RAID_T4_MIN_LEVEL_TARGET_WINS` (750) split into
+`ELITE_T4_MIN_LEVEL_TARGET_WINS` (375, level 7 — same as Elite's own unlock now) and
+`LEGENDARY_T4_MIN_LEVEL_TARGET_WINS` (750, level 8 — same as Legendary's own unlock now, value
+unchanged but no longer a coincidence). `startRaid.js`'s single `ELITE_LEGENDARY_T4_MIN_LEVEL`
+split into `ELITE_T4_MIN_LEVEL`/`LEGENDARY_T4_MIN_LEVEL`, each wired to its own mode's T4
+scenario entry; no other structural change, since `getUnlockedRaidModes`/`buildRaidPreview`/the
+mode-select gate all read the live constants.
+
+**Resulting ladder**: Regular T4 → level 6 (200 wins). Elite (mode + T4 together) → level 7
+(375 wins). Legendary (mode + T4 together) → level 8 (750 wins). Full table: L1=0, L2=6, L3=19,
+L4=44, L5=100, L6=200, L7=375, L8=750, L9=1500, L10=3000 wins.
+
+**Tests**: found and fixed two real latent bugs while updating `buildRaidPreview.test.js`, not
+just stale numbers. A hardcoded `return 8;` stand-in for Elite's T4 level was simply wrong now
+(fixed to call `getGuildLevelClosestToWins` live). More seriously: `expectedOdds`'s own T4-level
+derivation read the now-removed `Raid.RAID_T4_MIN_LEVEL_TARGET_WINS`, which silently resolved to
+`undefined` and, via `getGuildLevelClosestToWins`'s unguarded `reduce`, to level 1 — three
+odds-parity test cases failed against this, which is what caught it (not a code review). The
+identical latent bug existed in `startRaidStaticRewards.test.js`/`startRaidBankOverflow.test.js`'s
+own `expectedBracket` helpers but didn't fail there, since both only ever probe guildLevel values
+at-or-above the real correct levels — fixed anyway rather than left as a landmine. Reviewed
+`startRaidInfamy.test.js`'s Elite/Legendary tests for behavioral impact (T4 now includable in the
+weighted roll at Elite's own min level) and confirmed they're unaffected — win/loss there is
+mocked directly via a `raidCount` diff, not derived from the real roll, and Infamy gain is flat
+per mode. `raidOdds.test.js`/`startRaidStatReward.test.js`/`raidFactory.test.js` had comment-only
+staleness. Full suite re-run clean: **127 of 128 suites (1 pre-existing skip) / 2342 tests (18
+pre-existing skips, 2324 passing)** — the one failure seen mid-pass
+(`rivalNotorietyAccrual.test.js`'s Royal Treasury halving test) is the same documented
+pre-existing flake, confirmed clean on a full re-run plus three isolated re-runs.
+
+Updated `.claude/systems/raids-and-world-events.md` (a new dated section, plus the "Elite/
+Legendary are gated by a flat guild-level requirement" bullet's own stale number) and
+`.claude/reference/constants.md`'s own quick-reference entry.
+
+Cross-repo note: pending — `financial-project` implements Guild Raid (confirmed earlier this
+session, see the previous roadmap entry) and should get this same gate change ported before
+this is considered fully closed out.

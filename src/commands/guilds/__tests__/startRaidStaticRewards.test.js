@@ -34,13 +34,15 @@ const { runStartRaidFlow, buildRaidPreview } = require('../startRaid');
 const { Raid, RaidLevel } = require('../../../utils/constants');
 const { getWeightedScenarios, getEffectiveRaidPower, getGuildLevelClosestToWins, getRaidLevelInfo } = require('../../../utils/raidFactory');
 
-// T4's unlock level, derived the exact same way startRaid.js's own (unexported)
-// ELITE_LEGENDARY_T4_MIN_LEVEL constant is — see raidFactory.js's getGuildLevelClosestToWins.
-// Regular's own T4 unlocks a level earlier (7, not 8) since 2026-09-12 — see
-// Raid.REGULAR_T4_MIN_LEVEL_TARGET_WINS's own comment — but this file's expectedBracket
-// helper below is only ever called with mode 'elite'/'legendary', so this one constant
-// (Elite/Legendary-only now) is all it needs.
-const T4_MIN_LEVEL = getGuildLevelClosestToWins(Raid.RAID_T4_MIN_LEVEL_TARGET_WINS);
+// Each mode's own T4 unlock level, derived the exact same way startRaid.js's own
+// (unexported) ELITE_T4_MIN_LEVEL/LEGENDARY_T4_MIN_LEVEL constants are — see
+// raidFactory.js's getGuildLevelClosestToWins. Split into two as of 2026-10-09 (direct
+// instruction: "elite unlock at lvl 7 + t4 elite at lvl 7, legendary unlock at lvl 8 + t4
+// legendary at level 8") — Elite's and Legendary's own T4 used to share one level (8) via
+// the now-removed Raid.RAID_T4_MIN_LEVEL_TARGET_WINS, but now each mode's T4 unlocks at
+// the SAME level the mode itself does, which differs per mode (7 vs 8).
+const ELITE_T4_MIN_LEVEL = getGuildLevelClosestToWins(Raid.ELITE_T4_MIN_LEVEL_TARGET_WINS);
+const LEGENDARY_T4_MIN_LEVEL = getGuildLevelClosestToWins(Raid.LEGENDARY_T4_MIN_LEVEL_TARGET_WINS);
 
 // Derives which bracket a given Math.random() draw actually lands in under DYNAMIC
 // weighting, by calling the real getWeightedScenarios/getDynamicTierWeights function
@@ -53,8 +55,9 @@ const T4_MIN_LEVEL = getGuildLevelClosestToWins(Raid.RAID_T4_MIN_LEVEL_TARGET_WI
 function expectedBracket(mode, guildLevel, totalMultiplier, roll) {
     const prefix = mode.toUpperCase();
     const metalKing = { name: 'MK', chance: .01 };
+    const t4MinLevel = mode === 'elite' ? ELITE_T4_MIN_LEVEL : LEGENDARY_T4_MIN_LEVEL;
     const tiers = [
-        { name: 'T4', difficulty: Raid[`${prefix}_T4_DIFFICULTY`], minGuildLevel: T4_MIN_LEVEL },
+        { name: 'T4', difficulty: Raid[`${prefix}_T4_DIFFICULTY`], minGuildLevel: t4MinLevel },
         { name: 'T3', difficulty: Raid[`${prefix}_T3_DIFFICULTY`] },
         { name: 'T2', difficulty: Raid[`${prefix}_T2_DIFFICULTY`] },
         { name: 'T1', difficulty: Raid[`${prefix}_T1_DIFFICULTY`] },
@@ -168,11 +171,12 @@ describe('/start-raid elite/legendary scenario closures read the new static cons
     });
 
     test('legendary: the same guaranteed-loss roll pays out exactly the penalty of whichever bracket 0.5 lands in under dynamic weighting', async () => {
-        // Legendary is gated to Raid.LEGENDARY_MIN_GUILD_LEVEL (9 as of 2026-09-12 — see
+        // Legendary is gated to Raid.LEGENDARY_MIN_GUILD_LEVEL (8 as of 2026-10-09 — see
         // that constant's own comment in constants.js) — using RaidLevel.THRESHOLDS' own
-        // live level-9 boundary rather than a hardcoded win count, the minimum that clears
-        // the gate. T4 (unlock level 8) is actually already unlocked at this level, unlike
-        // the old level-3 gate this replaced.
+        // live level-8 boundary rather than a hardcoded win count, the minimum that clears
+        // the gate. T4 (unlock level 8, same as the mode's own unlock as of this pass) is
+        // already unlocked at this level, same as it's always been for Legendary (first by
+        // coincidence pre-2026-10-09, now by design).
         const legendaryMinWins = RaidLevel.THRESHOLDS.find(t => t.level === Raid.LEGENDARY_MIN_GUILD_LEVEL).winsRequired;
         dynamoHandler.findGuildById.mockResolvedValue(guildFixture({ raidCount: legendaryMinWins }));
         const interaction = fakeInteraction();

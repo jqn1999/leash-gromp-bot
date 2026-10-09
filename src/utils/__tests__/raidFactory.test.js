@@ -66,8 +66,9 @@ describe('getLiveRaidRoster', () => {
     });
 });
 
-// Regression coverage for T4's level gate: Raid.RAID_T4_MIN_LEVEL_TARGET_WINS lands exactly
-// on a RaidLevel.THRESHOLDS entry (see that constant's own comment), so all three cases here
+// Regression coverage for each mode's T4 level gate: Raid.REGULAR_T4_MIN_LEVEL_TARGET_WINS/
+// ELITE_T4_MIN_LEVEL_TARGET_WINS/LEGENDARY_T4_MIN_LEVEL_TARGET_WINS each land exactly on a
+// RaidLevel.THRESHOLDS entry (see those constants' own comments), so all three cases here
 // derive their target values live off RaidLevel.THRESHOLDS rather than hardcoding win counts
 // tied to one specific curve — stays correct if the curve is ever rescaled (as it was
 // 2026-09-10, direct instruction: max wins needed 12,000 -> 3,000, every level scaled down
@@ -929,10 +930,9 @@ describe('getUnlockedRaidModes', () => {
     });
 
     // Elite/Legendary gated by flat guild-level requirements (Raid.ELITE_MIN_GUILD_LEVEL=7/
-    // LEGENDARY_MIN_GUILD_LEVEL=9, 2026-09-12, direct instruction — replaced the old
-    // breakeven-derived gate, see that constant's own comment in constants.js for why) —
-    // this function must agree with startRaid.js's own gate exactly, or a button here
-    // could offer a mode /start-raid would immediately reject.
+    // LEGENDARY_MIN_GUILD_LEVEL=8 as of 2026-10-09, down from 9 — see that constant's own
+    // comment in constants.js) — this function must agree with startRaid.js's own gate
+    // exactly, or a button here could offer a mode /start-raid would immediately reject.
     test('elite is locked below its required level and unlocked from it', () => {
         expect(getUnlockedRaidModes(Raid.ELITE_MIN_GUILD_LEVEL - 1).elite).toBe(false);
         expect(getUnlockedRaidModes(Raid.ELITE_MIN_GUILD_LEVEL).elite).toBe(true);
@@ -1053,7 +1053,8 @@ describe('static Elite/Legendary difficulty ladder (2026-08-26 redesign)', () =>
     // superseded design, Elite/Legendary's own per-point efficiency is NOT dramatically
     // higher than Regular's anymore; it now sits close to (and even overlaps) Regular's
     // own band, since it's DIFFICULTY (much higher for the harder modes) and guild-LEVEL
-    // gating (Elite needs level 7, Legendary level 9 — a much bigger payout multiplier;
+    // gating (Elite needs level 7, Legendary level 8 as of 2026-10-09 (was 9) — a much
+    // bigger payout multiplier;
     // see effRewardMult in the balance-audit.md derivation), not raw efficiency-per-point,
     // that differentiates the three modes now. This is the direct, intended effect of
     // solving for an absolute vs-Merc ceiling rather than an efficiency band — not an

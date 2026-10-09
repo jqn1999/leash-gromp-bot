@@ -118,7 +118,8 @@ describe('/raid-odds', () => {
 
     test('Elite/Legendary sections only appear once the guild has actually unlocked them', async () => {
         // Level 1 (raidCount 0): neither Elite (needs Raid.ELITE_MIN_GUILD_LEVEL, 7) nor
-        // Legendary (needs Raid.LEGENDARY_MIN_GUILD_LEVEL, 9) should appear.
+        // Legendary (needs Raid.LEGENDARY_MIN_GUILD_LEVEL, 8 as of 2026-10-09, was 9) should
+        // appear.
         dynamoHandler.findGuildById.mockResolvedValue(guildFixture({ raidCount: 0 }));
         const belowInteraction = fakeInteraction();
         await callback({}, belowInteraction);
@@ -129,7 +130,8 @@ describe('/raid-odds', () => {
         expect(belowFields.some(f => f.name.includes('Baby'))).toBe(true);
         expect(belowFields.some(f => f.name.includes('Stat'))).toBe(true);
 
-        // Legendary's own unlock level (9) — both Elite and Legendary should now appear.
+        // Legendary's own unlock level (8 as of 2026-10-09, was 9) — both Elite and
+        // Legendary should now appear.
         const legendaryMinWins = RaidLevel.THRESHOLDS.find(t => t.level === Raid.LEGENDARY_MIN_GUILD_LEVEL).winsRequired;
         dynamoHandler.findGuildById.mockResolvedValue(guildFixture({ raidCount: legendaryMinWins }));
         const atInteraction = fakeInteraction();

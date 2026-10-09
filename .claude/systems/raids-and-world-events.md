@@ -99,7 +99,8 @@ World raids: [src/utils/worldFactory.js](../../src/utils/worldFactory.js) +
   rolling into Regular's far rarer but much harder Metal King/T4/T3/T2 brackets. No guild-level
   gate at all (`getUnlockedRaidModes` always reports `baby: true`), same as Regular/Stat.
 - **Elite/Legendary are gated by a flat guild-level requirement** — `Raid.ELITE_MIN_GUILD_LEVEL` (7)
-  and `Raid.LEGENDARY_MIN_GUILD_LEVEL` (9), checked directly in both `raidFactory.js`'s
+  and `Raid.LEGENDARY_MIN_GUILD_LEVEL` (8, cut from 9 on 2026-10-09 — see this section's own later
+  update), checked directly in both `raidFactory.js`'s
   `getUnlockedRaidModes` and `startRaid.js`'s own gate check in `runStartRaidFlow`. `start-raid`
   rejects a locked selection with the reason instead of letting a guild discover the trap by losing
   potatoes over several raids.
@@ -694,6 +695,64 @@ change), and efficiency-band assertions (new ranges: elite ≈20,969-21,837/pt, 
 proportion with the overall EV target cut) were all updated to match.
 `mercenaryFactory.test.js`'s two Metal Potato Medley Band II/III tests were updated to the new
 difficulty/reward/success-chance numbers.
+
+**Update (2026-10-09, later same day) — unlock gates moved, and each mode's T4 now unlocks at the
+SAME level as the mode itself.** Direct instruction, prompted by a question about where Elite/
+Legendary/their own T4 brackets unlock: *"make regular t4 unlock at lvl 6, elite unlock at lvl 7 +
+t4 elite at lvl 7, legendary unlock at lvl 8 + t4 legendary at level 8."*
+
+Before this pass, Elite's own T4 shared a single level-8 gate with Legendary's own T4 (both via
+`Raid.RAID_T4_MIN_LEVEL_TARGET_WINS`), one level above Elite's own level-7 mode unlock — a real
+one-level gap where Elite was playable but its best tier wasn't yet. Legendary, meanwhile, didn't
+unlock until level 9 — a full level past its own T4's level-8 gate — meaning Legendary's T4 was
+ALREADY unlocked, with no gap at all, the moment a guild reached Legendary in the first place; that
+redundancy (flagged when a player asked where these gates sat) is what prompted this pass.
+
+Changed (`constants.js`):
+- `Raid.LEGENDARY_MIN_GUILD_LEVEL` 9 → 8.
+- `Raid.REGULAR_T4_MIN_LEVEL_TARGET_WINS` 375 (level 7) → 200 (level 6) — one level below Elite's
+  own unlock/T4, same relative position as before.
+- The old shared `Raid.RAID_T4_MIN_LEVEL_TARGET_WINS` (750) split into two: `Raid.
+  ELITE_T4_MIN_LEVEL_TARGET_WINS` (375, level 7 — now the SAME level Elite itself unlocks at, down
+  from one level above) and `Raid.LEGENDARY_T4_MIN_LEVEL_TARGET_WINS` (750, level 8, value
+  unchanged — what changed is `LEGENDARY_MIN_GUILD_LEVEL` dropping to meet it, so this is now the
+  SAME level Legendary itself unlocks at, by design instead of by the pre-rework coincidence).
+
+Changed (`startRaid.js`): the single `ELITE_LEGENDARY_T4_MIN_LEVEL` const split into
+`ELITE_T4_MIN_LEVEL`/`LEGENDARY_T4_MIN_LEVEL`, each derived from its own new constant and wired to
+its own mode's T4 scenario entry. No other structural change — `getUnlockedRaidModes`,
+`buildRaidPreview`, and the mode-select gate check all read the live constants, so they picked up
+the new levels automatically.
+
+Resulting unlock ladder: Regular T4 → level 6 (200 wins). Elite mode + Elite T4 → level 7 (375
+wins), together. Legendary mode + Legendary T4 → level 8 (750 wins), together. Full level table for
+reference: L1=0, L2=6, L3=19, L4=44, L5=100, L6=200, L7=375, L8=750, L9=1500, L10=3000 wins.
+
+**Tests**: fixed two real bugs this pass surfaced in `buildRaidPreview.test.js`, not just stale
+numbers. First, its dedicated T4-unlock test hardcoded `return 8;` as a stand-in for Elite's T4
+level — simply wrong now (Elite's T4 is 7), fixed to call `getGuildLevelClosestToWins(Raid.
+ELITE_T4_MIN_LEVEL_TARGET_WINS)` live instead of hardcoding anything. Second, its separate
+`expectedOdds` helper (for the odds-parity describe block) still derived its T4-unlock level from
+the now-removed `Raid.RAID_T4_MIN_LEVEL_TARGET_WINS`, which silently resolved to `undefined` and
+then, via `getGuildLevelClosestToWins`'s unguarded `reduce` with no initial value, to level 1 (not
+an error — `Math.abs(NaN) < Math.abs(NaN)` is always `false`, so the reduce never advances past its
+first element). Three odds-parity test cases failed against this (comparing a stale "T4 already
+unlocked at level 1" expectation to the real, now-correct per-mode level), which is what caught it.
+Fixed to derive two separate per-mode levels, same shape as the real `startRaid.js` split.
+`startRaidStaticRewards.test.js`/`startRaidBankOverflow.test.js` had the identical latent
+`undefined`-constant bug in their own `expectedBracket` helpers but didn't fail, since both only
+ever probe guildLevel values at-or-above the new correct levels — fixed anyway rather than left as
+a landmine for a future test added at a lower level. `startRaidInfamy.test.js`'s Elite/Legendary
+Infamy tests were
+reviewed for behavioral impact (T4 being newly includable in the weighted roll at Elite's own min
+level) and confirmed unaffected — those tests mock win/loss directly via a `raidCount` diff, not
+via the real roll outcome, and Infamy gain is flat per mode, not per bracket — so only their
+comments needed updating. `raidOdds.test.js`/`startRaidStatReward.test.js`/`raidFactory.test.js`
+had comment-only staleness (level numbers in prose, not in any live assertion). Full suite re-run
+clean: **127 of 128 suites (1 pre-existing skip) / 2342 tests (18 pre-existing skips, 2324
+passing)** — the one failure seen mid-pass (`rivalNotorietyAccrual.test.js`'s Royal Treasury
+halving test) is the same pre-existing flake already documented in this file, confirmed again by a
+clean re-run (and three more clean isolated re-runs), unrelated to this change.
 
 ### Dynamic tier weighting
 

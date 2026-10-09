@@ -167,9 +167,12 @@ describe('Guild Rival Warbands: Infamy accrual per raid mode', () => {
     });
 
     test('elite win: +2 Infamy', async () => {
-        // Clears Elite's own unlock gate (Raid.ELITE_MIN_GUILD_LEVEL = 7 as of 2026-09-12)
-        // exactly, and stays under T4's own separate unlock level (8) so T4 stays excluded
-        // from the weighted roll.
+        // Clears Elite's own unlock gate (Raid.ELITE_MIN_GUILD_LEVEL = 7) exactly — T4 is
+        // also unlocked at this exact level as of 2026-10-09 (was level 8), so T4 is now
+        // includable in the weighted roll here too. Doesn't matter for this assertion: the
+        // win/loss outcome is driven by mockWin's own raidCount diff, not by which bracket
+        // actually resolves (see mockWin's own comment), and Infamy gain is flat per MODE
+        // (GuildRival.INFAMY_PER_RAID_MODE), not per bracket.
         const guild = guildFixture({ guildInfamy: 5, raidCount: ELITE_MIN_WINS });
         mockWin(guild);
         const interaction = fakeInteraction();
@@ -223,9 +226,9 @@ describe('Guild Rival Warbands: Infamy accrual per raid mode', () => {
     });
 
     test('legendary win: +3 Infamy', async () => {
-        // Clears Legendary's own unlock gate (Raid.LEGENDARY_MIN_GUILD_LEVEL = 9 as of
-        // 2026-09-12) exactly — T4 (unlock level 8) is actually already unlocked here too,
-        // unlike the old level-3 gate this replaced.
+        // Clears Legendary's own unlock gate (Raid.LEGENDARY_MIN_GUILD_LEVEL = 8 as of
+        // 2026-10-09, was 9) exactly — T4 (unlock level 8, same as the mode's own unlock as
+        // of this pass) is already unlocked here too.
         const guild = guildFixture({ guildInfamy: 8, raidCount: LEGENDARY_MIN_WINS });
         mockWin(guild);
         const interaction = fakeInteraction();

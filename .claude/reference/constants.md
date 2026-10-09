@@ -53,9 +53,14 @@ Legendary's own T4 (4,000, unchanged). Each bracket's static `_PENALTY` has a 1.
 2.0x (Legendary) ratio to its own reward baked in directly. The `ELITE_PENALTY_INCREASE`/
 `LEGENDARY_PENALTY_INCREASE` constants those ratios used to be read from — and the
 `getMinGuildLevelForTier` breakeven-derived gate they fed — were **deleted 2026-09-12**, direct
-instruction, replaced by flat `Raid.ELITE_MIN_GUILD_LEVEL` (7) / `LEGENDARY_MIN_GUILD_LEVEL` (9)
-requirements (up from the old derived levels 1/3 — a 2026-09-12 balance audit found the old gate
-understated the real requirement by ~22-23% once dynamic tier weighting is accounted for). Full
+instruction, replaced by flat `Raid.ELITE_MIN_GUILD_LEVEL` (7) / `LEGENDARY_MIN_GUILD_LEVEL`
+(8, cut from 9 on 2026-10-09 — see raids-and-world-events.md's own update for why) requirements
+(up from the old derived levels 1/3 — a 2026-09-12 balance audit found the old gate understated
+the real requirement by ~22-23% once dynamic tier weighting is accounted for). As of 2026-10-09,
+each mode's T4 bracket also unlocks at the SAME level as the mode itself (`Raid.
+ELITE_T4_MIN_LEVEL_TARGET_WINS`/`LEGENDARY_T4_MIN_LEVEL_TARGET_WINS`, split from the old shared
+`RAID_T4_MIN_LEVEL_TARGET_WINS`), and Regular's own T4 moved to level 6 (`Raid.
+REGULAR_T4_MIN_LEVEL_TARGET_WINS`). Full
 derivation: [systems/raids-and-world-events.md](../systems/raids-and-world-events.md#success-chance--tiers),
 [balance-audit.md](../balance-audit.md)'s 2026-08-26 and 2026-09-12 entries.
 

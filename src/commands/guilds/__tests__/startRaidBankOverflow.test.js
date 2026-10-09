@@ -42,7 +42,12 @@ const { runStartRaidFlow, buildRaidPreview } = require('../startRaid');
 const { Raid, RaidLevel } = require('../../../utils/constants');
 const { getWeightedScenarios, getEffectiveRaidPower, getGuildLevelClosestToWins, getRaidLevelInfo } = require('../../../utils/raidFactory');
 
-const T4_MIN_LEVEL = getGuildLevelClosestToWins(Raid.RAID_T4_MIN_LEVEL_TARGET_WINS);
+// Each mode's own T4 unlock level — split into two as of 2026-10-09 (see
+// startRaidStaticRewards.test.js's own comment for the full derivation; this file only
+// ever calls expectedBracket with mode 'elite', but mirrors that file's two-constant shape
+// rather than reusing the now-removed shared RAID_T4_MIN_LEVEL_TARGET_WINS).
+const ELITE_T4_MIN_LEVEL = getGuildLevelClosestToWins(Raid.ELITE_T4_MIN_LEVEL_TARGET_WINS);
+const LEGENDARY_T4_MIN_LEVEL = getGuildLevelClosestToWins(Raid.LEGENDARY_T4_MIN_LEVEL_TARGET_WINS);
 
 // Mirrors startRaidStaticRewards.test.js's own helper exactly — derives which bracket a
 // given roll actually lands in under dynamic weighting, rather than a second hand-computed
@@ -50,8 +55,9 @@ const T4_MIN_LEVEL = getGuildLevelClosestToWins(Raid.RAID_T4_MIN_LEVEL_TARGET_WI
 function expectedBracket(mode, guildLevel, totalMultiplier, roll) {
     const prefix = mode.toUpperCase();
     const metalKing = { name: 'MK', chance: .01 };
+    const t4MinLevel = mode === 'elite' ? ELITE_T4_MIN_LEVEL : LEGENDARY_T4_MIN_LEVEL;
     const tiers = [
-        { name: 'T4', difficulty: Raid[`${prefix}_T4_DIFFICULTY`], minGuildLevel: T4_MIN_LEVEL },
+        { name: 'T4', difficulty: Raid[`${prefix}_T4_DIFFICULTY`], minGuildLevel: t4MinLevel },
         { name: 'T3', difficulty: Raid[`${prefix}_T3_DIFFICULTY`] },
         { name: 'T2', difficulty: Raid[`${prefix}_T2_DIFFICULTY`] },
         { name: 'T1', difficulty: Raid[`${prefix}_T1_DIFFICULTY`] },

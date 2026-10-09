@@ -194,11 +194,14 @@ const legendaryRaidMobs = [
 
 // Guild level at which T4 unlocks in each raid-select tier — derived from a target win
 // count rather than hardcoded, so it tracks RaidLevel.THRESHOLDS if that curve ever
-// changes. Split into two as of 2026-09-12 (direct instruction, "Make regular t4 unlock
-// at lvl 7") — Regular's own T4 unlocks one level earlier than Elite/Legendary's own T4
-// now, where a single shared level used to gate all three.
-const REGULAR_T4_MIN_LEVEL = getGuildLevelClosestToWins(Raid.REGULAR_T4_MIN_LEVEL_TARGET_WINS); // resolves to level 7
-const ELITE_LEGENDARY_T4_MIN_LEVEL = getGuildLevelClosestToWins(Raid.RAID_T4_MIN_LEVEL_TARGET_WINS); // resolves to level 8
+// changes. Split into three as of 2026-10-09 (direct instruction: "make regular t4 unlock
+// at lvl 6, elite unlock at lvl 7 + t4 elite at lvl 7, legendary unlock at lvl 8 + t4
+// legendary at level 8") — Elite's and Legendary's own T4 used to share one level (8) via
+// Raid.RAID_T4_MIN_LEVEL_TARGET_WINS; now each mode's T4 unlocks at the SAME level the mode
+// itself does (no separate gap), so each needs its own constant.
+const REGULAR_T4_MIN_LEVEL = getGuildLevelClosestToWins(Raid.REGULAR_T4_MIN_LEVEL_TARGET_WINS); // resolves to level 6
+const ELITE_T4_MIN_LEVEL = getGuildLevelClosestToWins(Raid.ELITE_T4_MIN_LEVEL_TARGET_WINS); // resolves to level 7, same as Raid.ELITE_MIN_GUILD_LEVEL
+const LEGENDARY_T4_MIN_LEVEL = getGuildLevelClosestToWins(Raid.LEGENDARY_T4_MIN_LEVEL_TARGET_WINS); // resolves to level 8, same as Raid.LEGENDARY_MIN_GUILD_LEVEL
 
 // Guild level + the level's own payout multiplier (raw RaidLevel.THRESHOLDS multiplier,
 // boosted by Cinderroot's own perk 3b if owned — see systems/guilds.md's "Guild Raid
@@ -623,7 +626,7 @@ const eliteRaidScenarios = [
         },
         // chance is vestigial — see regularRaidScenarios' T4 entry's comment above.
         chance: .05,
-        minGuildLevel: ELITE_LEGENDARY_T4_MIN_LEVEL,
+        minGuildLevel: ELITE_T4_MIN_LEVEL,
         difficulty: Raid.ELITE_T4_DIFFICULTY
     },
     {
@@ -808,7 +811,7 @@ const legendaryRaidScenarios = [
         },
         // chance is vestigial — see regularRaidScenarios' T4 entry's comment above.
         chance: .09,
-        minGuildLevel: ELITE_LEGENDARY_T4_MIN_LEVEL,
+        minGuildLevel: LEGENDARY_T4_MIN_LEVEL,
         difficulty: Raid.LEGENDARY_T4_DIFFICULTY
     },
     {

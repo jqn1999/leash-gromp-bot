@@ -24,7 +24,7 @@ describe('buildRaidPreview', () => {
     test('elite T1/T2/T3 (guild level below T4 unlock) reads the new static ELITE_T* constants directly — no separate multiplier table', () => {
         const totalMultiplier = 2000;
         const raidRewardMultiplier = 1.0;
-        const guildLevel = 1; // well below T4's unlock level (8) — T4 must not appear
+        const guildLevel = 1; // well below T4's unlock level (7) — T4 must not appear
         const brackets = buildRaidPreview('elite', totalMultiplier, raidRewardMultiplier, guildLevel);
 
         expect(brackets.map(b => b.name)).toEqual(['Metal King', 'Tier 3', 'Tier 2', 'Tier 1']);
@@ -60,13 +60,10 @@ describe('buildRaidPreview', () => {
     });
 
     test('T4 only appears once the guild level clears its unlock, using the static ELITE_T4 constants', () => {
-        const t4UnlockLevel = getMinGuildLevelForTierProxy();
-        function getMinGuildLevelForTierProxy() {
-            // Mirrors startRaid.js's own T4_MIN_LEVEL derivation (guild level closest to
-            // Raid.RAID_T4_MIN_LEVEL_TARGET_WINS wins) — resolves to level 8 today, see
-            // raidFactory.test.js's getGuildLevelClosestToWins coverage.
-            return 8;
-        }
+        // Mirrors startRaid.js's own ELITE_T4_MIN_LEVEL derivation (guild level closest to
+        // Raid.ELITE_T4_MIN_LEVEL_TARGET_WINS wins) — resolves to level 7 today, same level
+        // Elite itself unlocks at (2026-10-09 rework — see that constant's own comment).
+        const t4UnlockLevel = getGuildLevelClosestToWins(Raid.ELITE_T4_MIN_LEVEL_TARGET_WINS);
 
         const belowUnlock = buildRaidPreview('elite', 5000, 1.0, t4UnlockLevel - 1);
         expect(belowUnlock.map(b => b.name)).not.toContain('Tier 4');
@@ -127,11 +124,14 @@ describe('buildRaidPreview', () => {
 // the same formula and constants the roll loop itself reads — rather than trusting
 // buildRaidPreview's internals by inspection alone.
 describe('buildRaidPreview / live roll odds parity (dynamic tier weighting)', () => {
-    // Split 2026-09-12 (direct instruction, "Make regular t4 unlock at lvl 7") — Regular's
-    // own T4 now unlocks a level earlier than Elite/Legendary's own T4, where a single
-    // shared level used to gate all three modes' T4 bracket.
-    const REGULAR_T4_MIN_LEVEL = getGuildLevelClosestToWins(Raid.REGULAR_T4_MIN_LEVEL_TARGET_WINS); // level 7
-    const ELITE_LEGENDARY_T4_MIN_LEVEL = getGuildLevelClosestToWins(Raid.RAID_T4_MIN_LEVEL_TARGET_WINS); // level 8
+    // Split into three as of 2026-10-09 (direct instruction: "make regular t4 unlock at lvl
+    // 6, elite unlock at lvl 7 + t4 elite at lvl 7, legendary unlock at lvl 8 + t4 legendary
+    // at level 8") — each mode's own T4 now unlocks at the SAME level the mode itself does,
+    // where Elite/Legendary used to share one T4 gate via the now-removed
+    // Raid.RAID_T4_MIN_LEVEL_TARGET_WINS.
+    const REGULAR_T4_MIN_LEVEL = getGuildLevelClosestToWins(Raid.REGULAR_T4_MIN_LEVEL_TARGET_WINS); // level 6
+    const ELITE_T4_MIN_LEVEL = getGuildLevelClosestToWins(Raid.ELITE_T4_MIN_LEVEL_TARGET_WINS); // level 7
+    const LEGENDARY_T4_MIN_LEVEL = getGuildLevelClosestToWins(Raid.LEGENDARY_T4_MIN_LEVEL_TARGET_WINS); // level 8
 
     // Reconstructs the exact per-bracket odds getWeightedScenarios would produce for a
     // given mode/guildLevel/totalMultiplier, off the same live Raid.* constants
@@ -144,7 +144,7 @@ describe('buildRaidPreview / live roll odds parity (dynamic tier weighting)', ()
         // 2026-08-26 static rework, so this mirrors that naming quirk rather than
         // assuming a uniform prefix.
         const diff = tier => mode === 'regular' ? Raid[`${tier}_RAID_DIFFICULTY`] : Raid[`${mode.toUpperCase()}_${tier}_DIFFICULTY`];
-        const t4MinLevel = mode === 'regular' ? REGULAR_T4_MIN_LEVEL : ELITE_LEGENDARY_T4_MIN_LEVEL;
+        const t4MinLevel = mode === 'regular' ? REGULAR_T4_MIN_LEVEL : mode === 'elite' ? ELITE_T4_MIN_LEVEL : LEGENDARY_T4_MIN_LEVEL;
         const metalKing = { name: 'Metal King', chance: .01 };
         const tiers = [
             { name: 'Tier 4', difficulty: diff('T4'), minGuildLevel: t4MinLevel },
@@ -161,9 +161,9 @@ describe('buildRaidPreview / live roll odds parity (dynamic tier weighting)', ()
 
     test.each([
         ['regular', 1, 150],
+        ['regular', 5, 900],
         ['regular', 6, 900],
         ['regular', 7, 900],
-        ['regular', 8, 900],
         ['elite', 1, 1189],
         ['elite', 1, 2000],
         ['legendary', 3, 3000],

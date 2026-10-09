@@ -214,16 +214,16 @@ describe('Stat Raid mode is excluded', () => {
 });
 
 describe('Guild Level 8+ extra roll stacks with the band roll', () => {
-    test('legendary win at Guild Level 9: both the band roll AND the Level 8+ extra roll hit on the same raid, applying both pools', async () => {
+    test('legendary win at Guild Level 8 (Legendary\'s own unlock level as of 2026-10-09, was 9): both the band roll AND the Level 8+ extra roll hit on the same raid, applying both pools', async () => {
         strongRosterSetup();
-        const guild = guildFixture({ raidCount: LEGENDARY_MIN_WINS }); // Level 9 -> nonzero guildLevelRaidTimerReduction
+        const guild = guildFixture({ raidCount: LEGENDARY_MIN_WINS }); // Level 8 -> nonzero guildLevelRaidTimerReduction
         mockWin(guild);
         const interaction = fakeInteraction();
         const randomSpy = jest.spyOn(Math, 'random')
             .mockReturnValueOnce(0.001) // raidScenarioRoll -> lands in Metal King's own flat .01 slice
             .mockReturnValueOnce(0.5)   // randomMultiplier
             .mockReturnValueOnce(0.001) // success check -> WIN (strong roster caps LEGENDARY_MAXIMUM_RAID_SUCCESS_RATE)
-            .mockReturnValueOnce(0.99)  // cooldown-skip roll -> MISS (guildLevelRaidTimerReduction is the only active source at .27)
+            .mockReturnValueOnce(0.99)  // cooldown-skip roll -> MISS (guildLevelRaidTimerReduction is the only active source at .23)
             .mockReturnValueOnce(0.001) // Stat Reward band roll -> HIT (legendary's ROLL_CHANCE is 0.05, tier III -> deterministic, no further draw)
             .mockReturnValueOnce(0.001) // Level 8+ extra roll -> HIT (its own independent 0.05 chance)
             .mockReturnValueOnce(0)     // extra roll's pickStatGrantPool('I') pool-index pick -> TIER_I_GRANT[0] (workMultiplierAmount)

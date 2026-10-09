@@ -2303,8 +2303,13 @@ const Raid = {
     // were deleted outright along with this — once role was already narrowed (2026-08-26)
     // to feeding only this one gate check, and that gate is now a flat number, nothing else
     // in the codebase called either.
+    // LEGENDARY_MIN_GUILD_LEVEL cut 9->8, 2026-10-09, direct instruction ("legendary unlock
+    // at lvl 8 + t4 legendary at level 8") — see RAID_T4_MIN_LEVEL_TARGET_WINS's own comment
+    // below for why this also made Legendary's own unlock and its T4 unlock land on the SAME
+    // level now (750 wins either way), a deliberate "T4 is available the moment you unlock
+    // the mode" design for both Elite and Legendary as of this pass.
     ELITE_MIN_GUILD_LEVEL: 7,
-    LEGENDARY_MIN_GUILD_LEVEL: 9,
+    LEGENDARY_MIN_GUILD_LEVEL: 8,
 
     // Accessibility retune (2026-09-12, direct instruction — "lower difficulty across
     // the board on all raid tiers and types and also lower their payouts appropriately
@@ -2363,24 +2368,37 @@ const Raid = {
     T4_RAID_PENALTY: -3240000,
     T4_RAID_DIFFICULTY: 430,
 
-    // Elite/Legendary's own T4 unlocks at whichever guild level's winsRequired is closest
-    // to this target — see raidFactory.js's getGuildLevelClosestToWins. Rescaled 3,000 ->
-    // 750 alongside RaidLevel.THRESHOLDS' own 2026-09-10 4x rescale (see that array's own
-    // comment) so T4 still lands exactly on the same RELATIVE level (8) as before the
-    // rescale, rather than drifting to level 10 now that 3,000 is this curve's own new
-    // max. Regular's own T4 used to share this same constant/level too, until it was
-    // split out below on 2026-09-12 (direct instruction) — this one is Elite/Legendary
-    // T4-only now.
-    RAID_T4_MIN_LEVEL_TARGET_WINS: 750,
+    // Elite's own T4 unlocks at whichever guild level's winsRequired is closest to this
+    // target — see raidFactory.js's getGuildLevelClosestToWins. Split out from the old
+    // shared RAID_T4_MIN_LEVEL_TARGET_WINS 2026-10-09, direct instruction ("elite unlock at
+    // lvl 7 + t4 elite at lvl 7"): Elite's T4 used to share Legendary's level-8 (750-win)
+    // gate, landing one level above Elite's own level-7 unlock; now set to 375 (guild level
+    // 7's own exact winsRequired), the SAME level Elite itself unlocks at — Elite's T4 is
+    // now available immediately once Elite is, no separate one-level gap.
+    ELITE_T4_MIN_LEVEL_TARGET_WINS: 375,
 
-    // Regular T4's own unlock level, split out from the shared constant above 2026-09-12,
-    // direct instruction: "Make regular t4 unlock at lvl 7." 375 is guild level 7's own
-    // exact winsRequired (RaidLevel.THRESHOLDS[6].winsRequired), so
-    // getGuildLevelClosestToWins resolves it unambiguously to level 7 — one level earlier
-    // than Elite/Legendary's own T4 (still level 8, unaffected). Regular T4's own
-    // difficulty/reward (see T4_RAID_DIFFICULTY/REWARD above) are untouched by this —
-    // only WHEN it becomes available moved, not what it pays out once it is.
-    REGULAR_T4_MIN_LEVEL_TARGET_WINS: 375,
+    // Legendary's own T4 unlocks at whichever guild level's winsRequired is closest to this
+    // target. Split out from the old shared RAID_T4_MIN_LEVEL_TARGET_WINS 2026-10-09, same
+    // pass as ELITE_T4_MIN_LEVEL_TARGET_WINS above, direct instruction ("legendary unlock at
+    // lvl 8 + t4 legendary at level 8"). Value unchanged (750, still resolves to level 8) —
+    // what changed is LEGENDARY_MIN_GUILD_LEVEL itself dropping 9->8 (see that constant's
+    // own comment), so this gate and Legendary's own unlock now land on the same level by
+    // design, not by coincidence the way they did pre-rework when Legendary unlocked at 9
+    // and this was 750/level 8 (meaning Legendary's T4 was ALREADY unlocked, with no real
+    // gap, the moment a guild reached Legendary at all — that redundancy is what prompted
+    // this whole pass, and is now the same INTENTIONAL "T4 available immediately" shape
+    // Elite's own T4 just moved to above, rather than an accident).
+    LEGENDARY_T4_MIN_LEVEL_TARGET_WINS: 750,
+
+    // Regular T4's own unlock level, split out from the old shared constant on 2026-09-12
+    // (direct instruction: "Make regular t4 unlock at lvl 7"), then cut further 2026-10-09
+    // (direct instruction: "make regular t4 unlock at lvl 6"). 200 is guild level 6's own
+    // exact winsRequired (RaidLevel.THRESHOLDS[5].winsRequired), so
+    // getGuildLevelClosestToWins resolves it unambiguously to level 6 — one level earlier
+    // than Elite's own unlock/T4 (level 7). Regular T4's own difficulty/reward (see
+    // T4_RAID_DIFFICULTY/REWARD above) are untouched by either pass — only WHEN it becomes
+    // available moved, not what it pays out once it is.
+    REGULAR_T4_MIN_LEVEL_TARGET_WINS: 200,
 
     METAL_KING_REWARD: 10000000,
     METAL_KING_MULTIPLIER_REWARD: 2.0,

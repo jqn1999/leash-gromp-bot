@@ -158,8 +158,9 @@ function getEffectiveRaidPower(memberDetailsList) {
     return getEffectiveRaidPowerBreakdown(memberDetailsList).effectivePower;
 }
 
-// The guild level whose winsRequired is closest to targetWins — used to gate T4 raids
-// behind a concrete raid-experience milestone (Raid.RAID_T4_MIN_LEVEL_TARGET_WINS) rather
+// The guild level whose winsRequired is closest to targetWins — used to gate each mode's
+// own T4 raids behind a concrete raid-experience milestone (Raid.REGULAR_T4_MIN_LEVEL_
+// TARGET_WINS / ELITE_T4_MIN_LEVEL_TARGET_WINS / LEGENDARY_T4_MIN_LEVEL_TARGET_WINS) rather
 // than hardcoding a level number that'd silently drift out of sync if RaidLevel.THRESHOLDS
 // ever changes. Ties broken toward the lower level (a tie only happens exactly halfway
 // between two thresholds, and erring toward "not quite unlocked yet" matches T4 being a
