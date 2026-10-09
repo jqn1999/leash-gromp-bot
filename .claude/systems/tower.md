@@ -3817,3 +3817,47 @@ skips, 2324 passing)**. (One run during this pass hit the same pre-existing flak
 immediately after, consistent with that already-confirmed, unrelated flake.)
 
 Not yet ported to `financial-project` — doesn't implement Tower at all, nothing to port.
+
+## Run-stats page: View Stats button + Back navigation (2026-10-09, direct instruction)
+
+**Asked**: "update tower embed to have a second page where they can view their potatoes and stats
+gained from the run and number of elites killed. second page should be able to open from a button
+on the embed, and a button to go back to the main tower encounter page so they can continue the
+run."
+
+**Gap confirmed before implementing**: `createFloorEmbed` (the main per-floor decision screen) had
+no way to check current run totals at all — a player had to wait for `createNextEmbed` (the
+Continue/Leave screen after resolving a floor) to see Potatoes/Work Multiplier/Passive Income/Bank
+Capacity, and even that screen never showed Elites Defeated.
+
+**Design**: `createFloorEmbed` restructured into a `while(true)` loop around its existing send/
+await cycle, with a new, always-present second `ActionRow` carrying just a `VIEW_STATS` button
+(`towerConstants.js`'s new `BACK`/`VIEW_STATS` ButtonBuilder constants — `view_stats`/`back`
+customIds, both `ButtonStyle.Secondary`). Kept as its own row deliberately: the main choice row
+already hits Discord's 5-button-per-row cap at its worst case (King Kiwi's 3 choices + FAST_FORWARD
++ LEAVE), so folding a 6th button in there wasn't an option. Clicking View Stats calls a new
+`showStatsPage()` method — a full separate send/await/acknowledge cycle showing a dedicated embed
+with the same Potatoes/Work Multiplier/Passive Income/Bank Capacity fields `createNextEmbed`
+already uses, plus a new "Elites Defeated:" field (`this.elitesSurvivedCount` — the real win count,
+not merely "encountered") — and a single Back button. Whether the player clicks Back or the stats
+page simply times out, control returns to `createFloorEmbed`'s loop, which re-shows the exact same
+floor embed (same `fl`/`type`/`color`/`description`, no re-roll, no floor advance) with a fresh 30s
+decision window. The whole detour touches no run or floor state — purely a read-only view.
+
+**`towerConstants.js`**: new `VIEW_STATS`/`BACK` `ButtonBuilder` constants (exported).
+
+**`towerFactory.js`**: `createFloorEmbed` restructured (loop + second row + `view_stats` branch);
+new `showStatsPage()` method.
+
+**Tests** (`towerFactory.test.js`, new `'View Stats page (createFloorEmbed / showStatsPage)'`
+describe block, 3 tests): View Stats shows the correct current run totals and Elites Defeated
+(seeded with non-default values to prove it's reading live state, not a fixture default), then Back
+re-shows the identical floor (same embed title, same choices available) with the next real choice
+resolving normally; the floor screen always carries exactly two separate button rows, with the
+stats row holding only `view_stats`; a timeout on the stats page (not just a real Back click)
+returns control to the floor screen the same way, rather than being treated as an outright run
+timeout. Full suite re-run clean: **127 of 128 suites (1 pre-existing skip) / 2350 tests (18
+pre-existing skips, 2332 passing)**.
+
+`financial-project` doesn't implement Tower at all (reconfirmed fresh this session, not just
+repeated from prior notes) — no port needed.

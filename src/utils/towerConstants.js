@@ -627,6 +627,22 @@ const GREEDY_POLICY = new ButtonBuilder()
     .setLabel('Go for it')
     .setStyle(ButtonStyle.Danger)
 
+// Run-stats page (2026-10-09, direct instruction: "a second page where they can view their
+// potatoes and stats gained from the run and number of elites killed... a button to go back
+// to the main tower encounter page so they can continue the run") — see towerFactory.js's
+// createFloorEmbed/showStatsPage for the navigation loop these two buttons drive. Own ActionRow
+// (never folded into the main choice row) specifically so it never competes with that row's
+// own worst-case 5-button Discord cap (King Kiwi's 3 choices + FAST_FORWARD + LEAVE).
+const VIEW_STATS = new ButtonBuilder()
+    .setCustomId('view_stats')
+    .setLabel('View Stats')
+    .setStyle(ButtonStyle.Secondary)
+
+const BACK = new ButtonBuilder()
+    .setCustomId('back')
+    .setLabel('Back')
+    .setStyle(ButtonStyle.Secondary)
+
 module.exports = {
     ENCOUNTERS,
     PAYOUT,
@@ -651,6 +667,8 @@ module.exports = {
     TOWER_REWARD_GRACE_FLOOR,
     TOWER_REWARD_DECAY_RATIO,
     FAST_FORWARD,
+    VIEW_STATS,
+    BACK,
     SAFE_POLICY,
     GREEDY_POLICY,
     ENTRY_GATE_MULTI,

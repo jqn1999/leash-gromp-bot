@@ -810,6 +810,89 @@ describe('towerFactory Discord-interaction flows', () => {
     });
 });
 
+// Run-stats page (2026-10-09, direct instruction: "a second page where they can view their
+// potatoes and stats gained from the run and number of elites killed... a button to go back to
+// the main tower encounter page so they can continue the run").
+describe('View Stats page (createFloorEmbed / showStatsPage)', () => {
+    function choice(customId) {
+        return { customId, update: jest.fn().mockResolvedValue() };
+    }
+
+    function fakeInteraction(responses) {
+        let i = 0;
+        const editReply = jest.fn(async () => ({
+            awaitMessageComponent: jest.fn(async () => responses[i++]),
+        }));
+        return { editReply, user: { id: 'u1' } };
+    }
+
+    test('View Stats shows current run totals and Elites Defeated, then Back re-shows the SAME floor with a fresh choice to make', async () => {
+        const interaction = fakeInteraction([
+            choice('view_stats'),
+            choice('back'),
+            choice('Fight'),
+        ]);
+        const tF = new towerFactory(interaction, 'tester', tC.ENTRY_GATE_MULTI);
+        tF.run[tC.PAYOUT.POTATOES] = 500000;
+        tF.run[tC.PAYOUT.WORK_MULTIPLIER] = 3.5;
+        tF.run[tC.PAYOUT.PASSIVE_INCOME] = 25000;
+        tF.run[tC.PAYOUT.BANK_CAPACITY] = 100000;
+        tF.elitesSurvivedCount = 2;
+        const fl = tC.COMBATS.find(c => c.name === 'Baby Broccoli');
+
+        const result = await tF.createFloorEmbed(fl, 'COMBAT', 'Orange', fl.description);
+
+        // 3 editReply calls: floor screen, stats page, floor screen again.
+        expect(interaction.editReply).toHaveBeenCalledTimes(3);
+
+        const statsCall = interaction.editReply.mock.calls[1][0];
+        const fields = Object.fromEntries(statsCall.embeds[0].data.fields.map(f => [f.name, f.value]));
+        expect(fields['Potatoes:']).toBe('500,000');
+        expect(fields['Work Multiplier:']).toBe('3.50x');
+        expect(fields['Passive Income:']).toBe('25,000');
+        expect(fields['Bank Capacity:']).toBe('100,000');
+        expect(fields['Elites Defeated:']).toBe('2');
+
+        // Both the first and third editReply calls show the SAME floor — re-shown unchanged
+        // after the stats detour, not advanced or re-rolled.
+        const firstFloorCall = interaction.editReply.mock.calls[0][0];
+        const thirdFloorCall = interaction.editReply.mock.calls[2][0];
+        expect(firstFloorCall.embeds[0].data.title).toBe(thirdFloorCall.embeds[0].data.title);
+        expect(firstFloorCall.embeds[0].data.title).toContain('Baby Broccoli');
+
+        // The real choice made after returning from stats resolves normally.
+        expect(result).toBe('0'); // fl.choices[0].name === 'Fight'
+    });
+
+    test('the floor screen always carries two separate button rows — the choice row and a dedicated View Stats row', async () => {
+        const interaction = fakeInteraction([choice('Fight')]);
+        const tF = new towerFactory(interaction, 'tester', tC.ENTRY_GATE_MULTI);
+        const fl = tC.COMBATS.find(c => c.name === 'Baby Broccoli');
+
+        await tF.createFloorEmbed(fl, 'COMBAT', 'Orange', fl.description);
+
+        const call = interaction.editReply.mock.calls[0][0];
+        expect(call.components.length).toBe(2);
+        const statsRowCustomIds = call.components[1].components.map(c => c.data.custom_id);
+        expect(statsRowCustomIds).toEqual(['view_stats']);
+    });
+
+    test('a timeout on the stats page still returns control to the floor screen (not an outright run timeout)', async () => {
+        const interaction = fakeInteraction([
+            choice('view_stats'),
+            null, // stats page times out — awaitMessageComponent's own .catch(() => null)
+            choice('Fight'),
+        ]);
+        const tF = new towerFactory(interaction, 'tester', tC.ENTRY_GATE_MULTI);
+        const fl = tC.COMBATS.find(c => c.name === 'Baby Broccoli');
+
+        const result = await tF.createFloorEmbed(fl, 'COMBAT', 'Orange', fl.description);
+
+        expect(interaction.editReply).toHaveBeenCalledTimes(3);
+        expect(result).toBe('0');
+    });
+});
+
 // TRANSACTION affordability filter (2026-09-09, direct instruction: "make scenarios that
 // cost potatoes not appear if users cant afford it anyway ... buying work multi early on
 // since they wont have enough taters"). Every current TRANSACTIONS entry costs real potatoes

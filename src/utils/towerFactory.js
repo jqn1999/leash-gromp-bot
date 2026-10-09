@@ -775,9 +775,108 @@ class towerFactory{
         // FAST_FORWARD is unconditionally present from floor 1 onward (this.policy is always
         // set by chooseRiskPolicy() before this is ever called); LEAVE only shows up when the
         // player has opted into auto-continue. Worst case (King Kiwi's 3 choices + both extras)
-        // is 5 buttons, exactly Discord's per-row cap.
+        // is 5 buttons, exactly Discord's per-row cap — VIEW_STATS goes in its own second row
+        // specifically so it never has to compete for room in that row.
         const rowComponents = [...buttons, tC.FAST_FORWARD, ...(this.autoContinue ? [tC.LEAVE] : [])]
         const row = new ActionRowBuilder().addComponents(rowComponents)
+        const statsRow = new ActionRowBuilder().addComponents(tC.VIEW_STATS)
+
+        // Loops on 'view_stats' (2026-10-09, direct instruction: "a second page where they can
+        // view their potatoes and stats gained from the run... a button to go back to the main
+        // tower encounter page so they can continue the run") — showStatsPage() is a full,
+        // separate send/await/acknowledge cycle of its own, so by the time it returns here
+        // (however the player left it: a real Back click, or a timeout) this floor's own embed
+        // just needs to be shown again, unchanged, with a fresh 30s decision window. Nothing
+        // about the floor/run state is touched by viewing stats.
+        while(true){
+            const reply = await safeEditReply(this.interaction, {
+                embeds: [embed],
+                components: [row, statsRow],
+            });
+
+            const collectorFilter = i => i.user.id === this.interaction.user.id;
+            const confirmation = await reply.awaitMessageComponent({ filter: collectorFilter, time: 30_000 }).catch(() => null);
+
+            // A timed-out/unresponsive click defaults to the floor's first listed choice
+            // rather than hanging the run forever or throwing on the next editReply once the
+            // interaction token has gone stale.
+            if(!confirmation){
+                await this.interaction.editReply({ components: [] }).catch(() => {});
+                return 0
+            }
+            if(confirmation.customId === 'view_stats'){
+                await confirmation.update({content: '', components: []}).catch(() => {})
+                await this.showStatsPage()
+                continue
+            }
+            if(confirmation.customId === 'fast_forward'){
+            await confirmation.update({content: '', components: []}).catch(() => {})
+                return 'fast_forward'
+            }
+            if(confirmation.customId === 'leave'){
+            await confirmation.update({content: '', components: []}).catch(() => {})
+                return 'leave'
+            }
+            for (var i in fl.choices){
+                if(confirmation.customId == fl.choices[i].name){
+            await confirmation.update({content: '', components: []}).catch(() => {})
+                    return i
+                }
+            }
+            // No choice on THIS floor matched the click's customId (live crash, 2026-09-18,
+            // floor 19: fl.choices[undefined] fell through to updateValue and crashed reading
+            // .outcome off it). Every floor here reuses the same message via editReply, so a
+            // Discord-delayed/retried interaction from the PREVIOUS floor's now-replaced buttons
+            // can still land after this floor's collector is already up — same class of Discord
+            // interaction-timing quirk chooseRiskPolicy's own confirmation.update() comment already
+            // documents elsewhere in this file. Same safe default the timeout branch above uses.
+            await confirmation.update({content: '', components: []}).catch(() => {})
+            return 0
+        }
+    }
+
+    // Run-stats page (2026-10-09) — a dedicated, non-destructive detour off createFloorEmbed's
+    // own decision screen. Shows the exact same run totals createNextEmbed already surfaces on
+    // the Continue/Leave screen (Potatoes/Work Multiplier/Passive Income/Bank Capacity), plus
+    // Elites Defeated (this.elitesSurvivedCount — the real "won", not merely encountered, count;
+    // see that field's own comment at the top of this file), then waits for Back (or a timeout,
+    // handled identically — either way the caller just re-shows the floor screen next). Touches
+    // no run/floor state at all; purely a read-only view.
+    async showStatsPage(){
+        const embed = new EmbedBuilder()
+            .setTitle(`Tater Tower: ${this.username}'s Run Stats`)
+            .setColor('Blue')
+            .setTimestamp(Date.now())
+            .setFooter({text: `Floor ${this.floor.toLocaleString()}`})
+            .addFields(
+                {
+                    name: "Potatoes:",
+                    value: `${this.run[tC.PAYOUT.POTATOES].toLocaleString()}`,
+                    inline: false,
+                },
+                {
+                    name: "Work Multiplier:",
+                    value: `${this.run[tC.PAYOUT.WORK_MULTIPLIER].toFixed(2)}x`,
+                    inline: false,
+                },
+                {
+                    name: "Passive Income:",
+                    value: `${this.run[tC.PAYOUT.PASSIVE_INCOME].toLocaleString()}`,
+                    inline: false,
+                },
+                {
+                    name: "Bank Capacity:",
+                    value: `${this.run[tC.PAYOUT.BANK_CAPACITY].toLocaleString()}`,
+                    inline: false,
+                },
+                {
+                    name: "Elites Defeated:",
+                    value: `${this.elitesSurvivedCount.toLocaleString()}`,
+                    inline: false,
+                }
+            );
+
+        const row = new ActionRowBuilder().addComponents(tC.BACK)
         const reply = await safeEditReply(this.interaction, {
             embeds: [embed],
             components: [row],
@@ -785,37 +884,9 @@ class towerFactory{
 
         const collectorFilter = i => i.user.id === this.interaction.user.id;
         const confirmation = await reply.awaitMessageComponent({ filter: collectorFilter, time: 30_000 }).catch(() => null);
-
-        // A timed-out/unresponsive click defaults to the floor's first listed choice
-        // rather than hanging the run forever or throwing on the next editReply once the
-        // interaction token has gone stale.
-        if(!confirmation){
-            await this.interaction.editReply({ components: [] }).catch(() => {});
-            return 0
+        if(confirmation){
+            await confirmation.update({content: '', components: []}).catch(() => {})
         }
-        if(confirmation.customId === 'fast_forward'){
-        await confirmation.update({content: '', components: []}).catch(() => {})
-            return 'fast_forward'
-        }
-        if(confirmation.customId === 'leave'){
-        await confirmation.update({content: '', components: []}).catch(() => {})
-            return 'leave'
-        }
-        for (var i in fl.choices){
-            if(confirmation.customId == fl.choices[i].name){
-        await confirmation.update({content: '', components: []}).catch(() => {})
-                return i
-            }
-        }
-        // No choice on THIS floor matched the click's customId (live crash, 2026-09-18,
-        // floor 19: fl.choices[undefined] fell through to updateValue and crashed reading
-        // .outcome off it). Every floor here reuses the same message via editReply, so a
-        // Discord-delayed/retried interaction from the PREVIOUS floor's now-replaced buttons
-        // can still land after this floor's collector is already up — same class of Discord
-        // interaction-timing quirk chooseRiskPolicy's own confirmation.update() comment already
-        // documents elsewhere in this file. Same safe default the timeout branch above uses.
-        await confirmation.update({content: '', components: []}).catch(() => {})
-        return 0
     }
 
     async createNextEmbed(fl, description, color = 'Green'){

@@ -21230,3 +21230,40 @@ Updated `.claude/systems/tower.md` with a full dated section.
 
 Cross-repo note: `financial-project` doesn't implement Tower at all (reconfirmed, same as every
 prior Tower pass) — no port needed.
+
+## Tower run-stats page: View Stats button + Back navigation (2026-10-09, direct instruction)
+
+**Asked**: "update tower embed to have a second page where they can view their potatoes and stats
+gained from the run and number of elites killed. second page should be able to open from a button
+on the embed, and a button to go back to the main tower encounter page so they can continue the
+run."
+
+**Analysis**: The main per-floor decision screen (`createFloorEmbed`) had no way to check current
+run totals mid-floor — a player only saw Potatoes/Work Multiplier/Passive Income/Bank Capacity on
+the Continue/Leave screen after resolving a floor (`createNextEmbed`), and that screen never showed
+Elites Defeated at all.
+
+**Changed**: `createFloorEmbed` restructured into a `while(true)` loop around its existing send/
+await cycle. A new, always-present second `ActionRow` carries a single `VIEW_STATS` button (new
+`towerConstants.js` `VIEW_STATS`/`BACK` `ButtonBuilder` constants, `view_stats`/`back` customIds) —
+kept in its own row rather than folded into the main choice row, since that row already hits
+Discord's 5-button-per-row cap at its worst case (King Kiwi's 3 choices + FAST_FORWARD + LEAVE).
+Clicking View Stats calls a new `showStatsPage()` method: a separate send/await/acknowledge cycle
+showing Potatoes/Work Multiplier/Passive Income/Bank Capacity (same fields `createNextEmbed` uses)
+plus a new "Elites Defeated" field (`this.elitesSurvivedCount`, the real win count) and a single
+Back button. Whether the player clicks Back or the stats page times out, control returns to
+`createFloorEmbed`'s loop, which re-shows the identical floor embed with a fresh 30s decision
+window — no floor/run state is touched by the detour.
+
+**Tests**: new `towerFactory.test.js` describe block `'View Stats page (createFloorEmbed /
+showStatsPage)'`, 3 tests — stats page shows live (non-default) run totals and Elites Defeated;
+Back re-shows the identical floor and the next real choice still resolves normally; the floor
+screen always carries exactly two separate button rows, with the stats row holding only
+`view_stats`; a stats-page timeout returns to the floor screen the same way a Back click does,
+rather than being treated as a run timeout. Full suite re-run clean: **127 of 128 suites (1
+pre-existing skip) / 2350 tests (18 pre-existing skips, 2332 passing)**.
+
+Updated `.claude/systems/tower.md` with a full dated section.
+
+Cross-repo note: `financial-project` doesn't implement Tower at all (reconfirmed, same as every
+prior Tower pass) — no port needed.
