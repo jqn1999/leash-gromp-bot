@@ -605,6 +605,96 @@ efficiency-band assertions were all recomputed and updated to match (efficiency 
 ≈35,178-54,845/pt, legendary ≈70,137-147,495/pt, both lower than the pre-bump range since
 difficulty rose with reward untouched).
 
+**Update (2026-10-09) — Elite/Legendary re-raised again, this time widening the T1-T4 spread
+instead of scaling it, to fix a hump-then-crash shape the uniform-scale lever above structurally
+can't fix.** Re-simulating the "re-raise" EV curves (rigorous model: `getEffectiveRaidPowerBreakdown`'s
+real team-power formula, `getDynamicTierWeights`' real tier blend, cooldown-skip chaining, calibrated
+against the documented 3.35x/≈7.9x peak ratios at guild level 8 with Cinderroot owned — not maxed
+level 10, per the roadmap entry's own wording) surfaced that Legendary's live peak had drifted to
+8.36x near P≈880, not the documented ≈7.9x. Direct instruction: bring Elite's peak down to ≈1.5x
+solo merc and Legendary's down to ≈2x, with Elite peaking around P≈300 and Legendary around P≈600 —
+and critically, "cap at 2x" rather than spike-and-fall the way 3.35x/8.36x always eventually declined
+past their own peaks.
+
+Proved first, both algebraically and by direct simulation, that a uniform reward+penalty scale factor
+`k` (the lever every prior retune pass used) rescales the ENTIRE ratio-vs-merc curve's height at every
+power point by exactly `k`, with zero effect on breakeven/peak LOCATION or SHAPE — so hitting a target
+peak height is easy with `k` alone, but the post-peak COLLAPSE (ratio falling hard once raid's own EV
+saturates while merc's keeps climbing) is a property of the tier CLUSTER'S spread, not its scale, and
+survives any `k`. Root cause: Elite/Legendary's T1-T4 sit within ≈1.33-1.62x of each other, so all
+four hit the 95% success-chance cap almost simultaneously — raid EV then goes flat while merc's own
+EV (Bounty's 12-tier ladder spans 200x in difficulty) keeps climbing, guaranteeing a hump. Confirmed
+numerically: widening the spread between T1 and T4 (instead of just rescaling reward/difficulty by a
+constant factor) lets the success-chance ramp track merc's own climb for much longer, producing a
+genuine plateau instead of a spike.
+
+Considered adding more tiers (mirroring Bounty's wide 12-tier spread directly) — rejected after
+auditing the real cost: tier count isn't an array anywhere in this codebase, it's four separate named
+constants (`*_T1_*` through `*_T4_*`) duplicated across three independent per-mode structures in
+`startRaid.js` (the scenario-closures array, the mob-flavor array, `buildRaidPreview`'s `tierConfig`)
+plus ≈8 test blocks that assert on literal `T1`-`T4` names, including the cliff-guard tests
+(`raidFactory.test.js`) that compare `*_T1_*` against the PREVIOUS mode's `*_T4_*` by name, not array
+position. Added tiers would have meant 3x-duplicated new scenario/mob/preview blocks per tier plus new
+mob flavor text, not a constants-only change. Kept the existing 4-tier shape and just widened the
+spread between them instead — confirmed by simulation this captures most of the benefit at a fraction
+of the implementation cost.
+
+Also discovered and confirmed: within exactly 4 tiers and the Regular-vs-Elite cliff-guard
+(`ELITE_T1_DIFFICULTY` must clear `T4_RAID_DIFFICULTY`=430), there is a real, confirmed tension
+between (a) a clean 0.75x→1.5x ramp across P=50-300 and (b) a positive (non-negative) EV floor at
+P=50 — hitting both simultaneously isn't achievable with this tier shape; one has to give. Accepted,
+confirmed with the user: keep the clean ramp, accept a modest negative dip at P=50 (≈-0.37x, smaller
+in magnitude than the pre-rework constants' own -2.14x at the same power — still an improvement, just
+not a full fix).
+
+Solo merc (Bounty/Heist) was deliberately left untouched — scaling merc's EV up or down only moves
+the ratio's DENOMINATOR, which can't fix a shape problem in the numerator; it would only matter for a
+separate, not-requested goal of changing solo's own absolute low-power earnings.
+
+**Elite** (spread widened from 1.618x to 1.5x T4/T1 — narrower than before per power-unit terms, but
+re-centered much higher in absolute difficulty, which is what actually matters for the ramp):
+`ELITE_T1_DIFFICULTY` 828→654, `T2` 972→749, `T3` 1141→857, `T4` 1340→981; `ELITE_T1_REWARD`
+29,127,291→13,713,955 through `ELITE_T4_REWARD` 73,491,902→21,422,152 (penalty:reward ratio 1.5x
+preserved exactly, same as every prior retune). Result: ratio-vs-merc climbs from ≈-0.37x at P=50
+through 0.75x at P=100 to ≈1.5x by P=225-300, where Legendary takes over.
+
+**Legendary** (spread widened substantially, from 1.333x to 3.5x T4/T1 — the real shape fix, since
+Legendary is the mode that needs to hold its plateau from P≈300 through at least P=800-1200):
+`LEGENDARY_T1_DIFFICULTY` 1450→1030 (set to the minimum that clears Elite's new T4, 981, with a 5%
+cliff-guard safety margin), `T2` 1596→1564, `T3` 1756→2374, `T4` 1933→3605; `LEGENDARY_T1_REWARD`
+101,698,148→31,205,182 through `LEGENDARY_T4_REWARD` 285,108,348→123,794,563 (penalty:reward ratio
+2.0x preserved exactly). Result: holds ≈2.0-2.3x merc from ≈P=400 through at least P=1200 — a
+genuine plateau, not a peak-then-crash.
+
+**Metal King** (both modes) retuned in the same pass — the old 6000/12000 difficulties were ≈6x the
+OLD T4 values and became essentially unreachable against the new, much lower T4 scale (Elite's new T4
+is 981; the old 6000 would require P≈2,752 just to START climbing toward the cap). New difficulty =
+2x the new T4 difficulty (`ELITE_METAL_KING_DIFFICULTY` 6000→1962, `LEGENDARY_METAL_KING_DIFFICULTY`
+12000→7210) — hard, genuinely rare, but reachable (Elite MK climbs to the 95% cap by P≈900; Legendary
+MK runs 24%→67% across P=800-2200). Reward/capacity cut by the same factor each mode's own T4 reward
+shrank by (`ELITE_METAL_KING_REWARD`/`CAPACITY_REWARD` 30,000,000→8,744,699; `LEGENDARY_METAL_KING_
+REWARD`/`CAPACITY_REWARD` 60,000,000→26,052,109), keeping Metal King's one-time payout below T4's
+reward, same relationship as before. `multiplierReward`/`passiveReward` (the permanent work-multiplier/
+passive-income stat grants) deliberately left untouched — the existing `Bounty.METAL_POTATO_MEDLEY`
+comment already establishes the convention that these permanent stat grants are a separately-
+calibrated lever, not re-derived off a reward/difficulty retune.
+
+`Bounty.METAL_POTATO_MEDLEY` Bands II/III re-derived to match, following the SAME 45%-of-guild-values
+rule the block's own comment already documents (solo has no 4-person team-power multiplier, hence the
+45% discount): Band II (45% of Elite MK) `difficulty` 2700→883, `reward` 13,500,000→3,935,115; Band
+III (45% of Legendary MK) `difficulty` 5400→3245, `reward` 27,000,000→11,723,449. `multiplierReward`/
+`passiveReward`/`capacityReward` still mirrored unscaled from the guild side, same as always. Band I
+(45% of Regular raid's own Metal King) untouched — Regular mode wasn't part of this pass.
+
+`raidFactory.test.js`'s pinned Metal King values, T4 difficulty regression anchors, tier-weight blend
+assertions (recomputed for Elite's new 1.5x spread — SHARPNESS unchanged, but the wider absolute
+difficulty shifts the blend slightly less T1-dominant, 44.7%→41.6%, a direct effect of the spacing
+change), and efficiency-band assertions (new ranges: elite ≈20,969-21,837/pt, legendary
+≈30,295-34,338/pt — both much lower than the pre-rework range, since reward dropped roughly in
+proportion with the overall EV target cut) were all updated to match.
+`mercenaryFactory.test.js`'s two Metal Potato Medley Band II/III tests were updated to the new
+difficulty/reward/success-chance numbers.
+
 ### Dynamic tier weighting
 
 **Which of a mode's own T1-T4 gets rolled (2026-08-27 rework) is no longer independent of the

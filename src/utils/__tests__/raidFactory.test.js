@@ -295,15 +295,19 @@ describe('getDynamicTierWeights', () => {
         const weighted = getDynamicTierWeights(eliteTiers, 100, Raid.ELITE_T1_DIFFICULTY);
         const byName = Object.fromEntries(weighted.map(t => [t.name, t.weight]));
 
-        // Freshly recomputed via node -e (SHARPNESS=3) against Elite's post-2026-09-29
-        // "flatten the ratio-vs-merc spike" re-raise (828/972/1141/1340, was 518/606/708/828
-        // post-2026-09-29 difficulty cut, was 885/1053/1252/1489 post-2026-09-12
-        // accessibility retune, was 1189/1414/1682/2000 before that): T1 dominant but
-        // every tier keeps real, non-trivial (>5%) presence — not a near-monopoly.
-        expect(byName.T1).toBeCloseTo(0.44718233956482967, 6);
-        expect(byName.T2).toBeCloseTo(0.2764247078943902, 6);
-        expect(byName.T3).toBeCloseTo(0.17089081494862232, 6);
-        expect(byName.T4).toBeCloseTo(0.10550213759215787, 6);
+        // Freshly recomputed via node -e (SHARPNESS=3) against Elite's post-2026-10-09
+        // re-raise rework (654/749/857/981, was 828/972/1141/1340 post-2026-09-29
+        // "flatten the ratio-vs-merc spike" re-raise, was 518/606/708/828 post-2026-09-29
+        // difficulty cut, was 885/1053/1252/1489 post-2026-09-12 accessibility retune, was
+        // 1189/1414/1682/2000 before that): T1 dominant but every tier keeps real,
+        // non-trivial (>5%) presence — not a near-monopoly. The 2026-10-09 rework widened
+        // Elite's spread (1.5x T4/T1, was 1.618x), so the blend is slightly less T1-
+        // dominant than before (44.7% -> 41.6%) even though the underlying SHARPNESS is
+        // unchanged — a direct, expected effect of the wider spacing, not a regression.
+        expect(byName.T1).toBeCloseTo(0.4155537495658647, 6);
+        expect(byName.T2).toBeCloseTo(0.2766400135507613, 6);
+        expect(byName.T3).toBeCloseTo(0.18467919997496965, 6);
+        expect(byName.T4).toBeCloseTo(0.12312703690840433, 6);
         Object.values(byName).forEach(w => {
             expect(w).toBeGreaterThan(0.05);
             expect(w).toBeLessThan(0.95);
@@ -1015,30 +1019,30 @@ describe('static Elite/Legendary difficulty ladder (2026-08-26 redesign)', () =>
         });
     });
 
-    // Metal King is deliberately excluded from every raid retune pass (2026-08-26's
-    // static rework, 2026-09-12's reward triple, and 2026-09-12's later accessibility
-    // retune alike) — stays byte-identical across all of them. Elite/Legendary T4's own
-    // DIFFICULTY, unlike Metal King, is NOT byte-identical anymore — the 2026-09-12
-    // accessibility retune (see Raid.ELITE_T1_DIFFICULTY's own comment) cut difficulty
-    // across every Regular/Elite/Legendary bracket, T4 included; its new value is
-    // asserted directly below as a fresh regression anchor.
-    test('every mode\'s Metal King bracket is byte-identical to the original static-rework values', () => {
-        expect(Raid.ELITE_METAL_KING_DIFFICULTY).toBe(6000);
-        expect(Raid.ELITE_METAL_KING_REWARD).toBe(30000000);
+    // Metal King was deliberately excluded from every earlier raid retune pass
+    // (2026-08-26's static rework, 2026-09-12's reward triple, and 2026-09-12's later
+    // accessibility retune alike) — stayed byte-identical across all of them. The
+    // 2026-10-09 re-raise rework (see Raid.ELITE_T1_DIFFICULTY's own comment) is the
+    // first pass to touch it, since the old 6000/12000 difficulties became unreachable
+    // against the new, much lower T4 scale — asserted below as a fresh regression
+    // anchor instead. multiplierReward/passiveReward stayed untouched even in this pass.
+    test('every mode\'s Metal King bracket after the 2026-10-09 re-raise rework', () => {
+        expect(Raid.ELITE_METAL_KING_DIFFICULTY).toBe(1962);
+        expect(Raid.ELITE_METAL_KING_REWARD).toBe(8744699);
         expect(Raid.ELITE_METAL_KING_MULTIPLIER_REWARD).toBe(6.0);
         expect(Raid.ELITE_METAL_KING_PASSIVE_REWARD).toBe(3000000);
-        expect(Raid.ELITE_METAL_KING_CAPACITY_REWARD).toBe(30000000);
+        expect(Raid.ELITE_METAL_KING_CAPACITY_REWARD).toBe(8744699);
 
-        expect(Raid.LEGENDARY_METAL_KING_DIFFICULTY).toBe(12000);
-        expect(Raid.LEGENDARY_METAL_KING_REWARD).toBe(60000000);
+        expect(Raid.LEGENDARY_METAL_KING_DIFFICULTY).toBe(7210);
+        expect(Raid.LEGENDARY_METAL_KING_REWARD).toBe(26052109);
         expect(Raid.LEGENDARY_METAL_KING_MULTIPLIER_REWARD).toBe(12.0);
         expect(Raid.LEGENDARY_METAL_KING_PASSIVE_REWARD).toBe(6000000);
-        expect(Raid.LEGENDARY_METAL_KING_CAPACITY_REWARD).toBe(60000000);
+        expect(Raid.LEGENDARY_METAL_KING_CAPACITY_REWARD).toBe(26052109);
     });
 
-    test('Elite/Legendary T4 difficulty after the 2026-09-29 shape re-raise', () => {
-        expect(Raid.ELITE_T4_DIFFICULTY).toBe(1340);
-        expect(Raid.LEGENDARY_T4_DIFFICULTY).toBe(1933);
+    test('Elite/Legendary T4 difficulty after the 2026-10-09 re-raise rework', () => {
+        expect(Raid.ELITE_T4_DIFFICULTY).toBe(981);
+        expect(Raid.LEGENDARY_T4_DIFFICULTY).toBe(3605);
     });
 
     // 2026-09-12 accessibility retune (see Raid.ELITE_T1_DIFFICULTY's own comment)
@@ -1092,11 +1096,15 @@ describe('static Elite/Legendary difficulty ladder (2026-08-26 redesign)', () =>
         // the same day when Elite/Legendary's own DIFFICULTY was RAISED again (reward still
         // untouched throughout, see Raid.ELITE_T1_DIFFICULTY's own second 2026-09-29
         // comment) to flatten Elite's ratio-vs-merc spike and keep Legendary's T1 above
-        // Elite's new T4 — per-point efficiency fell back down correspondingly (live range:
-        // elite ~35,178-54,845, legendary ~70,137-147,495).
+        // Elite's new T4 — per-point efficiency fell back down correspondingly.
+        // Bands dropped sharply by the 2026-10-09 re-raise rework (see Raid.
+        // ELITE_T1_DIFFICULTY's own comment) — both modes' difficulty was widened across
+        // a much bigger T1-T4 spread with reward scaled to match a ~1.5x/~2x-merc target
+        // instead of ~3.3x/~7.9x, so per-point efficiency is now much lower in absolute
+        // terms (live range: elite ~20,969-21,837, legendary ~30,295-34,338).
         regular.forEach(e => { expect(e).toBeGreaterThanOrEqual(7000); expect(e).toBeLessThanOrEqual(20100); });
-        elite.forEach(e => { expect(e).toBeGreaterThanOrEqual(35000); expect(e).toBeLessThanOrEqual(55000); });
-        legendary.forEach(e => { expect(e).toBeGreaterThanOrEqual(70000); expect(e).toBeLessThanOrEqual(148000); });
+        elite.forEach(e => { expect(e).toBeGreaterThanOrEqual(20900); expect(e).toBeLessThanOrEqual(21900); });
+        legendary.forEach(e => { expect(e).toBeGreaterThanOrEqual(30200); expect(e).toBeLessThanOrEqual(34400); });
 
         // What still differentiates the modes: absolute difficulty and reward keep
         // climbing across the full 12-tier ladder (each mode's T1 harder AND

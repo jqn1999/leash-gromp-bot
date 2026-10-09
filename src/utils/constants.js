@@ -2519,28 +2519,71 @@ const Raid = {
     // delays the peak (5.61x -> 3.35x, peak moves from P~338 to P~600). Accepted tradeoff,
     // confirmed with the user: Elite now dips below merc in a new low-power band (roughly
     // P=80-150) it didn't before, since the whole curve shifted right.
-    ELITE_T1_DIFFICULTY: 828,
-    ELITE_T1_REWARD: 29127291,
-    ELITE_T1_PENALTY: -43690937,
+    // Re-raise rework (2026-10-09), direct instruction: bring guild Elite/Legendary EV
+    // down to roughly 1.5x/2x solo merc instead of the ~3.3x/~7.9x (and, pre-rework,
+    // briefly 8.36x at Legendary's own undocumented live peak near P=880) the "re-raise"
+    // numbers had drifted to. Earlier attempts at this (same-session) tried a uniform
+    // reward+difficulty SCALE on the existing tight 4-tier cluster (T4/T1 ~1.33-1.62x
+    // apart) — proven algebraically AND numerically that this only rescales the peak's
+    // HEIGHT and LOCATION, never its SHAPE: a tight cluster saturates (hits the 95%
+    // success cap) almost all at once, after which raid EV goes flat while merc's own
+    // EV keeps climbing (Bounty's 12-tier ladder spans 200x in difficulty vs. this
+    // cluster's ~1.3-1.6x), so the ratio ALWAYS humps and crashes regardless of scale —
+    // that's the literal cause of the 8.36x-then-crash shape being complained about.
+    // Fix: WIDEN the difficulty spread between T1 and T4 (not the tier count — see this
+    // file's own T1-T4 flat-constant shape, and startRaid.js's three separately-
+    // duplicated per-mode structures, which made adding a 5th+ tier a much larger,
+    // out-of-scope refactor) so the success-chance ramp stretches across a wider power
+    // band instead of saturating almost immediately, letting raid EV keep climbing
+    // roughly in step with merc's own climb for longer. Elite (spread 1.5x, T1=300/
+    // T4=450 in per-player-power-equivalent terms, i.e. difficulty = P_equiv * 2.18)
+    // owns the low end: ramps ~0.75x merc at P=100 up to ~1.5x by P=225-300. Legendary
+    // (spread 3.5x, T1 floor set to clear Elite's new T4 with a 5% cliff-guard margin)
+    // owns P=300+: holds ~2.0-2.3x merc from ~P=400 through at least P=1200, instead of
+    // spiking and collapsing. Solo merc (Bounty/Heist) was deliberately left untouched —
+    // "buffing merc" doesn't help this shape problem (raising the ratio's denominator
+    // only makes a target ratio HARDER to hit), it would only matter for a separate,
+    // not-asked-for goal of raising solo's own absolute low-power earnings.
+    // Accepted tradeoff, confirmed with the user: P=50 goes to roughly -0.37x (a
+    // "modest negative dip," smaller than the old constants' -2.14x at the same power)
+    // rather than chasing a positive floor there too — doing both (ramp to 1.5x by 300
+    // AND a positive P=50 floor) isn't achievable within 4 tiers and the Regular-vs-
+    // Elite cliff-guard (ELITE_T1_DIFFICULTY must clear T4_RAID_DIFFICULTY=430) without
+    // giving up one or the other.
+    ELITE_T1_DIFFICULTY: 654,
+    ELITE_T1_REWARD: 13713955,
+    ELITE_T1_PENALTY: -20570932,
 
-    ELITE_T2_DIFFICULTY: 972,
-    ELITE_T2_REWARD: 40411972,
-    ELITE_T2_PENALTY: -60617958,
+    ELITE_T2_DIFFICULTY: 749,
+    ELITE_T2_REWARD: 15912174,
+    ELITE_T2_PENALTY: -23868260,
 
-    ELITE_T3_DIFFICULTY: 1141,
-    ELITE_T3_REWARD: 54938872,
-    ELITE_T3_PENALTY: -82408308,
+    ELITE_T3_DIFFICULTY: 857,
+    ELITE_T3_REWARD: 18462746,
+    ELITE_T3_PENALTY: -27694120,
 
-    ELITE_T4_DIFFICULTY: 1340,
-    ELITE_T4_REWARD: 73491902,
-    ELITE_T4_PENALTY: -110237853,
+    ELITE_T4_DIFFICULTY: 981,
+    ELITE_T4_REWARD: 21422152,
+    ELITE_T4_PENALTY: -32133228,
 
-    ELITE_METAL_KING_DIFFICULTY: 6000,
-    ELITE_METAL_KING_REWARD: 30000000,
+    // Metal King retuned alongside the T1-T4 re-raise above (same 2026-10-09 pass):
+    // difficulty = 2x the new T4 difficulty (reachable — climbs to the 95% success cap
+    // by P~900 — rather than the old 6000, which was ~6x the OLD T4 and would have put
+    // Metal King essentially out of reach for this mode's whole realistic power range
+    // against the new, much lower T4 scale). Reward/capacity cut by the same factor the
+    // T4 reward itself shrank by (73,491,902 -> 21,422,152, a 0.2915x factor), keeping
+    // Metal King's one-time payout below T4's reward, same relationship as before this
+    // pass. multiplierReward/passiveReward intentionally left at their pre-rework
+    // absolute values — permanent stat grants are a separately-calibrated lever, not
+    // re-derived off a reward/difficulty retune (same convention Bounty.METAL_POTATO_
+    // MEDLEY's own 45%-of-guild-values comment already establishes for the merc-side
+    // mirror of this same mechanic).
+    ELITE_METAL_KING_DIFFICULTY: 1962,
+    ELITE_METAL_KING_REWARD: 8744699,
     ELITE_METAL_KING_PENALTY: 0,
     ELITE_METAL_KING_MULTIPLIER_REWARD: 6.0,
     ELITE_METAL_KING_PASSIVE_REWARD: 3000000,
-    ELITE_METAL_KING_CAPACITY_REWARD: 30000000,
+    ELITE_METAL_KING_CAPACITY_REWARD: 8744699,
 
     // See ELITE_T1_DIFFICULTY's own comment above for the full 2026-09-12 accessibility
     // retune (both brackets solved together, same methodology, same commit), and its
@@ -2566,28 +2609,39 @@ const Raid = {
     // of merc through the 700-900 band); P=150 drops from an already-thin 1.07x to negative
     // EV — accepted, since T4 already gates on guild level 8 and P=150 was razor-thin even
     // under the old values.
-    LEGENDARY_T1_DIFFICULTY: 1450,
-    LEGENDARY_T1_REWARD: 101698148,
-    LEGENDARY_T1_PENALTY: -203396296,
+    // Re-raise rework (2026-10-09) — see ELITE_T1_DIFFICULTY's own comment above for the
+    // full derivation (same pass, same session). Legendary's T1 floor is set to the
+    // minimum that clears the cliff-guard against Elite's new T4 (981) with a 5% safety
+    // margin, and its spread (3.5x, T1=~472.5/T4=~1654 in per-player-power-equivalent
+    // terms) is wide enough to hold ~2.0-2.3x merc from roughly P=400 through at least
+    // P=1200, instead of the old tight cluster's spike-to-8x-then-crash shape.
+    LEGENDARY_T1_DIFFICULTY: 1030,
+    LEGENDARY_T1_REWARD: 31205182,
+    LEGENDARY_T1_PENALTY: -62410364,
 
-    LEGENDARY_T2_DIFFICULTY: 1596,
-    LEGENDARY_T2_REWARD: 147818701,
-    LEGENDARY_T2_PENALTY: -295637402,
+    LEGENDARY_T2_DIFFICULTY: 1564,
+    LEGENDARY_T2_REWARD: 49399021,
+    LEGENDARY_T2_PENALTY: -98798041,
 
-    LEGENDARY_T3_DIFFICULTY: 1756,
-    LEGENDARY_T3_REWARD: 207805497,
-    LEGENDARY_T3_PENALTY: -415610994,
+    LEGENDARY_T3_DIFFICULTY: 2374,
+    LEGENDARY_T3_REWARD: 78200577,
+    LEGENDARY_T3_PENALTY: -156401153,
 
-    LEGENDARY_T4_DIFFICULTY: 1933,
-    LEGENDARY_T4_REWARD: 285108348,
-    LEGENDARY_T4_PENALTY: -570216696,
+    LEGENDARY_T4_DIFFICULTY: 3605,
+    LEGENDARY_T4_REWARD: 123794563,
+    LEGENDARY_T4_PENALTY: -247589127,
 
-    LEGENDARY_METAL_KING_DIFFICULTY: 12000,
-    LEGENDARY_METAL_KING_REWARD: 60000000,
+    // Metal King retuned alongside Legendary's T1-T4 re-raise above — see
+    // ELITE_METAL_KING_DIFFICULTY's own comment for the full derivation (same pass,
+    // same reasoning). Reward/capacity cut by the factor Legendary's own T4 reward
+    // shrank by (285,108,348 -> 123,794,563, a 0.434x factor); multiplierReward/
+    // passiveReward left at their pre-rework values.
+    LEGENDARY_METAL_KING_DIFFICULTY: 7210,
+    LEGENDARY_METAL_KING_REWARD: 26052109,
     LEGENDARY_METAL_KING_PENALTY: 0,
     LEGENDARY_METAL_KING_MULTIPLIER_REWARD: 12.0,
     LEGENDARY_METAL_KING_PASSIVE_REWARD: 6000000,
-    LEGENDARY_METAL_KING_CAPACITY_REWARD: 60000000,
+    LEGENDARY_METAL_KING_CAPACITY_REWARD: 26052109,
 
     // Dynamic roster-power-weighted tier rolling (2026-08-27) — which of a mode's own
     // T1-T4 gets rolled is no longer a fixed table independent of the roster's own
@@ -3589,10 +3643,16 @@ const Bounty = {
     // or lose" shape every Metal King bracket already has.
     METAL_POTATO_MEDLEY_CHANCE: 0.01,
     METAL_POTATO_MEDLEY_PENALTY: 0,
+    // Bands II/III re-derived 2026-10-09 alongside Raid.ELITE_METAL_KING_*/LEGENDARY_
+    // METAL_KING_*'s own re-raise retune (see that constant's comment) — same 45%-of-
+    // guild-difficulty/reward rule this block already followed, multiplierReward/
+    // passiveReward/capacityReward still mirrored unscaled from the guild side. Band I
+    // is untouched: it derives from Raid.METAL_KING_* (Regular mode), which this pass
+    // didn't touch.
     METAL_POTATO_MEDLEY: {
         I:   { difficulty: 900,  reward: 4500000,  multiplierReward: 2.0,  passiveReward: 1000000, capacityReward: 10000000 },  // 45% of Raid.METAL_KING_* difficulty/reward
-        II:  { difficulty: 2700, reward: 13500000, multiplierReward: 6.0,  passiveReward: 3000000, capacityReward: 30000000 },  // 45% of Raid.ELITE_METAL_KING_* difficulty/reward
-        III: { difficulty: 5400, reward: 27000000, multiplierReward: 12.0, passiveReward: 6000000, capacityReward: 60000000 }, // 45% of Raid.LEGENDARY_METAL_KING_* difficulty/reward
+        II:  { difficulty: 883,  reward: 3935115,  multiplierReward: 6.0,  passiveReward: 3000000, capacityReward: 8744699 },   // 45% of Raid.ELITE_METAL_KING_* difficulty/reward
+        III: { difficulty: 3245, reward: 11723449, multiplierReward: 12.0, passiveReward: 6000000, capacityReward: 26052109 }, // 45% of Raid.LEGENDARY_METAL_KING_* difficulty/reward
     }
 }
 
