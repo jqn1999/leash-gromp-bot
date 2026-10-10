@@ -454,7 +454,7 @@ class towerFactory{
             // credit here would silently bypass the new cap almost entirely. This.floor is
             // already correct at this call site (the Elite's own floor), so the evolving
             // floor-band cap applies exactly as it does to every other credit path.
-            this.creditRunPayout(tC.PAYOUT.POTATOES, this.scaleReward(tC.PAYOUT.POTATOES, fl.choices[0].value))
+            const eliteApplied = this.creditRunPayout(tC.PAYOUT.POTATOES, this.scaleReward(tC.PAYOUT.POTATOES, fl.choices[0].value))
             // handle reward payouts
             this.checkElitePayout()
             // Tower Pet (2026-09-13) — leveling bookkeeping and Bastion's own drop roll, both
@@ -465,7 +465,8 @@ class towerFactory{
             if(Math.random() < TowerCompanionDrop.CHANCE[fl.tier]){
                 this.towerCompanionHits++
             }
-            return this.createNextEmbed(fl, fl.choices[0].result, "Green")
+            const resultText = appendPayoutDelta(fl.choices[0].result, formatPayoutDelta(tC.PAYOUT.POTATOES, eliteApplied))
+            return this.createNextEmbed(fl, resultText, "Green")
         }
         // Bastion, the Tower Warden's Death Ward (2026-09-13, direct instruction; floor
         // restriction removed 2026-09-14 — the original "above floor 10" instruction was
@@ -682,7 +683,8 @@ class towerFactory{
                 if(silent){
                     return { name: fl.name, resultText: choice.result, outcome: choice.outcome, amount: applied }
                 }
-                return this.resolveNext(fl, choice.result, color)
+                const resultText = appendPayoutDelta(choice.result, formatPayoutDelta(choice.outcome, applied))
+                return this.resolveNext(fl, resultText, color)
             }
         }
     }
@@ -730,7 +732,8 @@ class towerFactory{
         if(silent){
             return { name: fl.name, resultText: choice.result, outcome: choice.outcome, amount: applied, pricePaid: price, notableText: `Bought "${fl.name}" for ${price.toLocaleString()} potatoes` }
         }
-        return this.resolveNext(fl, choice.result, color)
+        const resultText = appendPayoutDelta(choice.result, formatPayoutDelta(choice.outcome, applied), `-${price.toLocaleString()} Potatoes (cost)`)
+        return this.resolveNext(fl, resultText, color)
     }
 
     async checkElitePayout(){
@@ -764,6 +767,21 @@ class towerFactory{
             .setTimestamp(Date.now())
             .setThumbnail(fl.thumbnailUrl)
             .setFooter({text: `Tater Tower: ${this.username}`});
+
+        // Live cost field (2026-10-10, player-reported confusion: "costs don't show up anywhere
+        // for scenarios now") — TRANSACTIONS' own `choice.price` is a flat constant, but what a
+        // player actually pays is scaledTransactionPrice(price), which depends on their power and
+        // was never surfaced anywhere interactive (button labels are static strings like "Pay
+        // up"/"Yes"; only the silent/fast-forward path's notableText ever reported the real
+        // number). Only TRANSACTIONS choices carry a `price` at all, so this is a no-op field for
+        // every other floor type.
+        const costedChoices = fl.choices.filter(c => c.price !== undefined)
+        if(costedChoices.length > 0){
+            embed.addFields({
+                name: "Cost",
+                value: costedChoices.map(c => `**${c.name}**: ${this.scaledTransactionPrice(c.price).toLocaleString()} potatoes`).join('\n')
+            })
+        }
 
         const buttons = fl.choices.map((choice) =>{
             return new ButtonBuilder()
@@ -1118,6 +1136,39 @@ class towerFactory{
 // TRANSACTION 12-14, REWARD 15-17 — 9/3/3/3 of 18), matching the cumulative-chance
 // convention every other weighted roll in this codebase already uses (e.g.
 // spudKeepFactory.rollLottery's `roll < cumulative`).
+// Per-floor gain/loss line (2026-10-10, player-reported confusion: "costs don't show up
+// anywhere for scenarios" / "potato gain/losses... after each encounter") — formats the REAL
+// post-scale/post-decay/post-cap amount actually landing in this.run, which is the number that
+// matters now that scaleReward/decayValue mean a floor's own flavor text (e.g. "You collect
+// 100,000 potatoes") no longer reliably matches what's credited. Appended onto resultText
+// itself (see appendPayoutDelta below) rather than threaded through resolveNext/createNextEmbed
+// as a new parameter, so it flows through BOTH continuation styles — the dedicated Continue/
+// Leave screen, and the autoContinue path that prefaces resultText onto the next floor's own
+// embed — for free.
+function formatPayoutDelta(type, amount) {
+    if (!amount) return null
+    const sign = amount > 0 ? '+' : ''
+    switch (type) {
+        case tC.MODIFIER.WORK_MULTIPLIER:
+            return `${sign}${amount} Work Modifier`
+        case tC.PAYOUT.WORK_MULTIPLIER:
+            return `${sign}${amount.toFixed(2)}x Work Multiplier`
+        case tC.PAYOUT.PASSIVE_INCOME:
+            return `${sign}${amount.toLocaleString()} Passive Income`
+        case tC.PAYOUT.BANK_CAPACITY:
+            return `${sign}${amount.toLocaleString()} Bank Capacity`
+        case tC.PAYOUT.POTATOES:
+        default:
+            return `${sign}${amount.toLocaleString()} Potatoes`
+    }
+}
+
+function appendPayoutDelta(resultText, ...lines) {
+    const extra = lines.filter(Boolean)
+    if (extra.length === 0) return resultText
+    return `${resultText}\n\n${extra.join('\n')}`
+}
+
 function getFloor() {
     var random = Math.floor(Math.random() * tC.FLOOR_WEIGHTS[tC.FLOOR_WEIGHTS.length - 1]);
     for (var i = 0; i < tC.FLOOR_WEIGHTS.length; i++)

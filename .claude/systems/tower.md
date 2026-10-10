@@ -3861,3 +3861,48 @@ pre-existing skips, 2332 passing)**.
 
 `financial-project` doesn't implement Tower at all (reconfirmed fresh this session, not just
 repeated from prior notes) — no port needed.
+
+## Live transaction cost + per-floor gain/loss lines (2026-10-10, player-reported confusion)
+
+**Asked**: "Can you make it so that the cost appears anywhere on the embed? Players are extremely
+confused since costs don't show up anywhere for scenarios now. And it would be nice if potato
+gain/losses were shown after each encounter if possible."
+
+**Gap**: the 2026-10-09 TRANSACTIONS price-scaling change (see the section above) reworded every
+TRANSACTIONS description to drop its old hardcoded price figure, but never added the real,
+*scaled* price anywhere interactive — a TRANSACTION floor's choice buttons are static labels
+("Pay up"/"Yes") with no number on them at all, so a player had no way to see what they were about
+to be charged before clicking. Separately, no resolved floor's result text ever stated the real
+(post-`scaleReward`/post-`decayValue`/post-cap) amount actually gained or lost — a floor's own
+flavor text narrates a flat, pre-scaling figure baked into `towerConstants.js` (e.g. "You collect
+100,000 potatoes"), which has quietly stopped matching the real credited amount since reward-value
+scaling and floor-depth decay were introduced — only the silent/fast-forward path's `notableText`
+ever reported a real number.
+
+**Changed**: `createFloorEmbed` now adds a `"Cost"` field listing every costed choice's name next
+to `this.scaledTransactionPrice(choice.price)` (`towerFactory.js`), live and at the player's
+current power — purely data-driven off `choice.price !== undefined`, so it's a no-op field for
+every non-TRANSACTION floor type without a separate type check. New module-level helpers
+`formatPayoutDelta(type, amount)`/`appendPayoutDelta(resultText, ...lines)` format the real
+post-scale/post-decay/post-cap amount per payout type (`"+12,000 Potatoes"`, `"+0.20x Work
+Multiplier"`, `"+2 Work Modifier"` for the in-run `MODIFIER.WORK_MULTIPLIER` survival buff, etc.,
+sign-aware for losses) and append it onto `resultText` itself — deliberately NOT a new parameter
+threaded through `resolveNext`/`createNextEmbed`, so it flows through both continuation styles for
+free: the dedicated Continue/Leave screen, and the `autoContinue` path that prefaces `resultText`
+onto the next floor's own embed via `this.lastResultText`. Wired into `updateValue`'s default
+branch, `updateTransaction`'s final branch (both the gain AND a separate `"-N Potatoes (cost)"`
+line so the two are never visually conflated), and `execElite`'s win branch (the Elite kill's own
+potato reward, captured from `creditRunPayout`'s return value instead of discarded). Deliberately
+left untouched: the EXIT/decline/poor-outcome branches (nothing changes, nothing to report) and the
+`ELITE_KILL` deferred-promise branch (no immediate change this floor — it already has its own
+"promised a bonus" flavor text).
+
+**Tests**: new `towerFactory.test.js` describe block, 5 tests — the Cost field appears with the
+real scaled price at a non-trivial power and is absent on a non-TRANSACTION floor; a resolved
+COMBAT floor's Continue/Leave screen states the real potatoes gained; a resolved TRANSACTION
+floor's screen states both the gain and the cost as separate lines; an Elite win states the real
+potatoes gained from the kill. Full suite re-run clean: **127 of 128 suites (1 pre-existing skip) /
+2355 tests (18 pre-existing skips, 2337 passing)**.
+
+`financial-project` doesn't implement Tower at all (reconfirmed, same as every prior Tower pass) —
+no port needed.

@@ -2064,3 +2064,97 @@ describe('resuming a crashed run (resumeFrom)', () => {
         expect(tF.wardUsed).toBe(true);
     });
 });
+
+// Live cost field + per-floor gain/loss line (2026-10-10, player-reported confusion: "costs
+// don't show up anywhere for scenarios now" / "potato gain/losses... after each encounter").
+// Before this, a TRANSACTION floor's choice buttons were static labels ("Pay up"/"Yes") with no
+// price shown anywhere interactive, and a resolved floor's resultText never stated the real
+// (post-scale/post-decay/post-cap) amount gained or lost — only the silent/fast-forward path's
+// notableText ever reported a real transaction price.
+describe('Live cost field on TRANSACTION floors, and gain/loss lines on resolved floors (2026-10-10)', () => {
+    function choice(customId) {
+        return { customId, update: jest.fn().mockResolvedValue() };
+    }
+
+    function fakeInteraction(responses) {
+        let i = 0;
+        const editReply = jest.fn(async () => ({
+            awaitMessageComponent: jest.fn(async () => responses[i++]),
+        }));
+        return { editReply, user: { id: 'u1' } };
+    }
+
+    test('createFloorEmbed adds a "Cost" field, priced via scaledTransactionPrice, only for a TRANSACTION floor', async () => {
+        const interaction = fakeInteraction([choice('Yes')]);
+        // Power well past ENTRY_GATE_MULTI so scalingFactor != 1 and the field's number proves
+        // it's reading the SCALED price, not the raw towerConstants.js value.
+        const tF = new towerFactory(interaction, 'tester', 500);
+        const fl = tC.TRANSACTIONS.find(t => t.name === 'The Traveling Turnip');
+        const yesIndex = fl.choices.findIndex(c => c.outcome === tC.PAYOUT.WORK_MULTIPLIER);
+
+        await tF.createFloorEmbed(fl, 'TRANSACTION', 'Blue', fl.description);
+
+        const call = interaction.editReply.mock.calls[0][0];
+        const costField = call.embeds[0].data.fields.find(f => f.name === 'Cost');
+        expect(costField).toBeDefined();
+        const scaledPrice = tF.scaledTransactionPrice(fl.choices[yesIndex].price);
+        expect(scaledPrice).toBeGreaterThan(fl.choices[yesIndex].price); // real scaling engaged at this power
+        expect(costField.value).toContain(scaledPrice.toLocaleString());
+    });
+
+    test('createFloorEmbed adds no "Cost" field for a non-TRANSACTION floor', async () => {
+        const interaction = fakeInteraction([choice('Fight')]);
+        const tF = new towerFactory(interaction, 'tester', 20);
+        const fl = tC.COMBATS[0];
+
+        await tF.createFloorEmbed(fl, 'COMBAT', 'Orange', fl.description);
+
+        const call = interaction.editReply.mock.calls[0][0];
+        const costField = (call.embeds[0].data.fields || []).find(f => f.name === 'Cost');
+        expect(costField).toBeUndefined();
+    });
+
+    test('a resolved COMBAT floor\'s Continue/Leave screen states the real potatoes gained', async () => {
+        randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0);
+        const interaction = fakeInteraction([choice('Fight'), choice('leave')]);
+        // Live entry-gate multi so the asserted number is the raw, unscaled, undecayed value.
+        const tF = new towerFactory(interaction, 'tester', tC.ENTRY_GATE_MULTI);
+        tF.floor = 1;
+
+        await tF.execNormalFloor('COMBAT');
+        randomSpy.mockRestore();
+        randomSpy = null;
+
+        const nextCall = interaction.editReply.mock.calls[1][0];
+        expect(nextCall.embeds[0].data.description).toContain('+12,000 Potatoes');
+    });
+
+    test('a resolved TRANSACTION floor\'s Continue/Leave screen states both the gain and the cost', async () => {
+        const interaction = fakeInteraction([choice('continue')]);
+        const tF = new towerFactory(interaction, 'tester', tC.ENTRY_GATE_MULTI);
+        tF.run[tC.PAYOUT.POTATOES] = 10_000_000;
+        const fl = tC.TRANSACTIONS.find(t => t.name === 'The Traveling Turnip');
+        const yesIndex = fl.choices.findIndex(c => c.outcome === tC.PAYOUT.WORK_MULTIPLIER);
+        const rawPrice = fl.choices[yesIndex].price;
+
+        await tF.updateTransaction(fl, yesIndex, 'Blue', false);
+
+        const call = interaction.editReply.mock.calls[0][0];
+        const description = call.embeds[0].data.description;
+        expect(description).toContain('+0.20x Work Multiplier');
+        expect(description).toContain(`-${rawPrice.toLocaleString()} Potatoes (cost)`);
+    });
+
+    test('an Elite win\'s own result screen states the real potatoes gained from the kill', async () => {
+        randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0); // wins, and picks tier candidate 0
+        const interaction = fakeInteraction([choice('fight'), choice('leave')]);
+        const tF = new towerFactory(interaction, 'tester', tC.ENTRY_GATE_MULTI);
+
+        await tF.execElite(tC.TOWER_ELITE_DIFFICULTY_INITIAL);
+        randomSpy.mockRestore();
+        randomSpy = null;
+
+        const nextCall = interaction.editReply.mock.calls[1][0];
+        expect(nextCall.embeds[0].data.description).toMatch(/\+60,000 Potatoes/);
+    });
+});

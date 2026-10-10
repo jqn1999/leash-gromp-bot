@@ -21267,3 +21267,35 @@ Updated `.claude/systems/tower.md` with a full dated section.
 
 Cross-repo note: `financial-project` doesn't implement Tower at all (reconfirmed, same as every
 prior Tower pass) — no port needed.
+
+## Tower: live transaction cost + per-floor gain/loss lines (2026-10-10, player-reported confusion)
+
+**Asked**: "Can you make it so that the cost appears anywhere on the embed? Players are extremely
+confused since costs don't show up anywhere for scenarios now. And it would be nice if potato
+gain/losses were shown after each encounter if possible."
+
+**Analysis**: the prior day's TRANSACTIONS price-scaling change reworded every TRANSACTIONS
+description to drop its old hardcoded price, but never put the real scaled price anywhere a player
+could see it before clicking — button labels are static ("Pay up"/"Yes"), and only the silent/
+fast-forward path's `notableText` ever reported a real number. Separately, a resolved floor's
+result text only ever narrated the flat, pre-scaling figure baked into `towerConstants.js`'s
+flavor text, which has silently drifted from the real credited amount since reward-value scaling
+and floor-depth decay were introduced.
+
+**Changed**: `createFloorEmbed` adds a `"Cost"` field (name + `scaledTransactionPrice`-derived
+price per costed choice) — purely data-driven off `choice.price !== undefined`, so it only ever
+appears on TRANSACTION floors. New `formatPayoutDelta`/`appendPayoutDelta` helpers in
+`towerFactory.js` format the real post-scale/post-decay/post-cap amount (sign-aware) and append it
+onto a floor's own `resultText`, which both continuation styles (the dedicated Continue/Leave
+screen, and the `autoContinue` preface-onto-next-floor path) already carry — so no new parameter
+needed through `resolveNext`/`createNextEmbed`. Wired into `updateValue`'s default branch,
+`updateTransaction`'s final branch (gain line + a separate cost line), and `execElite`'s win
+branch (captured from `creditRunPayout`'s previously-discarded return value).
+
+**Tests**: 5 new `towerFactory.test.js` tests (Cost field present/absent, COMBAT/TRANSACTION/Elite
+gain-loss lines). Full suite re-run clean: **127 of 128 suites (1 pre-existing skip) / 2355 tests
+(18 pre-existing skips, 2337 passing)**.
+
+Updated `.claude/systems/tower.md` with a full dated section.
+
+Cross-repo note: `financial-project` doesn't implement Tower at all — no port needed.
