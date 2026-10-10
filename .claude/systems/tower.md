@@ -3906,3 +3906,42 @@ potatoes gained from the kill. Full suite re-run clean: **127 of 128 suites (1 p
 
 `financial-project` doesn't implement Tower at all (reconfirmed, same as every prior Tower pass) —
 no port needed.
+
+## Overflow-to-potato conversion reported on the result screen (2026-10-10, follow-up to the gain/loss line above)
+
+**Asked**: "can you also include when passive/bank cap is reached and stats in tower get
+converted to potatoes as also a potato gained line."
+
+**Gap**: `creditRunPayout`'s existing overflow-to-potato conversion (PASSIVE_INCOME/BANK_CAPACITY
+spilling past this run's cap gets converted into potatoes at `TOWER_OVERFLOW_SHOP_RATE` — see the
+"Overflow-to-Potato Discount Rate" section) was, and still is, completely silent: the newly-added
+gain/loss line (section above) only reported the capped `applied` amount for the credit's own
+type, with no indication that a chunk of the raw value had actually landed as potatoes instead.
+
+**Changed**: `creditRunPayout` now also stashes the overflow's own converted-potato amount on a
+transient `this._lastOverflowPotatoes` field (reset to 0 at the top of every call, same "read
+immediately after the call" pattern `_cooldownSkippedByCompanion` already uses elsewhere) —
+return value is untouched (`applied`, exactly as before; several existing call sites/tests already
+treat it as a plain number). New `formatOverflowConversion(sourceType, potatoAmount)` formats this
+as its own distinct line (`"+N Potatoes (capped Bank Capacity converted)"` /
+`"...Passive Income converted)"`), kept visually separate from a genuine Potatoes gain on the same
+floor rather than folded into it. Wired into `updateValue`'s default branch and
+`updateTransaction`'s final branch, right alongside the existing gain/cost lines.
+
+King Kiwi's deferred promises (maturing via `checkElitePayout` on the Elite floor they were
+promised against) can ALSO overflow — `checkElitePayout` now returns the summed converted-potato
+total across however many promises mature that floor (normally one, never assumed), and
+`execElite`'s win branch (which previously called it fire-and-forget, without even `await`ing it)
+now awaits it and appends a generic `"+N Potatoes (capped stat converted)"` line — generic because
+an aggregate across possibly-multiple-typed promises can't name one single source the specific
+call sites above can.
+
+**Tests**: 4 new `towerFactory.test.js` tests — a REWARD pick (Golden Ginger) and a TRANSACTION
+purchase (The Baron's Beet) that each overflow BANK_CAPACITY report both the capped gain and the
+converted-potato line; a King Kiwi promise overflowing PASSIVE_INCOME on the Elite win screen
+reports the generic conversion line; a credit comfortably under the cap shows no conversion line
+at all. Full suite re-run clean: **127 of 128 suites (1 pre-existing skip) / 2359 tests (18
+pre-existing skips, 2341 passing)**.
+
+`financial-project` doesn't implement Tower at all (reconfirmed, same as every prior Tower pass) —
+no port needed.

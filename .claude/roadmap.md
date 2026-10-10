@@ -21299,3 +21299,30 @@ gain-loss lines). Full suite re-run clean: **127 of 128 suites (1 pre-existing s
 Updated `.claude/systems/tower.md` with a full dated section.
 
 Cross-repo note: `financial-project` doesn't implement Tower at all — no port needed.
+
+## Tower: overflow-to-potato conversion reported on the result screen (2026-10-10, follow-up)
+
+**Asked**: "can you also include when passive/bank cap is reached and stats in tower get
+converted to potatoes as also a potato gained line."
+
+**Analysis**: `creditRunPayout`'s existing PASSIVE_INCOME/BANK_CAPACITY overflow-to-potato
+conversion was completely silent — the gain/loss line just added the same session only reported
+the capped amount for the credit's own type, not the extra potatoes a chunk of the overflow
+actually became.
+
+**Changed**: `creditRunPayout` stashes the converted-potato amount on a transient
+`this._lastOverflowPotatoes` field (read immediately after the call, same pattern
+`_cooldownSkippedByCompanion` already uses); return value (`applied`) unchanged for backward
+compatibility with existing callers/tests. New `formatOverflowConversion` helper formats it as its
+own distinct line, wired into `updateValue`/`updateTransaction` alongside the existing gain/cost
+lines. `checkElitePayout` (King Kiwi's deferred promises maturing on an Elite floor) now returns
+the summed converted total and is properly `await`ed by `execElite`'s win branch (previously called
+fire-and-forget), which appends a generic conversion line there too.
+
+**Tests**: 4 new tests covering REWARD/TRANSACTION/King-Kiwi overflow conversions and the "no line
+when under cap" negative case. Full suite re-run clean: **127 of 128 suites (1 pre-existing skip) /
+2359 tests (18 pre-existing skips, 2341 passing)**.
+
+Updated `.claude/systems/tower.md` with a full dated section.
+
+Cross-repo note: `financial-project` doesn't implement Tower at all — no port needed.

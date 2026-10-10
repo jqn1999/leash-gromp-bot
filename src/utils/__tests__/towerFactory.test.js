@@ -2158,3 +2158,92 @@ describe('Live cost field on TRANSACTION floors, and gain/loss lines on resolved
         expect(nextCall.embeds[0].data.description).toMatch(/\+60,000 Potatoes/);
     });
 });
+
+// Overflow-to-potato conversion line (2026-10-10, player-reported: "also include when passive/
+// bank cap is reached and stats in tower get converted to potatoes as also a potato gained
+// line") — creditRunPayout already silently converts PASSIVE_INCOME/BANK_CAPACITY overflow past
+// the per-run cap into potatoes; until now nothing in the interactive result text ever reported
+// that conversion happening.
+describe('Overflow-to-potato conversion reported on the result screen (2026-10-10)', () => {
+    function choice(customId) {
+        return { customId, update: jest.fn().mockResolvedValue() };
+    }
+
+    function fakeInteraction(responses) {
+        let i = 0;
+        const editReply = jest.fn(async () => ({
+            awaitMessageComponent: jest.fn(async () => responses[i++]),
+        }));
+        return { editReply, user: { id: 'u1' } };
+    }
+
+    test('updateValue: a REWARD pick that overflows the BANK_CAPACITY cap reports the converted potatoes on the Continue/Leave screen', async () => {
+        // updateValue is called directly (bypassing createFloorEmbed, which is execNormalFloor's
+        // own job) — its only Discord round trip here is resolveNext's createNextEmbed screen.
+        const interaction = fakeInteraction([choice('leave')]);
+        const tF = new towerFactory(interaction, 'tester', tC.ENTRY_GATE_MULTI);
+        const cap = tC.getTowerRunCap(tC.PAYOUT.BANK_CAPACITY, tF.floor);
+        tF.run[tC.PAYOUT.BANK_CAPACITY] = cap - 200000; // only 200,000 of real room left
+        const fl = tC.REWARDS.find(r => r.name === 'Golden Ginger');
+        const index = fl.choices.findIndex(c => c.name === 'Bank capacity boost');
+
+        await tF.updateValue(fl, index, 'Purple', false);
+
+        const expectedPotatoes = Math.floor((fl.choices[index].value - 200000) / tC.TOWER_OVERFLOW_SHOP_RATE[tC.PAYOUT.BANK_CAPACITY]);
+        expect(expectedPotatoes).toBeGreaterThan(0); // sanity: this test actually exercises a real conversion
+        const description = interaction.editReply.mock.calls[0][0].embeds[0].data.description;
+        expect(description).toContain('+200,000 Bank Capacity'); // the real, capped-at-room amount
+        expect(description).toContain(`+${expectedPotatoes.toLocaleString()} Potatoes (capped Bank Capacity converted)`);
+    });
+
+    test('updateTransaction: a purchase that overflows the BANK_CAPACITY cap reports the converted potatoes alongside the cost line', async () => {
+        const interaction = fakeInteraction([choice('continue')]);
+        const tF = new towerFactory(interaction, 'tester', tC.ENTRY_GATE_MULTI);
+        tF.run[tC.PAYOUT.POTATOES] = 10_000_000;
+        const cap = tC.getTowerRunCap(tC.PAYOUT.BANK_CAPACITY, tF.floor);
+        tF.run[tC.PAYOUT.BANK_CAPACITY] = cap - 300000;
+        const fl = tC.TRANSACTIONS.find(t => t.name === "The Baron's Beet");
+        const yesIndex = fl.choices.findIndex(c => c.outcome === tC.PAYOUT.BANK_CAPACITY);
+
+        await tF.updateTransaction(fl, yesIndex, 'Blue', false);
+
+        const expectedPotatoes = Math.floor((fl.choices[yesIndex].value - 300000) / tC.TOWER_OVERFLOW_SHOP_RATE[tC.PAYOUT.BANK_CAPACITY]);
+        expect(expectedPotatoes).toBeGreaterThan(0);
+        const description = interaction.editReply.mock.calls[0][0].embeds[0].data.description;
+        expect(description).toContain('+300,000 Bank Capacity');
+        expect(description).toContain(`+${expectedPotatoes.toLocaleString()} Potatoes (capped Bank Capacity converted)`);
+        expect(description).toContain('Potatoes (cost)'); // still present, unconflated with the conversion line
+    });
+
+    test('a King Kiwi promise maturing on the Elite win floor and overflowing PASSIVE_INCOME reports the converted potatoes on the win screen', async () => {
+        randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0); // wins, picks tier candidate 0
+        const interaction = fakeInteraction([choice('fight'), choice('leave')]);
+        const tF = new towerFactory(interaction, 'tester', tC.ENTRY_GATE_MULTI);
+        tF.floor = 9; // execElite increments to the forced Elite floor (10) internally via pickElite's own N
+        const cap = tC.getTowerRunCap(tC.PAYOUT.PASSIVE_INCOME, 10);
+        tF.run[tC.PAYOUT.PASSIVE_INCOME] = cap - 100000;
+        tF.run[tC.PAYOUT.ELITE_KILL].push([10, tC.PAYOUT.PASSIVE_INCOME, 5000000]);
+        tF.floor = 10;
+
+        await tF.execElite(tC.TOWER_ELITE_DIFFICULTY_INITIAL);
+        randomSpy.mockRestore();
+        randomSpy = null;
+
+        const expectedPotatoes = Math.floor((5000000 - 100000) / tC.TOWER_OVERFLOW_SHOP_RATE[tC.PAYOUT.PASSIVE_INCOME]);
+        expect(expectedPotatoes).toBeGreaterThan(0);
+        const description = interaction.editReply.mock.calls[1][0].embeds[0].data.description;
+        expect(description).toContain(`+${expectedPotatoes.toLocaleString()} Potatoes (capped stat converted)`);
+    });
+
+    test('no overflow line appears when a credit lands comfortably under the cap', async () => {
+        const interaction = fakeInteraction([choice('leave')]);
+        const tF = new towerFactory(interaction, 'tester', tC.ENTRY_GATE_MULTI);
+        const fl = tC.REWARDS.find(r => r.name === 'Golden Ginger');
+        const index = fl.choices.findIndex(c => c.name === 'Bank capacity boost');
+
+        await tF.updateValue(fl, index, 'Purple', false);
+
+        const description = interaction.editReply.mock.calls[0][0].embeds[0].data.description;
+        expect(description).not.toContain('converted');
+    });
+});
