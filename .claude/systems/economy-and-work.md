@@ -460,7 +460,9 @@ every track is already maxed on both shop and regrade. The constant itself was d
    catching it.
 2. **Free shop upgrade**, if no track qualifies for (1) — i.e. nothing is shop-maxed yet. Grants the
    next shop tier on a random not-yet-maxed track for free, mirroring `buy.js`'s own success-write
-   shape (`newBase + sweetPotatoBuffs + regradeAmount`, not just the tier's raw amount).
+   effect (base lands exactly on the new tier, sweet/regrade untouched) — now as an atomic ADD of just the
+   tier gap to the raw stat rather than an absolute `newBase + sweetPotatoBuffs + regradeAmount` SET
+   (2026-10-11, see "Atomic stat writes" under Personal shops).
 3. **Potato payout**, if every track is fully maxed on *both* shop and regrade — formula ×60
    (between Metal's ×20 and Golden's ×100), capped `Work.MAX_ANCIENT_POTATO(300000)`. Like every
    `*_MAX_*_POTATO` constant, this caps the base amount before the player's own multiplier scales it
@@ -845,6 +847,41 @@ difference into `sweetPotatoBuffs`, leaving the live total untouched — `dynamo
 it on every lookup, so any affected account self-corrects on its very next command with no manual
 intervention.
 
+**Atomic stat writes (2026-10-11 — closes the race class behind "my base dropped a tier" reports).**
+Each grindable stat is stored as three coupled numbers — the raw total, `sweetPotatoBuffs[stat]`, and
+`regrades[track].regradeAmount` — and base is *derived* as raw − sweet − regrade, so they must always
+move together. (The exact trigger for the one reported account was never observed — prod logs/DB aren't reachable from a dev session — so this closes the race class the code made possible rather than a reproduced single cause.) Every writer used to compute ABSOLUTE values from the snapshot it read at the start of
+the command (`raw = snapshot.raw + x`, the whole stale `sweetPotatoBuffs`/`regrades` object, a shop
+buy's `item.amount + sweet + regrade`), and DynamoDB has no version check on those writes, so any two
+overlapping commands (a `/regrade` landing inside a `/work` chain's long read-to-write window, a Tower
+payout racing a shop buy, a bot write racing a web `/gromp` write...) could overwrite one field's
+increment without the others. Raw ended up short of sweet + regrade, base sat just below its real
+shop tier, and `healBaseDrift` — which can only snap base DOWN to the nearest tier at or below it and
+cannot tell a shortfall from an over-credit — demoted the player a whole tier on every affected stat
+(locking them out of `/regrade` and rebirth, which both need base at the shop max) and dumped the
+remainder into `sweetPotatoBuffs`.
+
+Now no writer ever sends an absolute value for any of the three. [statWriteFactory.js](../../src/utils/statWriteFactory.js)
+builds atomic ADD maps — `statGrantAdds(stat, x)` (raw + `sweetPotatoBuffs.<stat>`, used by Tower
+payout/leaderboard bonus, raid stat splits, quests, Sweet/Metal Potato, bounty/heist grants, the admin
+Tower reversal), `regradeSuccessWrites(stat, inc)` (raw + `regrades.<track>.regradeAmount` as ADDs,
+`failStack` reset as a leaf-path SET; used by `/regrade` and Ancient Potato), `regradeFailAdds` — and
+`dynamoHandler.buildUpdateExpression` expands dotted keys into nested document paths, so one
+`UpdateItem` atomically ADDs to every coupled leaf. Increments commute, so any interleaving of any
+number of writers lands on the same totals and the invariant can no longer be broken by timing. `/work`,
+`/take-bounty` and `/rob-npc` chains sum every link's adds (`mergeAdds`) and mirror them onto the
+in-memory `userDetails` (`applyAddsInMemory`) instead of overwriting; a shop buy ADDs the exact tier gap
+(`item.amount` − current exact base, which also absorbs sub-tolerance float noise) plus `-cost` for
+potatoes. Rebirth stays an absolute reset on purpose, and `starchShop` (no sweet/regrade component)
+keeps its simple SET. `healBaseDrift`'s own write is a **conditional** per-stat SET of
+`sweetPotatoBuffs.<stat>` guarded on the raw stat, sweet value and `regradeAmount` still being what the
+drift was computed from (`dynamoHandler.healBaseDriftConditionally`) — a whole-object overwrite could
+clobber a grant landing since the read, and a naive ADD would double-apply when two commands look the
+same user up at once; a failed condition just skips and re-derives next lookup. Every heal (and every
+skipped one) now logs the exact stat, before/after base and drift so a demotion is traceable.
+One accepted limitation: heal still cannot distinguish "over-credited" from "under-credited" drift, but
+with atomic writes neither should newly appear — only pre-existing damage reaches it.
+
 `/shop`'s per-category listing marks every tier ✅ owned / ➡️ next up / 🔒 locked against the caller's
 own progress, and its description calls out the actual next purchase (cost + whether they can
 currently afford it) regardless of which page it's actually on. `/shop` also carries a one-click
@@ -859,8 +896,9 @@ purchase already landed, a Sweet Potato encounter changed the base value) still 
 or fails with a clear reason, without needing a user-facing confirm click to get that safety. No
 optimistic-lock/version dance is needed the way `companionMarketFactory`'s `attemptBuy` needs one for
 a shared market listing — a personal shop tier can only ever be raced by the same account's own
-concurrent actions, the same low-stakes class of race this codebase already accepts elsewhere (e.g.
-companion scavenge collect).
+concurrent actions. That used to be "low-stakes" for the stat itself too, but wasn't (see "Atomic stat
+writes" above): the purchase's stat gap and potato cost are now atomic ADDs, so a racing grant, regrade
+or potato credit can no longer be overwritten by it.
 
 An earlier version of `/buy` added a preview-then-Confirm/Cancel step (mirroring `/rebirth`'s confirm
 flow) specifically so cost was visible before committing — superseded by this version once `/shop`

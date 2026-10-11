@@ -775,9 +775,10 @@ describe('handleStatSplit', () => {
             sweetPotatoBuffs: { workMultiplierAmount: 0.1, passiveAmount: 0, bankCapacity: 0 },
         }));
         await raidFactory.handleStatSplit([{ id: 'a', username: 'a' }], 'workMultiplierAmount', 1);
-        const [, setAttributes] = dynamoHandler.updateUserFields.mock.calls[0];
-        expect(setAttributes.workMultiplierAmount).toBe(4);
-        expect(setAttributes.sweetPotatoBuffs.workMultiplierAmount).toBeCloseTo(1.1);
+        // Atomic increments (2026-10-11, base-drift refactor — see statWriteFactory.js).
+        const [, setAttributes, addAttributes] = dynamoHandler.updateUserFields.mock.calls[0];
+        expect(setAttributes).toEqual({});
+        expect(addAttributes).toEqual({ workMultiplierAmount: 1, 'sweetPotatoBuffs.workMultiplierAmount': 1 });
     });
 });
 
@@ -812,13 +813,11 @@ describe('handlePercentStatSplit', () => {
         // Same grant, same rate, genuinely different final numbers per member.
         expect(result).toEqual([80000, 100000]);
 
-        const [, aAttrs] = dynamoHandler.updateUserFields.mock.calls.find(c => c[0] === 'a');
-        expect(aAttrs.passiveAmount).toBe(500000 + 80000);
-        expect(aAttrs.sweetPotatoBuffs.passiveAmount).toBe(80000);
+        const [, , aAdds] = dynamoHandler.updateUserFields.mock.calls.find(c => c[0] === 'a');
+        expect(aAdds).toEqual({ passiveAmount: 80000, 'sweetPotatoBuffs.passiveAmount': 80000 });
 
-        const [, bAttrs] = dynamoHandler.updateUserFields.mock.calls.find(c => c[0] === 'b');
-        expect(bAttrs.passiveAmount).toBe(1000000 + 100000);
-        expect(bAttrs.sweetPotatoBuffs.passiveAmount).toBe(100000);
+        const [, , bAdds] = dynamoHandler.updateUserFields.mock.calls.find(c => c[0] === 'b');
+        expect(bAdds).toEqual({ passiveAmount: 100000, 'sweetPotatoBuffs.passiveAmount': 100000 });
     });
 
     test('bankCapacity resolves against bankCapacity (own 50,000 rounding increment), not passiveAmount', async () => {
@@ -829,9 +828,8 @@ describe('handlePercentStatSplit', () => {
         );
         // raw = 5,750,000 (already a multiple of 50,000) -> +750,000, under the 1,000,000 cap.
         expect(result).toEqual([750000]);
-        const [, setAttributes] = dynamoHandler.updateUserFields.mock.calls[0];
-        expect(setAttributes.bankCapacity).toBe(5000000 + 750000);
-        expect(setAttributes.sweetPotatoBuffs.bankCapacity).toBe(750000);
+        const [, , addAttributes] = dynamoHandler.updateUserFields.mock.calls[0];
+        expect(addAttributes).toEqual({ bankCapacity: 750000, 'sweetPotatoBuffs.bankCapacity': 750000 });
     });
 
     test('a member whose record cannot be found resolves to null in the returned array and is never written', async () => {

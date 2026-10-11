@@ -3945,3 +3945,14 @@ pre-existing skips, 2341 passing)**.
 
 `financial-project` doesn't implement Tower at all (reconfirmed, same as every prior Tower pass) —
 no port needed.
+
+## Follow-up (2026-10-11): Tower payout is now an atomic ADD, not an absolute SET
+
+The 2026-09-23 batching fix (one `updateUserFields` call for the whole payout) closed the
+partial-failure window but still SET `raw = snapshot.raw + reward` and the whole `sweetPotatoBuffs`
+object from the `findUser` read at the end of the run — so a `/regrade` or shop buy landing between
+that read and write could still be overwritten into a base-vs-shop-tier drift. `processRewardPayouts`
+(and the daily leaderboard bonus in `towerLeaderboardFactory.js`, and the admin reset-tower reversal)
+now ADD the same amount to the raw stat and `sweetPotatoBuffs.<stat>` together as atomic nested-path
+increments (`statWriteFactory.statGrantAdds`) — still one call, now also race-proof. See
+`systems/economy-and-work.md`'s "Atomic stat writes" and the roadmap's 2026-10-11 entry.

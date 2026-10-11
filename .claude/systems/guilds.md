@@ -1878,11 +1878,9 @@ against.
            const userDetails = await dynamoHandler.findUser(member.id, member.username);
            if (!userDetails) return null;
            const { amount } = mercenaryFactory.resolveGrantAmount(grantEntry, userDetails);
-           let sweetPotatoBuffs = userDetails.sweetPotatoBuffs;
-           const setAttributes = { sweetPotatoBuffs };
-           setAttributes[grantEntry.type] = userDetails[grantEntry.type] + amount;
-           sweetPotatoBuffs[grantEntry.type] += amount;
-           await dynamoHandler.updateUserFields(member.id, setAttributes);
+           // Atomic ADD of raw + sweetPotatoBuffs.<stat> together (2026-10-11 — see
+           // economy-and-work.md's "Atomic stat writes"), never an absolute SET from the snapshot.
+           await dynamoHandler.updateUserFields(member.id, {}, statGrantAdds(grantEntry.type, amount));
            return amount;
        }));
    }

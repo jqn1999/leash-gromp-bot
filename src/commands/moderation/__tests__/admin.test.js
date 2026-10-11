@@ -178,14 +178,18 @@ describe('/admin reset-tower', () => {
 
             expect(dynamoHandler.removeTowerLeaderboardEntry).toHaveBeenCalledWith('target-1');
             expect(dynamoHandler.updateUserFields).toHaveBeenCalledWith('target-1',
-                { sweetPotatoBuffs: { workMultiplierAmount: 4.8, passiveAmount: 80000, bankCapacity: 170000 } },
-                { potatoes: -50000, totalEarnings: -50000, workMultiplierAmount: -0.2, passiveAmount: -20000, bankCapacity: -30000 }
+                {},
+                {
+                    potatoes: -50000, totalEarnings: -50000,
+                    workMultiplierAmount: -0.2, passiveAmount: -20000, bankCapacity: -30000,
+                    'sweetPotatoBuffs.workMultiplierAmount': -0.2, 'sweetPotatoBuffs.passiveAmount': -20000, 'sweetPotatoBuffs.bankCapacity': -30000,
+                }
             );
             expect(interaction.editReply).toHaveBeenCalledWith(expect.stringMatching(/floor 30.*50,000 potatoes/is));
             expect(dynamoHandler.updateUserDatabase).toHaveBeenCalledWith('target-1', 'canEnterTower', true);
         });
 
-        test('a stat-less entry (e.g. only potatoes earned) reverts cleanly without NaN in the sweetPotatoBuffs correction', async () => {
+        test('a stat-less entry (e.g. only potatoes earned) reverts cleanly, with no stat/sweetPotatoBuffs adds at all (not NaN or -0 noise)', async () => {
             const interaction = fakeInteraction('target-1', true);
             interaction.guild.members.fetch.mockResolvedValue(memberFixture());
             dynamoHandler.findUser.mockResolvedValue({
@@ -200,8 +204,8 @@ describe('/admin reset-tower', () => {
             await resetTowerCallback({}, interaction);
 
             expect(dynamoHandler.updateUserFields).toHaveBeenCalledWith('target-1',
-                { sweetPotatoBuffs: { workMultiplierAmount: 1, passiveAmount: 2, bankCapacity: 3 } },
-                { potatoes: -5000, totalEarnings: -5000, workMultiplierAmount: -0, passiveAmount: -0, bankCapacity: -0 }
+                {},
+                { potatoes: -5000, totalEarnings: -5000 }
             );
         });
 
@@ -261,8 +265,12 @@ describe('/admin reset-tower', () => {
 
             // Same reversal full-wipe alone already does.
             expect(dynamoHandler.updateUserFields).toHaveBeenCalledWith('target-1',
-                { sweetPotatoBuffs: { workMultiplierAmount: 4.8, passiveAmount: 80000, bankCapacity: 170000 } },
-                { potatoes: -50000, totalEarnings: -50000, workMultiplierAmount: -0.2, passiveAmount: -20000, bankCapacity: -30000 }
+                {},
+                {
+                    potatoes: -50000, totalEarnings: -50000,
+                    workMultiplierAmount: -0.2, passiveAmount: -20000, bankCapacity: -30000,
+                    'sweetPotatoBuffs.workMultiplierAmount': -0.2, 'sweetPotatoBuffs.passiveAmount': -20000, 'sweetPotatoBuffs.bankCapacity': -30000,
+                }
             );
 
             // Checkpoint reconstructed from the entry: floor 47 -> 4 forced Elites already

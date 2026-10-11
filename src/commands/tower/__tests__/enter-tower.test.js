@@ -214,13 +214,17 @@ describe('processRewardPayouts stat crediting (batched write)', () => {
         expect(dynamoHandler.updateUserFields).toHaveBeenCalledTimes(1);
         const [calledUserId, setFields, addFields] = dynamoHandler.updateUserFields.mock.calls[0];
         expect(calledUserId).toBe('user-1');
-        expect(setFields).toEqual({
-            workMultiplierAmount: tC.ENTRY_GATE_MULTI + 0.2,
-            passiveAmount: 1300000,
-            bankCapacity: 7000000,
-            sweetPotatoBuffs: { workMultiplierAmount: 1.2, passiveAmount: 300100, bankCapacity: 2000200 },
+        // Atomic increments (2026-10-11, base-drift refactor — see statWriteFactory.js): every
+        // stat reward ADDs the same amount to the raw total and its sweetPotatoBuffs counterpart,
+        // never an absolute SET of either from the snapshot — and nothing is ever written as a
+        // whole sweetPotatoBuffs object.
+        expect(setFields).toEqual({});
+        expect(addFields).toEqual({
+            potatoes: 5000, totalEarnings: 5000,
+            workMultiplierAmount: 0.2, 'sweetPotatoBuffs.workMultiplierAmount': 0.2,
+            passiveAmount: 300000, 'sweetPotatoBuffs.passiveAmount': 300000,
+            bankCapacity: 2000000, 'sweetPotatoBuffs.bankCapacity': 2000000,
         });
-        expect(addFields).toEqual({ potatoes: 5000, totalEarnings: 5000 });
 
         // The fragile per-field path this replaced must never fire for these stat writes.
         expect(dynamoHandler.updateUserDatabase).not.toHaveBeenCalledWith('user-1', 'workMultiplierAmount', expect.anything());
@@ -667,7 +671,11 @@ describe('admin bypass while tower_access is disabled/unset', () => {
         // updated, and the checkpoint (now fully superseded) cleared.
         expect(dynamoHandler.updateUserFields).toHaveBeenCalledTimes(1);
         const [, , addFields] = dynamoHandler.updateUserFields.mock.calls[0];
-        expect(addFields).toEqual({ potatoes: 8000, totalEarnings: 8000 });
+        // The 0.5 work multiplier is an atomic raw + sweetPotatoBuffs ADD pair now, alongside the potatoes.
+        expect(addFields).toEqual({
+            potatoes: 8000, totalEarnings: 8000,
+            workMultiplierAmount: 0.5, 'sweetPotatoBuffs.workMultiplierAmount': 0.5,
+        });
         expect(dynamoHandler.updateIfNewRecord).toHaveBeenCalledWith(awsConfigurations.devs[0], 'highestTowerFloor', 15);
         expect(dynamoHandler.recordTowerLeaderboardEntry).toHaveBeenCalledWith(expect.objectContaining({ floor: 15 }));
         expect(dynamoHandler.updateUserDatabase).toHaveBeenCalledWith(awsConfigurations.devs[0], 'towerRunCheckpoint', null);

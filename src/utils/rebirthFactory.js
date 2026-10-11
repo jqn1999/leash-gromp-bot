@@ -52,8 +52,8 @@ const BASE_DRIFT_TOLERANCE = 1e-6;
 // Returns the healed `sweetPotatoBuffs` object, or `null` if every tracked stat's base is
 // already clean (the overwhelmingly common case — this runs on every findUser call, so it
 // has to be a cheap no-op for a healthy account).
-function healBaseDrift(userDetails) {
-    let healedSweetPotatoBuffs = null;
+function computeBaseDrifts(userDetails) {
+    const drifts = {};
     for (const [statType, info] of Object.entries(BASE_SHOP_INFO)) {
         const base = getBaseValue(userDetails, statType);
         // Below the account's own floor is a DIFFERENT problem (sweetPotatoBuffs/regrade
@@ -69,9 +69,24 @@ function healBaseDrift(userDetails) {
 
         const drift = base - nearestCheckpoint;
         if (drift > BASE_DRIFT_TOLERANCE) {
-            if (!healedSweetPotatoBuffs) healedSweetPotatoBuffs = { ...userDetails.sweetPotatoBuffs };
-            healedSweetPotatoBuffs[statType] += drift;
+            drifts[statType] = { base, checkpoint: nearestCheckpoint, drift };
         }
+    }
+    return drifts;
+}
+
+// Same result as before the 2026-10-11 base-drift refactor — the healed sweetPotatoBuffs
+// object, or null if every stat's base is already clean. findUser itself now applies the
+// per-stat `drift` amounts from computeBaseDrifts directly as a CONDITIONAL write (see
+// dynamoHandler.healBaseDriftConditionally) rather than overwriting this whole object; this
+// wrapper stays for callers/tests that only want the healed object.
+function healBaseDrift(userDetails) {
+    const drifts = computeBaseDrifts(userDetails);
+    const stats = Object.keys(drifts);
+    if (stats.length === 0) return null;
+    const healedSweetPotatoBuffs = { ...userDetails.sweetPotatoBuffs };
+    for (const statType of stats) {
+        healedSweetPotatoBuffs[statType] += drifts[statType].drift;
     }
     return healedSweetPotatoBuffs;
 }
@@ -173,6 +188,8 @@ module.exports = {
     previewRebirthBonus,
     computeRebirthState,
     getShopMax,
+    REGRADE_KEY,
     getBaseValue,
+    computeBaseDrifts,
     healBaseDrift
 }

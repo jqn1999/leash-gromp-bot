@@ -118,3 +118,31 @@ describe('/rob-npc long-shot Big Events post, enriched with a stat-reward hit', 
         expect(bigEventsChannel.postBigEvent).not.toHaveBeenCalled();
     });
 });
+
+// Atomic stat increments (2026-10-11, base-drift refactor — see statWriteFactory.js): the rare
+// Royal Treasury permanent-stat grant is an ADD of the same amount to the raw stat and its
+// sweetPotatoBuffs counterpart in the chain's one write, never an absolute SET of either from the
+// snapshot read when the heist began.
+describe('/rob-npc Royal Treasury stat grant write shape', () => {
+    test('a stat-reward hit writes raw + sweetPotatoBuffs as ADDs, with no absolute raw or whole sweetPotatoBuffs object', async () => {
+        const user = baseUser();
+        dynamoHandler.findUser.mockResolvedValue(user);
+        mercenaryFactory.resolveNpcRob.mockResolvedValue(baseResult({
+            statReward: [{ type: 'passiveAmount', amount: 100000 }, { type: 'bankCapacity', amount: 250000 }],
+        }));
+
+        await runNpcRobAttempt(fakeInteraction(), 'user-1', 'User', 'User', 'royal_treasury', false, 0);
+
+        const [, setFields, addFields] = dynamoHandler.updateUserFields.mock.calls.find(([, s]) => 'potatoes' in s);
+        expect(addFields).toMatchObject({
+            passiveAmount: 100000, 'sweetPotatoBuffs.passiveAmount': 100000,
+            bankCapacity: 250000, 'sweetPotatoBuffs.bankCapacity': 250000,
+        });
+        expect(setFields).not.toHaveProperty('passiveAmount');
+        expect(setFields).not.toHaveProperty('bankCapacity');
+        expect(setFields).not.toHaveProperty('sweetPotatoBuffs');
+        // Mirrored onto the in-memory object exactly once.
+        expect(user.passiveAmount).toBe(100000 + 100000);
+        expect(user.sweetPotatoBuffs.passiveAmount).toBe(100000);
+    });
+});

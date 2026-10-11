@@ -93,7 +93,7 @@ describe('checkAndClaimQuests', () => {
         expect(setFields.totalEarnings).toBe(userDetails.totalEarnings + result.totalPotatoReward);
     });
 
-    test('weekly stat reward is written to both the effective field and sweetPotatoBuffs, without changing the base', async () => {
+    test('weekly stat reward is an atomic ADD to both the raw stat and its sweetPotatoBuffs counterpart, without changing the base', async () => {
         // regradeAmount 250 of 500 -> halfway between min (0.2) and max (1.0) -> 0.6
         const userDetails = baseUser({
             workCount: 25, workMultiplierAmount: 2,
@@ -102,15 +102,17 @@ describe('checkAndClaimQuests', () => {
         });
         await questFactory.checkAndClaimQuests(userDetails, baseUser({ workCount: 0 }));
 
-        const [, setFields] = dynamoHandler.updateUserFields.mock.calls[0];
+        // Atomic increments (2026-10-11, base-drift refactor — see statWriteFactory.js): the same
+        // 0.6 is ADDed to both fields in one call, never an absolute SET from the snapshot.
+        const [, setFields, addFields] = dynamoHandler.updateUserFields.mock.calls[0];
         const rewardAmount = 0.6;
-        expect(setFields.workMultiplierAmount).toBeCloseTo(2 + rewardAmount);
-        expect(setFields.sweetPotatoBuffs.workMultiplierAmount).toBeCloseTo(0.3 + rewardAmount);
+        expect(addFields.workMultiplierAmount).toBeCloseTo(rewardAmount);
+        expect(addFields['sweetPotatoBuffs.workMultiplierAmount']).toBeCloseTo(rewardAmount);
+        expect(setFields).not.toHaveProperty('workMultiplierAmount');
+        expect(setFields).not.toHaveProperty('sweetPotatoBuffs');
 
-        // base (effective - buffs) is unchanged by the reward — only the buff share grew
-        const baseBefore = 2 - 0.3;
-        const baseAfter = setFields.workMultiplierAmount - setFields.sweetPotatoBuffs.workMultiplierAmount;
-        expect(baseAfter).toBeCloseTo(baseBefore);
+        // base (effective - buffs) is unchanged by the reward — both sides grew by the same amount
+        expect(addFields.workMultiplierAmount - addFields['sweetPotatoBuffs.workMultiplierAmount']).toBeCloseTo(0);
     });
 
     test('weekly stat reward ramps from min at zero regrade progress to max once that stat is fully regraded, and never exceeds max', async () => {

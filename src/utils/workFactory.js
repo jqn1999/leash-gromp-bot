@@ -6,6 +6,7 @@ const rebirthFactory = require("../utils/rebirthFactory");
 const guildBuffFactory = require("../utils/guildBuffFactory");
 const mercenaryBuffFactory = require("../utils/mercenaryBuffFactory");
 const { WORK_SCENARIO_INDICES } = require("../utils/eventFactory");
+const { statGrantAdds, regradeSuccessWrites, mergeAdds } = require("../utils/statWriteFactory");
 
 // Prospector's specialEncounterMultiplierBonus perk (see constants.js) widens SEVERAL
 // non-contiguous scenarios' own slice of work.js's cumulative roll table — Poison, Large,
@@ -336,24 +337,21 @@ class WorkFactory {
         rawBankRewardAmount = userBankCapacity * metalPotatoRewards.bankCapacityReward;
         actualBankRewardAmount = Math.floor(calculateBankCapacityAmount(userBankCapacity, rawBankRewardAmount, metalPotatoRewards.maxBankCapacityGain));
 
-        userMultiplier += workMultiplierGrant;
-        userPassiveAmount += actualPassiveRewardAmount;
-        userBankCapacity += actualBankRewardAmount;
-
-        let sweetPotatoBuffs = userDetails.sweetPotatoBuffs;
-        sweetPotatoBuffs.workMultiplierAmount += workMultiplierGrant;
-        sweetPotatoBuffs.passiveAmount += actualPassiveRewardAmount;
-        sweetPotatoBuffs.bankCapacity += actualBankRewardAmount;
-
+        // Atomic increments (2026-10-11, base-drift refactor — see statWriteFactory.js): raw +
+        // sweetPotatoBuffs ADD together instead of an absolute raw SET plus the whole stale
+        // sweetPotatoBuffs object. This handler no longer mutates userDetails' stat fields or
+        // sweetPotatoBuffs itself — whichever caller persists the delta (work.js's chain loop,
+        // makeAction, festivalFactory's voucher redemption) mirrors it onto userDetails the
+        // same way it mirrors every other delta.
         const setFields = {
             potatoes: userPotatoes,
             totalEarnings: userTotalEarnings,
-            workMultiplierAmount: userMultiplier,
-            passiveAmount: userPassiveAmount,
-            bankCapacity: userBankCapacity,
-            sweetPotatoBuffs: sweetPotatoBuffs,
         };
-        const addFields = {};
+        const addFields = mergeAdds(
+            statGrantAdds('workMultiplierAmount', workMultiplierGrant),
+            statGrantAdds('passiveAmount', actualPassiveRewardAmount),
+            statGrantAdds('bankCapacity', actualBankRewardAmount)
+        );
 
         if (trackProgress) {
             let workScenarioCounts = userDetails.workScenarioCounts;
@@ -391,40 +389,31 @@ class WorkFactory {
 
     // trackProgress — see handleMetalPotato's own comment on this option immediately above.
     async handleSweetPotato(userDetails, { trackProgress = true, cachedSkipSources = null } = {}) {
-        let userMultiplier = userDetails.workMultiplierAmount;
         let userPassiveAmount = userDetails.passiveAmount;
         let userBankCapacity = userDetails.bankCapacity;
-        let sweetPotatoBuffs = userDetails.sweetPotatoBuffs;
 
         let random = Math.floor(Math.random() * sweetPotatoRewards.length);
         const reward = sweetPotatoRewards[random];
         let rawRewardAmount, actualRewardAmount;
-        const setAttributes = {};
         switch (reward.type) {
             case "workMultiplierAmount":
                 actualRewardAmount = reward.amount;
-                sweetPotatoBuffs.workMultiplierAmount += actualRewardAmount;
-                userMultiplier += actualRewardAmount;
-                setAttributes.workMultiplierAmount = userMultiplier;
                 break;
             case "passiveAmount":
                 rawRewardAmount = userPassiveAmount * reward.amount;
                 actualRewardAmount = calculatePassiveAmount(userPassiveAmount, rawRewardAmount, reward.maxGainSweetPotato);
-                sweetPotatoBuffs.passiveAmount += actualRewardAmount;
-                userPassiveAmount += actualRewardAmount;
-                setAttributes.passiveAmount = userPassiveAmount;
                 break;
             case "bankCapacity":
                 rawRewardAmount = userBankCapacity * reward.amount;
                 actualRewardAmount = calculateBankCapacityAmount(userBankCapacity, rawRewardAmount, reward.maxGainSweetPotato);
-                sweetPotatoBuffs.bankCapacity += actualRewardAmount;
-                userBankCapacity += actualRewardAmount;
-                setAttributes.bankCapacity = userBankCapacity;
                 break;
         }
 
-        const setFields = { ...setAttributes, sweetPotatoBuffs: sweetPotatoBuffs };
-        const addFields = {};
+        // Atomic increments (2026-10-11, base-drift refactor — see statWriteFactory.js): raw +
+        // sweetPotatoBuffs ADD together; see handleMetalPotato's own comment for why this
+        // handler no longer mutates userDetails' stat fields itself.
+        const setFields = {};
+        const addFields = statGrantAdds(reward.type, actualRewardAmount);
 
         if (trackProgress) {
             let workScenarioCounts = userDetails.workScenarioCounts;
@@ -564,7 +553,6 @@ class WorkFactory {
         let userPotatoes = userDetails.potatoes;
         let userTotalEarnings = userDetails.totalEarnings;
         const regrades = userDetails.regrades;
-        let sweetPotatoBuffs = userDetails.sweetPotatoBuffs;
 
         // guildRaidTimerGuildId (new, 2026-10-03 /work chain write-count rewrite) — this
         // used to fire its own dynamoHandler.updateGuildDatabase write immediately, right
@@ -608,7 +596,12 @@ class WorkFactory {
         let regradeIncrease = 0;
         let shopUpgradedStatName = null;
         let shopUpgradeIncrease = 0;
-        const updateFields = {};
+        // Atomic increments (2026-10-11, base-drift refactor — see statWriteFactory.js): the
+        // regrade step ADDs to raw + regradeAmount together, the shop step ADDs just the tier
+        // gap to raw — neither writes an absolute raw or whole regrades/sweetPotatoBuffs
+        // object from this chain's start-of-command snapshot anymore.
+        let statAdds = {};
+        let statSets = {};
 
         // Removed 2026-10-04 (direct instruction) — Ancient Potato's flat chance of
         // pre-empting an eligible stat-bump branch with a straight potato payout instead
@@ -628,9 +621,9 @@ class WorkFactory {
             regradeIncrease = currentTier.increase;
             regradedStatName = track.label;
 
-            regrades[track.regradeKey].regradeAmount += regradeIncrease;
-            regrades[track.regradeKey].failStack = 0;
-            updateFields[track.statField] = userDetails[track.statField] + regradeIncrease;
+            const writes = regradeSuccessWrites(track.statField, regradeIncrease);
+            statAdds = writes.adds;
+            statSets = writes.sets;
         } else if (shopEligibleTracks.length > 0) {
             // Not shop-maxed on anything yet — grant the next shop tier for free instead
             // of a regrade step nothing here is actually eligible for. Mirrors buy.js's
@@ -651,7 +644,7 @@ class WorkFactory {
                 shopUpgradeIncrease = nextTier.amount - trackBaseValues[track.regradeKey];
                 shopUpgradedStatName = track.label;
 
-                updateFields[track.statField] = nextTier.amount + userDetails.sweetPotatoBuffs[track.statField] + regrades[track.regradeKey].regradeAmount;
+                statAdds = { [track.statField]: shopUpgradeIncrease };
             }
         } else {
             // Reached only once every track is already maxed — nothing left to
@@ -686,14 +679,12 @@ class WorkFactory {
             setFields: {
                 potatoes: userPotatoes,
                 totalEarnings: userTotalEarnings,
-                regrades: regrades,
-                sweetPotatoBuffs: sweetPotatoBuffs,
                 workScenarioCounts: workScenarioCounts,
                 workTimer: workTimer,
                 bountyTimer: resetsBountyCooldown ? 0 : userDetails.bountyTimer,
-                ...updateFields
+                ...statSets
             },
-            addFields: { workCount: 1 },
+            addFields: { workCount: 1, ...statAdds },
             houseTax,
             guildRaidTimerGuildId,
         };

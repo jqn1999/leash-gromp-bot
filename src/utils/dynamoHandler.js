@@ -19,6 +19,29 @@ function isPlainObject(value) {
 // Builds a DynamoDB UpdateExpression covering multiple SET/ADD attributes in one call,
 // so callers can persist a whole scenario's worth of field changes in a single round trip
 // instead of one UpdateItem call per attribute.
+//
+// A key containing "." is a nested document path ("sweetPotatoBuffs.passiveAmount",
+// "regrades.workMulti.regradeAmount"), expanded into one name placeholder per segment so
+// DynamoDB atomically ADDs/SETs just that leaf (2026-10-11, base-drift refactor — see
+// statWriteFactory.js). This is what lets a stat grant bump raw + sweetPotatoBuffs +
+// regrades as commutative increments instead of overwriting whole objects from a stale
+// snapshot. No pre-existing caller passes a dotted key (every earlier key is a flat
+// top-level attribute name), so this changes nothing for them. Two paths in ONE expression
+// must not overlap (DynamoDB rejects e.g. SET sweetPotatoBuffs together with ADD
+// sweetPotatoBuffs.x) — callers pick one style per object per call.
+function pathPlaceholders(key, prefix, i, names) {
+    if (!key.includes('.')) {
+        const nameKey = `#${prefix}${i}`;
+        names[nameKey] = key;
+        return nameKey;
+    }
+    return key.split('.').map((segment, j) => {
+        const nameKey = `#${prefix}${i}_${j}`;
+        names[nameKey] = segment;
+        return nameKey;
+    }).join('.');
+}
+
 function buildUpdateExpression(setAttributes = {}, addAttributes = {}) {
     const names = {};
     const values = {};
@@ -26,19 +49,15 @@ function buildUpdateExpression(setAttributes = {}, addAttributes = {}) {
     const addClauses = [];
 
     Object.keys(setAttributes).forEach((key, i) => {
-        const nameKey = `#s${i}`;
         const valueKey = `:s${i}`;
-        names[nameKey] = key;
         values[valueKey] = setAttributes[key];
-        setClauses.push(`${nameKey} = ${valueKey}`);
+        setClauses.push(`${pathPlaceholders(key, 's', i, names)} = ${valueKey}`);
     });
 
     Object.keys(addAttributes).forEach((key, i) => {
-        const nameKey = `#a${i}`;
         const valueKey = `:a${i}`;
-        names[nameKey] = key;
         values[valueKey] = addAttributes[key];
-        addClauses.push(`${nameKey} ${valueKey}`);
+        addClauses.push(`${pathPlaceholders(key, 'a', i, names)} ${valueKey}`);
     });
 
     let expression = '';
@@ -115,6 +134,51 @@ const updateUserDatabase = async function (userId, attributeName, attributeValue
 // Combines any number of SET/ADD attribute writes on one user into a single UpdateItem
 // call. Use this instead of chaining several updateUserDatabase/addUserDatabase calls
 // when a single game action (e.g. one /work resolution) needs to persist several fields.
+// Applies healBaseDrift's correction as a CONDITIONAL per-stat SET of just
+// sweetPotatoBuffs.<stat> (2026-10-11, base-drift refactor — see statWriteFactory.js), guarded
+// on the raw stat, sweetPotatoBuffs.<stat> and regradeAmount still being exactly what the
+// drift was computed from. The old write replaced the whole sweetPotatoBuffs object from the
+// findUser snapshot, so a grant landing between that read and this write had its sweet
+// increment overwritten (raw kept it) — and a naive ADD of the drift instead would
+// double-apply when two commands look the same user up at once and both heal. A failed
+// condition just means something else changed this stat first; the next findUser re-derives
+// the drift fresh, so skipping is always safe. Returns true only if the write landed.
+const healBaseDriftConditionally = async function (userId, user, healedSweetPotatoBuffs, drifts) {
+    const names = { '#sw': 'sweetPotatoBuffs', '#rg': 'regrades' };
+    const values = {};
+    const setClauses = [];
+    const conditions = [];
+    Object.keys(drifts).forEach((statType, i) => {
+        const regradeKey = rebirthFactory.REGRADE_KEY[statType];
+        names[`#st${i}`] = statType;
+        names[`#rk${i}`] = regradeKey;
+        values[`:new${i}`] = healedSweetPotatoBuffs[statType];
+        values[`:oldSweet${i}`] = user.sweetPotatoBuffs[statType];
+        values[`:oldRaw${i}`] = user[statType];
+        values[`:oldRegrade${i}`] = user.regrades[regradeKey].regradeAmount;
+        setClauses.push(`#sw.#st${i} = :new${i}`);
+        conditions.push(`#sw.#st${i} = :oldSweet${i} AND #st${i} = :oldRaw${i} AND #rg.#rk${i}.#ra = :oldRegrade${i}`);
+    });
+    names['#ra'] = 'regradeAmount';
+    const params = {
+        TableName: awsConfigurations.aws_table_name,
+        Key: { userId: userId },
+        UpdateExpression: `set ${setClauses.join(', ')}`,
+        ConditionExpression: conditions.join(' AND '),
+        ExpressionAttributeNames: names,
+        ExpressionAttributeValues: values,
+        ReturnValues: "ALL_NEW",
+    };
+    return docClient.update(params).promise()
+        .then(() => true)
+        .catch(function (err) {
+            if (err.code !== "ConditionalCheckFailedException") {
+                console.debug(`healBaseDriftConditionally error: ${JSON.stringify(err)}`)
+            }
+            return false;
+        });
+}
+
 const updateUserFields = async function (userId, setAttributes = {}, addAttributes = {}) {
     const { expression, names, values } = buildUpdateExpression(setAttributes, addAttributes);
     if (!expression) return;
@@ -954,14 +1018,22 @@ const findUser = async function (userId, username) {
             // the drift into sweetPotatoBuffs (the live total is unchanged either way) the
             // next time this account is looked up, same tolerate-a-failed-write shape as
             // the companion migration right above.
-            const healedSweetPotatoBuffs = rebirthFactory.healBaseDrift(user);
-            if (healedSweetPotatoBuffs) {
-                const healed = await updateUserFields(userId, { sweetPotatoBuffs: healedSweetPotatoBuffs });
+            const drifts = rebirthFactory.computeBaseDrifts(user);
+            if (Object.keys(drifts).length > 0) {
+                const healedSweetPotatoBuffs = rebirthFactory.healBaseDrift(user);
+                const healed = await healBaseDriftConditionally(userId, user, healedSweetPotatoBuffs, drifts);
+                // Logged with full before/after numbers (2026-10-11, base-drift refactor) — this
+                // is the ONLY trace a drift ever leaves once healed (the demotion it causes
+                // erases the evidence), so an admin investigating "my base dropped a tier" can
+                // see exactly which stat, by how much, and when.
+                const detail = Object.entries(drifts)
+                    .map(([stat, d]) => `${stat}: base ${d.base} -> ${d.checkpoint} (+${d.drift} into sweetPotatoBuffs)`)
+                    .join('; ');
                 if (healed) {
-                    console.log(`findUser healed base-vs-shop-tier drift for ${userId}`);
+                    console.log(`findUser healed base-vs-shop-tier drift for ${userId} — ${detail}`);
                     user = { ...user, sweetPotatoBuffs: healedSweetPotatoBuffs };
                 } else {
-                    console.log(`findUser could not heal base-vs-shop-tier drift for ${userId} — leaving unhealed`);
+                    console.log(`findUser did not heal base-vs-shop-tier drift for ${userId} (write failed, or a concurrent write changed the stat first — it will be re-evaluated on the next lookup) — ${detail}`);
                 }
             }
 

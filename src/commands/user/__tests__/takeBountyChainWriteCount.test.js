@@ -182,8 +182,12 @@ describe('/take-bounty (Stat Bounty) chain write-count regression — one write 
         expect(setFields.potatoes).toBe(originalPotatoes - Bounty.STAT_BOUNTY_COST * 3);
         expect(setFields.totalLosses).toBe(originalTotalLosses - Bounty.STAT_BOUNTY_COST * 3);
         expect(addFields.mercenaryBountyWinCount).toBe(2);
-        expect(setFields.workMultiplierAmount).toBeCloseTo(originalWorkMultiplierAmount + Bounty.STAT_BOUNTY_REWARD * 2);
-        expect(setFields.sweetPotatoBuffs.workMultiplierAmount).toBeCloseTo(Bounty.STAT_BOUNTY_REWARD * 2);
+        // The two wins' grants are SUMMED into one atomic ADD pair (raw + sweetPotatoBuffs), not
+        // an absolute SET from the chain-start snapshot (2026-10-11, base-drift refactor).
+        expect(addFields.workMultiplierAmount).toBeCloseTo(Bounty.STAT_BOUNTY_REWARD * 2);
+        expect(addFields['sweetPotatoBuffs.workMultiplierAmount']).toBeCloseTo(Bounty.STAT_BOUNTY_REWARD * 2);
+        expect(setFields).not.toHaveProperty('workMultiplierAmount');
+        expect(setFields).not.toHaveProperty('sweetPotatoBuffs');
 
         expect(interaction.editReply).toHaveBeenCalledTimes(1);
         expect(interaction.followUp.mock.calls.length).toBeGreaterThanOrEqual(2);

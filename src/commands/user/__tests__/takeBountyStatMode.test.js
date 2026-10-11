@@ -120,13 +120,15 @@ describe('/take-bounty mode:stat', () => {
         expect(winCountWrite).toBeDefined();
         expect(winCountWrite[2].mercenaryBountyWinCount).toBe(1);
 
-        // The actual stat grant — reuses raidFactory.handleStatSplit, which re-reads the
-        // user (mocked to the same object) and writes workMultiplierAmount +
-        // sweetPotatoBuffs.workMultiplierAmount together.
-        const statGrantWrite = dynamoHandler.updateUserFields.mock.calls.find(([, setAttrs]) => setAttrs && 'workMultiplierAmount' in setAttrs);
+        // The actual stat grant — an atomic ADD of the same amount to workMultiplierAmount and
+        // sweetPotatoBuffs.workMultiplierAmount together (2026-10-11, base-drift refactor — see
+        // statWriteFactory.js), never an absolute SET from the chain-start snapshot.
+        const statGrantWrite = dynamoHandler.updateUserFields.mock.calls.find(([, , addAttrs]) => addAttrs && 'workMultiplierAmount' in addAttrs);
         expect(statGrantWrite).toBeDefined();
-        expect(statGrantWrite[1].workMultiplierAmount).toBeCloseTo(originalWorkMultiplierAmount + Bounty.STAT_BOUNTY_REWARD);
-        expect(statGrantWrite[1].sweetPotatoBuffs.workMultiplierAmount).toBeCloseTo(Bounty.STAT_BOUNTY_REWARD);
+        expect(statGrantWrite[2].workMultiplierAmount).toBeCloseTo(Bounty.STAT_BOUNTY_REWARD);
+        expect(statGrantWrite[2]['sweetPotatoBuffs.workMultiplierAmount']).toBeCloseTo(Bounty.STAT_BOUNTY_REWARD);
+        expect(statGrantWrite[1]).not.toHaveProperty('workMultiplierAmount');
+        expect(statGrantWrite[1]).not.toHaveProperty('sweetPotatoBuffs');
 
         const resultEmbed = interaction.editReply.mock.calls[interaction.editReply.mock.calls.length - 1][0].embeds[0];
         expect(resultEmbed.data.title).toContain('Stat Bounty');
@@ -300,12 +302,15 @@ describe('/take-bounty mode:stat', () => {
         expect(addFields.mercenaryBountyWinCount).toBe(1);
 
         // All three permanent stat grants, doubled — not just workMultiplierAmount.
-        expect(setFields.workMultiplierAmount).toBeCloseTo(originalWorkMultiplierAmount + 4.0);
-        expect(setFields.passiveAmount).toBe(originalPassiveAmount + 2000000);
-        expect(setFields.bankCapacity).toBe(originalBankCapacity + 20000000);
-        expect(setFields.sweetPotatoBuffs.workMultiplierAmount).toBeCloseTo(4.0);
-        expect(setFields.sweetPotatoBuffs.passiveAmount).toBe(2000000);
-        expect(setFields.sweetPotatoBuffs.bankCapacity).toBe(20000000);
+        // Atomic ADDs of the same amount to each raw stat and its sweetPotatoBuffs counterpart.
+        expect(addFields.workMultiplierAmount).toBeCloseTo(4.0);
+        expect(addFields.passiveAmount).toBe(2000000);
+        expect(addFields.bankCapacity).toBe(20000000);
+        expect(addFields['sweetPotatoBuffs.workMultiplierAmount']).toBeCloseTo(4.0);
+        expect(addFields['sweetPotatoBuffs.passiveAmount']).toBe(2000000);
+        expect(addFields['sweetPotatoBuffs.bankCapacity']).toBe(20000000);
+        expect(setFields).not.toHaveProperty('workMultiplierAmount');
+        expect(setFields).not.toHaveProperty('sweetPotatoBuffs');
 
         const resultEmbed = interaction.editReply.mock.calls[0][0].embeds[0];
         expect(resultEmbed.data.title).toContain('Metal Potato Medley');

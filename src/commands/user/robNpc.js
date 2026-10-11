@@ -13,6 +13,7 @@ const embedFactory = new EmbedFactory();
 const achievementFactory = new AchievementFactory();
 const questFactory = new QuestFactory();
 const bigEventsChannel = require("../../utils/bigEventsChannel");
+const { statGrantAdds, mergeAdds, applyAddsInMemory } = require("../../utils/statWriteFactory");
 
 // isChainedReply distinguishes the original /rob-npc invocation (edits the deferred reply)
 // from an auto-chained extra attempt triggered by a cooldown skip — a chained result is
@@ -41,17 +42,17 @@ async function sendNpcRobResult(interaction, embed, isChainedReply = false) {
 // see runNpcRobAttempt's own top-of-chain comment). Mirrored (not shared) from
 // takeBounty.js's own identical copy — same "mirrored, not shared" convention this
 // codebase's other small cross-file-duplicated pure helpers already use.
-function applyStatRewardGrant(userDetails, grant) {
-    if (grant.type === 'workMultiplierAmount') {
-        userDetails.workMultiplierAmount += grant.amount;
-        userDetails.sweetPotatoBuffs.workMultiplierAmount += grant.amount;
-    } else if (grant.type === 'passiveAmount') {
-        userDetails.passiveAmount += grant.amount;
-        userDetails.sweetPotatoBuffs.passiveAmount += grant.amount;
-    } else if (grant.type === 'bankCapacity') {
-        userDetails.bankCapacity += grant.amount;
-        userDetails.sweetPotatoBuffs.bankCapacity += grant.amount;
+function applyStatRewardGrant(userDetails, grant, aggregatedAddFields) {
+    if (grant.type !== 'workMultiplierAmount' && grant.type !== 'passiveAmount' && grant.type !== 'bankCapacity') {
+        return;
     }
+    // Atomic increments (2026-10-11, base-drift refactor — see statWriteFactory.js): the
+    // chain's one end-of-chain write ADDs raw + sweetPotatoBuffs together instead of SETting
+    // absolute values from the chain-start snapshot, so a /regrade landing mid-chain can't be
+    // overwritten. The in-memory mirror below stays identical to the DB write's own result.
+    const adds = statGrantAdds(grant.type, grant.amount);
+    applyAddsInMemory(userDetails, adds);
+    Object.assign(aggregatedAddFields, mergeAdds(aggregatedAddFields, adds));
 }
 
 // A solo-only heist attempt against a fictional target — no real player involved, no
@@ -263,12 +264,8 @@ async function resolveNpcRobChain(interaction, userId, username, userDisplayName
             // raidFactory.handleStatSplit's own separate find+write.
             if (result.won && result.statReward) {
                 for (const grant of result.statReward) {
-                    applyStatRewardGrant(userDetails, grant);
+                    applyStatRewardGrant(userDetails, grant, aggregatedAddFields);
                 }
-                aggregatedSetFields.workMultiplierAmount = userDetails.workMultiplierAmount;
-                aggregatedSetFields.passiveAmount = userDetails.passiveAmount;
-                aggregatedSetFields.bankCapacity = userDetails.bankCapacity;
-                aggregatedSetFields.sweetPotatoBuffs = userDetails.sweetPotatoBuffs;
             }
 
             const embed = embedFactory.createRobNpcResultEmbed(userDisplayName, result, tier, companionXpGained, companionName, cooldownSkipSource, missedSkipChance, updatedNotoriety);

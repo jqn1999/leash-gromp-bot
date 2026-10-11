@@ -319,6 +319,9 @@ async function attemptPurchaseFestivalSlot(userId, username, itemId) {
 
     let voucherResult = null;
     let voucherHouseTax = 0;
+    // Atomic stat increments (2026-10-11, base-drift refactor — see statWriteFactory.js): a
+    // Sweet/Metal voucher's stat grant is an ADD delta now, folded into this same single write.
+    let voucherAddFields = {};
     if (item.itemType === "cosmetic") {
         const owned = freshUserDetails.festivalCosmetics || [];
         if (!owned.includes(item.cosmeticId)) {
@@ -337,11 +340,12 @@ async function attemptPurchaseFestivalSlot(userId, username, itemId) {
         const voucherDelta = freshUserDetails._workChainDelta;
         if (voucherDelta) {
             Object.assign(setFields, voucherDelta.setFields || {});
+            voucherAddFields = voucherDelta.addFields || {};
             voucherHouseTax = voucherDelta.houseTax || 0;
         }
     }
 
-    await dynamoHandler.updateUserFields(userId, setFields);
+    await dynamoHandler.updateUserFields(userId, setFields, voucherAddFields);
     if (voucherHouseTax > 0) {
         await dynamoHandler.addUserDatabase(awsConfigurations.clientId, 'potatoes', voucherHouseTax);
     }

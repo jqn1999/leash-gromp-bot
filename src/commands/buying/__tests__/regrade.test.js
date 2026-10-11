@@ -165,16 +165,21 @@ describe('atomic write (2026-09-26 fix — regrades/stat/companions/potatoes in 
         expect(dynamoHandler.updateUserFields).toHaveBeenCalledTimes(1);
         const [userId, setFields, addFields] = dynamoHandler.updateUserFields.mock.calls[0];
         expect(userId).toBe('user-1');
-        expect(setFields.regrades.workMulti.regradeAmount).toBe(TIER.increase);
-        expect(setFields.workMultiplierAmount).toBe(REQUIRED_WORK_BASE + TIER.increase);
-        expect(setFields).toHaveProperty('companions');
-        expect(addFields).toEqual({ potatoes: -TIER.cost });
+        // Atomic increments (2026-10-11, base-drift refactor — see statWriteFactory.js): raw stat
+        // and regradeAmount move together as ADDs of the same increase, never absolute values.
+        expect(addFields).toEqual({
+            potatoes: -TIER.cost,
+            workMultiplierAmount: TIER.increase,
+            'regrades.workMulti.regradeAmount': TIER.increase,
+        });
+        expect(setFields).toEqual({ companions: expect.anything(), 'regrades.workMulti.failStack': 0 });
+        expect(setFields).not.toHaveProperty('regrades');
 
         expect(dynamoHandler.updateUserDatabase).not.toHaveBeenCalled();
         expect(dynamoHandler.addUserDatabase).not.toHaveBeenCalled();
     });
 
-    test('a failure also writes everything in exactly one call, with no stat-field key at all', async () => {
+    test('a failure also writes everything in exactly one call, with no stat-field or regradeAmount key at all', async () => {
         dynamoHandler.findUser.mockResolvedValue(baseUser({ owned: [], active: null }));
         const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.999999); // guarantees failure
         try {
@@ -185,11 +190,15 @@ describe('atomic write (2026-09-26 fix — regrades/stat/companions/potatoes in 
 
         expect(dynamoHandler.updateUserFields).toHaveBeenCalledTimes(1);
         const [, setFields, addFields] = dynamoHandler.updateUserFields.mock.calls[0];
-        expect(setFields.regrades.workMulti.regradeAmount).toBe(0);
-        expect(setFields.regrades.workMulti.failStack).toBeGreaterThan(0);
-        // The stat field is never included in setFields on a fail — nothing to desync.
-        expect(setFields).not.toHaveProperty('workMultiplierAmount');
-        expect(addFields).toEqual({ potatoes: -TIER.cost });
+        // A failure only ADDs to failStack — the stat field and regradeAmount aren't touched at
+        // all, and nothing is written as a whole `regrades` object.
+        expect(setFields).toEqual({ companions: expect.anything() });
+        expect(addFields).toEqual({
+            potatoes: -TIER.cost,
+            'regrades.workMulti.failStack': expect.any(Number),
+        });
+        expect(addFields['regrades.workMulti.failStack']).toBeGreaterThan(0);
+        expect(addFields).not.toHaveProperty('workMultiplierAmount');
 
         expect(dynamoHandler.updateUserDatabase).not.toHaveBeenCalled();
         expect(dynamoHandler.addUserDatabase).not.toHaveBeenCalled();
@@ -238,7 +247,7 @@ describe('confirm-preview step (direct instruction: show an embed with buttons f
         expect(firstEditReplyCall.components).toHaveLength(1);
         // confirmed -> actually spent (the cost is now an atomic ADD inside the same
         // updateUserFields call as the regrade write, not a separate addUserDatabase call).
-        expect(dynamoHandler.updateUserFields).toHaveBeenCalledWith('user-1', expect.anything(), { potatoes: -TIER.cost });
+        expect(dynamoHandler.updateUserFields).toHaveBeenCalledWith('user-1', expect.anything(), expect.objectContaining({ potatoes: -TIER.cost }));
         previewSpy.mockRestore();
     });
 

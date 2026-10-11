@@ -3,6 +3,7 @@ const { getUserInteractionDetails, requireUserDetails, buildConfirmCancelRow, bu
 const { shops, workRegradeTiers, passiveRegradeTiers, bankRegradeTiers, REGRADE_CAPS } = require("../../utils/constants");
 const dynamoHandler = require("../../utils/dynamoHandler");
 const companionFactory = require("../../utils/companionFactory");
+const { regradeSuccessWrites, regradeFailAdds } = require("../../utils/statWriteFactory");
 const { EmbedFactory } = require("../../utils/embedFactory");
 const embedFactory = new EmbedFactory();
 
@@ -137,22 +138,32 @@ async function executeRegrade(userId, userDetails, config, currentTier, chanceOf
     const companionXpGained = companionFactory.getAppliedCompanionXpGain(userDetails.companions, leveledCompanions);
     const companionName = companionFactory.getActiveCompanion(userDetails)?.name || null;
 
+    // Atomic increments (2026-10-11, base-drift refactor — see statWriteFactory.js): a success
+    // ADDs the same increase to the raw stat and regradeAmount (and resets failStack via its
+    // own leaf-path SET), a failure ADDs to failStack — never an absolute raw or whole
+    // `regrades` object from the snapshot read at the top of this command. That absolute write
+    // is what let a concurrent stat grant's raw increment get overwritten while its
+    // sweetPotatoBuffs increment survived, leaving base short of its shop tier.
     const userRegrades = userDetails.regrades;
-    const setFields = { companions: leveledCompanions, regrades: userRegrades };
+    const setFields = { companions: leveledCompanions };
+    const addFields = { potatoes: -currentTier.cost };
 
     let newAmount = userDetails[config.statField];
     let increase = 0;
     if (Math.random() < chanceOfSuccess) {
         increase = currentTier.increase;
+        const writes = regradeSuccessWrites(config.statField, increase);
+        Object.assign(addFields, writes.adds);
+        Object.assign(setFields, writes.sets);
         userRegrades[config.regradeKey].regradeAmount += increase;
         userRegrades[config.regradeKey].failStack = 0;
         newAmount = userDetails[config.statField] + increase;
-        setFields[config.statField] = newAmount;
     } else {
+        Object.assign(addFields, regradeFailAdds(config.statField, currentTier.failStackIncrease));
         userRegrades[config.regradeKey].failStack += currentTier.failStackIncrease;
     }
 
-    await dynamoHandler.updateUserFields(userId, setFields, { potatoes: -currentTier.cost });
+    await dynamoHandler.updateUserFields(userId, setFields, addFields);
 
     // Checked against the POST-increase regradeAmount (userRegrades was mutated in place
     // above on success) — a failed attempt leaves increase at 0, so this is always false

@@ -665,12 +665,19 @@ describe('handlePoisonPotato', () => {
 });
 
 describe('handleMetalPotato', () => {
-    test('grants a permanent work-multiplier buff reflected in both the effective field and sweetPotatoBuffs', async () => {
+    test('grants a permanent work-multiplier buff as an atomic ADD to both the raw stat and its sweetPotatoBuffs counterpart', async () => {
         const userDetails = baseUser({ workMultiplierAmount: 2, sweetPotatoBuffs: { workMultiplierAmount: 0.4, passiveAmount: 0, bankCapacity: 0 } });
         await workFactory.handleMetalPotato(userDetails, 1000, 1, 0);
-        const { setFields } = userDetails._workChainDelta;
-        expect(setFields.workMultiplierAmount).toBeCloseTo(2.6);
-        expect(setFields.sweetPotatoBuffs.workMultiplierAmount).toBeCloseTo(1.0);
+        // Atomic increments (2026-10-11, base-drift refactor — see statWriteFactory.js): the
+        // delta carries ADDs of the same grant to both fields, never an absolute raw SET or a
+        // whole sweetPotatoBuffs object, and the handler no longer mutates userDetails itself.
+        const { setFields, addFields } = userDetails._workChainDelta;
+        expect(addFields.workMultiplierAmount).toBeCloseTo(0.6);
+        expect(addFields['sweetPotatoBuffs.workMultiplierAmount']).toBeCloseTo(0.6);
+        expect(setFields).not.toHaveProperty('workMultiplierAmount');
+        expect(setFields).not.toHaveProperty('sweetPotatoBuffs');
+        expect(userDetails.workMultiplierAmount).toBe(2);
+        expect(userDetails.sweetPotatoBuffs.workMultiplierAmount).toBe(0.4);
     });
 
     test('increments workScenarioCounts.metalSuccess', async () => {
@@ -743,7 +750,7 @@ describe('handleSweetPotato', () => {
         expect(result.statGrant).toEqual([{ type: 'bankCapacity', amount: 150000 }]);
     });
 
-    test('persists the granted amount into sweetPotatoBuffs and the live stat field', async () => {
+    test('persists the granted amount as an atomic ADD to both the raw stat and its sweetPotatoBuffs counterpart', async () => {
         const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0);
         const userDetails = baseUser({ workMultiplierAmount: 1 });
         try {
@@ -751,9 +758,11 @@ describe('handleSweetPotato', () => {
         } finally {
             randomSpy.mockRestore();
         }
-        const { setFields } = userDetails._workChainDelta;
-        expect(setFields.workMultiplierAmount).toBeCloseTo(1.2);
-        expect(setFields.sweetPotatoBuffs.workMultiplierAmount).toBeCloseTo(0.2);
+        const { setFields, addFields } = userDetails._workChainDelta;
+        expect(addFields.workMultiplierAmount).toBeCloseTo(0.2);
+        expect(addFields['sweetPotatoBuffs.workMultiplierAmount']).toBeCloseTo(0.2);
+        expect(setFields).not.toHaveProperty('workMultiplierAmount');
+        expect(setFields).not.toHaveProperty('sweetPotatoBuffs');
     });
 });
 
@@ -1037,16 +1046,19 @@ describe('handleAncientPotato', () => {
         expect(result.shopUpgradedStatName).toBeNull();
         expect(result.potatoesGained).toBe(0);
 
-        const { setFields } = userDetails._workChainDelta;
-        expect(setFields.workMultiplierAmount).toBe(SHOP_MAX.workMulti + 10);
-        // Real regrade progress DOES advance now — the whole point of this restore — and
-        // failStack resets to 0, same as a genuine paid success.
-        expect(setFields.regrades.workMulti).toEqual({ regradeAmount: 10, failStack: 0 });
-        // sweetPotatoBuffs is untouched by this branch — this is real regrade progress,
-        // not a bonus layered alongside it.
-        expect(setFields.sweetPotatoBuffs.workMultiplierAmount).toBe(0);
-        // Untouched tracks must survive exactly as they were, not get reset.
-        expect(setFields.regrades.passiveAmount.regradeAmount).toBe(REGRADE_CAPS.passiveAmount);
+        // Atomic increments (2026-10-11, base-drift refactor — see statWriteFactory.js): real
+        // regrade progress advances as an ADD of the same increase to the raw stat and
+        // regradeAmount (the whole point of the 2026-09-22 restore), failStack resets via its own
+        // leaf-path SET, and nothing is written as an absolute raw or a whole regrades/
+        // sweetPotatoBuffs object — so untouched tracks and sweetPotatoBuffs can't be overwritten.
+        const { setFields, addFields } = userDetails._workChainDelta;
+        expect(addFields.workMultiplierAmount).toBe(10);
+        expect(addFields['regrades.workMulti.regradeAmount']).toBe(10);
+        expect(setFields['regrades.workMulti.failStack']).toBe(0);
+        expect(addFields).not.toHaveProperty('sweetPotatoBuffs.workMultiplierAmount');
+        expect(setFields).not.toHaveProperty('workMultiplierAmount');
+        expect(setFields).not.toHaveProperty('regrades');
+        expect(setFields).not.toHaveProperty('sweetPotatoBuffs');
     });
 
     // Removed 2026-10-04 (direct instruction) — Ancient Potato no longer has a flat
@@ -1076,8 +1088,9 @@ describe('handleAncientPotato', () => {
         expect(result.regradedStatName).toBe('Work Multiplier');
         expect(result.potatoesGained).toBe(0);
 
-        const { setFields } = userDetails._workChainDelta;
-        expect(setFields.regrades.workMulti).toEqual({ regradeAmount: 10, failStack: 0 });
+        const { setFields, addFields } = userDetails._workChainDelta;
+        expect(addFields['regrades.workMulti.regradeAmount']).toBe(10);
+        expect(setFields['regrades.workMulti.failStack']).toBe(0);
     });
 
     // Regression: a track with regradeAmount < REGRADE_CAPS used to be treated as
@@ -1118,11 +1131,14 @@ describe('handleAncientPotato', () => {
         expect(result.shopUpgradeIncrease).toBeGreaterThan(0);
         expect(result.potatoesGained).toBe(0);
 
-        const { setFields } = userDetails._workChainDelta;
-        // No regrade write at all — this branch never touches userDetails.regrades'
-        // contents even though the (unchanged) regrades object is still part of the
-        // write payload.
-        expect(setFields.regrades).toEqual(userDetails.regrades);
+        const { setFields, addFields } = userDetails._workChainDelta;
+        // No regrade write at all, and no whole-object regrades/sweetPotatoBuffs in the payload —
+        // just an ADD of the tier gap to ONE raw stat (2026-10-11, base-drift refactor).
+        expect(Object.keys(setFields).some(k => k.startsWith('regrades'))).toBe(false);
+        expect(Object.keys(addFields).some(k => k.startsWith('regrades') || k.startsWith('sweetPotatoBuffs'))).toBe(false);
+        const statKeys = Object.keys(addFields).filter(k => k !== 'workCount');
+        expect(statKeys).toHaveLength(1);
+        expect(addFields[statKeys[0]]).toBe(result.shopUpgradeIncrease);
     });
 
     test('a mid-shop track (base value not on any tier boundary) is still correctly excluded from regrade', async () => {

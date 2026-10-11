@@ -14,6 +14,7 @@ const { ensureGuildChatCategory, addChatChannelIndexEntry, removeChatChannelInde
 const festivalFactory = require("../../utils/festivalFactory");
 const bigEventsChannel = require("../../utils/bigEventsChannel.js");
 const tC = require("../../utils/towerConstants.js");
+const { statGrantAdds } = require("../../utils/statWriteFactory.js");
 
 const embedFactory = new EmbedFactory();
 const achievementFactory = new AchievementFactory();
@@ -153,23 +154,21 @@ async function runResetTower(client, interaction) {
             }
 
             // Reverses exactly what processRewardPayouts credited: atomic ADD of the negative
-            // delta for the four raw numeric stats (race-safe regardless of anything else that
-            // touched them meanwhile), and a plain re-fetch-then-SET for sweetPotatoBuffs (a
-            // nested object, not a flat numeric attribute DynamoDB can ADD into directly) —
-            // batched into ONE updateUserFields call, same atomicity principle as the Tower
-            // reward-credit fix this mirrors, just for the reversal direction instead.
-            const sweetPotatoBuffs = freshUserDetails.sweetPotatoBuffs;
-            sweetPotatoBuffs.workMultiplierAmount -= entry.workMultiplier || 0;
-            sweetPotatoBuffs.passiveAmount -= entry.passiveIncome || 0;
-            sweetPotatoBuffs.bankCapacity -= entry.bankCapacity || 0;
-
-            await dynamoHandler.updateUserFields(targetUserId, { sweetPotatoBuffs }, {
+            // delta for every field it credited — the raw stat AND its sweetPotatoBuffs
+            // counterpart now both move as ADDs on their own nested path (2026-10-11,
+            // base-drift refactor, see statWriteFactory.js), where this used to ADD the raw stat
+            // but SET the whole sweetPotatoBuffs object from a re-fetch. Batched into ONE
+            // updateUserFields call, same atomicity principle as the Tower reward-credit fix
+            // this mirrors, just for the reversal direction instead.
+            const reversalAdds = {
                 potatoes: -(entry.potatoes || 0),
                 totalEarnings: -(entry.potatoes || 0),
-                workMultiplierAmount: -(entry.workMultiplier || 0),
-                passiveAmount: -(entry.passiveIncome || 0),
-                bankCapacity: -(entry.bankCapacity || 0),
-            });
+            };
+            if (entry.workMultiplier) Object.assign(reversalAdds, statGrantAdds('workMultiplierAmount', -entry.workMultiplier));
+            if (entry.passiveIncome) Object.assign(reversalAdds, statGrantAdds('passiveAmount', -entry.passiveIncome));
+            if (entry.bankCapacity) Object.assign(reversalAdds, statGrantAdds('bankCapacity', -entry.bankCapacity));
+
+            await dynamoHandler.updateUserFields(targetUserId, {}, reversalAdds);
 
             wipeMessage = ` Reverted their floor ${entry.floor} run: ${(entry.potatoes || 0).toLocaleString()} potatoes, `
                 + `${(entry.workMultiplier || 0).toFixed(2)}x work multiplier, ${(entry.passiveIncome || 0).toLocaleString()} passive income, `

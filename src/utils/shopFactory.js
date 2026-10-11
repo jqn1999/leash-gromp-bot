@@ -78,24 +78,34 @@ function formatShopValue(shopId, value) {
     return formatter ? formatter(value) : `${value}`;
 }
 
-// Each shop writes to a different userDetails field, and (except starchShop) has to add the
-// purchased tier back on top of whatever sweetPotatoBuffs/regrades bonus the player already
-// has, since getUserBaseShopValue subtracted those back out to find the tier in the first
-// place.
+// Each shop writes to a different userDetails field. For the three coupled stats
+// (work multiplier / passive income / bank capacity) a purchase is an ATOMIC ADD of just the
+// tier gap — `item.amount` minus the player's current exact (unrounded) base — to the raw
+// stat (2026-10-11, base-drift refactor, see statWriteFactory.js). It used to SET the raw
+// total to `item.amount + sweetPotatoBuffs + regradeAmount` computed from a snapshot, which
+// silently overwrote any grant/regrade that landed since the read (raw lost the increment
+// while sweetPotatoBuffs/regradeAmount kept it), leaving base short of its real shop tier.
+// Adding the gap lands base exactly on `item.amount` (the same end state as before, including
+// absorbing any sub-tolerance float noise) no matter what else changed meanwhile.
+// starchShop has no sweet/regrade component, so it keeps its simple absolute SET.
+function exactBase(userDetails, field, regradeKey) {
+    return userDetails[field] - userDetails.sweetPotatoBuffs[field] - userDetails.regrades[regradeKey].regradeAmount;
+}
+
 const SHOP_PURCHASE_HANDLERS = {
     workShop: (userDetails, item) => ({
         field: 'workMultiplierAmount',
-        newValue: item.amount + userDetails.sweetPotatoBuffs.workMultiplierAmount + userDetails.regrades.workMulti.regradeAmount,
+        gap: item.amount - exactBase(userDetails, 'workMultiplierAmount', 'workMulti'),
         label: (value) => `Work multiplier is now ${value.toFixed(2)}x.`,
     }),
     passiveIncomeShop: (userDetails, item) => ({
         field: 'passiveAmount',
-        newValue: item.amount + userDetails.sweetPotatoBuffs.passiveAmount + userDetails.regrades.passiveAmount.regradeAmount,
+        gap: item.amount - exactBase(userDetails, 'passiveAmount', 'passiveAmount'),
         label: (value) => `Passive income is now ${value.toLocaleString()} potatoes per day.`,
     }),
     bankShop: (userDetails, item) => ({
         field: 'bankCapacity',
-        newValue: item.amount + userDetails.sweetPotatoBuffs.bankCapacity + userDetails.regrades.bankCapacity.regradeAmount,
+        gap: item.amount - exactBase(userDetails, 'bankCapacity', 'bankCapacity'),
         label: (value) => `Bank capacity is now ${value.toLocaleString()} potatoes.`,
     }),
     starchShop: (userDetails, item) => ({
@@ -113,10 +123,11 @@ const SHOP_PURCHASE_HANDLERS = {
 // while), so a purchase started stale still lands correctly or fails with a clear reason —
 // same spirit as companionMarketFactory's attemptBuy, but no optimistic-lock/version dance
 // is needed here since a personal shop tier isn't a shared/competitive resource the way a
-// market listing is (only the buyer's own concurrent actions can race it, same low-stakes
-// same-account race this codebase already accepts elsewhere, e.g. companion scavenge
-// collect). Returns a message (no userDisplayName prefix — the caller adds that) rather
-// than replying itself, matching attemptBuy/attemptEquip's shape so it's testable directly.
+// market listing is. Only the buyer's own concurrent actions can race it — and since
+// 2026-10-11 (base-drift refactor, see statWriteFactory.js) the stat gap and the potato cost are
+// atomic ADDs, so a racing grant, regrade or potato credit can no longer be overwritten by this
+// write. Returns a message (no userDisplayName prefix — the caller adds that) rather than
+// replying itself, matching attemptBuy/attemptEquip's shape so it's testable directly.
 async function attemptShopBuy(userId, username, shopId) {
     const shop = shops.find(s => s.shopId === shopId);
     const userDetails = await dynamoHandler.findUser(userId, username);
@@ -135,9 +146,22 @@ async function attemptShopBuy(userId, username, shopId) {
 
     const newPotatoes = userDetails.potatoes - item.cost;
     const purchase = SHOP_PURCHASE_HANDLERS[shopId](userDetails, item);
-    await dynamoHandler.updateUserFields(userId, { potatoes: newPotatoes, [purchase.field]: purchase.newValue });
+    // The cost and the stat gap are both ADDs (potatoes too — an absolute SET of `newPotatoes`
+    // from this snapshot would equally overwrite any potato credit that landed meanwhile).
+    // Only starchShop's own absolute `maxStarches` stays a SET.
+    const setFields = {};
+    const addFields = { potatoes: -item.cost };
+    let newValue;
+    if (purchase.gap !== undefined) {
+        addFields[purchase.field] = purchase.gap;
+        newValue = userDetails[purchase.field] + purchase.gap;
+    } else {
+        setFields[purchase.field] = purchase.newValue;
+        newValue = purchase.newValue;
+    }
+    await dynamoHandler.updateUserFields(userId, setFields, addFields);
 
-    return { ok: true, message: `bought '${item.name}' for ${item.cost.toLocaleString()} potatoes! ${purchase.label(purchase.newValue)} You have ${newPotatoes.toLocaleString()} potatoes left.` };
+    return { ok: true, message: `bought '${item.name}' for ${item.cost.toLocaleString()} potatoes! ${purchase.label(newValue)} You have ${newPotatoes.toLocaleString()} potatoes left.` };
 }
 
 module.exports = {

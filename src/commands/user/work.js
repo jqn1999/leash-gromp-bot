@@ -10,6 +10,7 @@ const { EmbedFactory } = require("../../utils/embedFactory");
 const { WORK_SCENARIO_INDICES } = require("../../utils/eventFactory");
 const bigEventsChannel = require("../../utils/bigEventsChannel");
 const festivalFactory = require("../../utils/festivalFactory");
+const { mergeAdds, applyAddsInMemory, applySetsInMemory } = require("../../utils/statWriteFactory");
 const embedFactory = new EmbedFactory();
 const workFactory = new WorkFactory();
 const achievementFactory = new AchievementFactory();
@@ -351,6 +352,13 @@ async function performWork(interaction, userId, username, userDisplayName, workG
     const work = await dynamoHandler.getStatDatabase('work');
 
     const aggregatedSetFields = {};
+    // Atomic stat increments (2026-10-11, base-drift refactor — see statWriteFactory.js):
+    // every link's ADD deltas (raw stat + sweetPotatoBuffs.<stat> + regrades.<track>.regradeAmount)
+    // are summed here and sent as ADDs in the single end-of-chain write, never as absolute
+    // values from this chain's start-of-command snapshot — that read-to-write window is the
+    // longest in the codebase, which is what made overlapping /regrade or grant writes able to
+    // silently desync base from its shop tier.
+    const aggregatedAddFields = {};
     let aggregatedWorkCount = 0;
     let houseTaxTotal = 0;
     let mimicHoardDelta = 0;
@@ -416,9 +424,11 @@ async function performWork(interaction, userId, username, userDisplayName, workG
 
             if (delta) {
                 Object.assign(aggregatedSetFields, delta.setFields || {});
-                if (delta.addFields?.workCount) {
-                    aggregatedWorkCount += delta.addFields.workCount;
+                const { workCount: linkWorkCount, ...linkStatAdds } = delta.addFields || {};
+                if (linkWorkCount) {
+                    aggregatedWorkCount += linkWorkCount;
                 }
+                Object.assign(aggregatedAddFields, mergeAdds(aggregatedAddFields, linkStatAdds));
                 if (delta.houseTax) {
                     houseTaxTotal += delta.houseTax;
                 }
@@ -432,7 +442,8 @@ async function performWork(interaction, userId, username, userDisplayName, workG
                 // — every later link (and the once-per-chain checks after the loop) needs
                 // to see this link's real result, the same way a fresh re-fetch used to
                 // give the old, per-link-write architecture.
-                Object.assign(userDetails, delta.setFields || {});
+                applySetsInMemory(userDetails, delta.setFields);
+                applyAddsInMemory(userDetails, linkStatAdds);
             }
 
             pendingMessages.push({ embed, isChainedReply: chainDepth > 0 });
@@ -497,7 +508,7 @@ async function performWork(interaction, userId, username, userDisplayName, workG
 
         // The ONE write this entire chain (1 to MAX_COOLDOWN_SKIP_CHAIN_LENGTH + 1 links)
         // produces for this player's own record — the literal target of this rewrite.
-        await dynamoHandler.updateUserFields(userId, aggregatedSetFields, { workCount: aggregatedWorkCount });
+        await dynamoHandler.updateUserFields(userId, aggregatedSetFields, { ...aggregatedAddFields, workCount: aggregatedWorkCount });
         // workCount is an ADD expression, not a value this loop ever folded into
         // aggregatedSetFields/userDetails directly — mirrored onto userDetails here so the
         // once-per-chain achievement/quest/contract checks below see this chain's REAL final

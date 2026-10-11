@@ -239,3 +239,41 @@ describe('/work chain buff-staleness tradeoff — pinned by a test, not just a c
         expect(addFields.workCount).toBe(1);
     });
 });
+
+// Atomic stat increments (2026-10-11, base-drift refactor — see statWriteFactory.js): a chain's
+// stat grants (Sweet/Metal Potato, Ancient Potato regrade/shop steps) used to overwrite the raw
+// stat and the whole sweetPotatoBuffs/regrades objects in the one end-of-chain write, computed
+// from the snapshot read at the START of the chain — the longest read-to-write window in the
+// codebase, long enough for a concurrent /regrade or grant to be silently overwritten (raw lost
+// the increment, sweetPotatoBuffs/regradeAmount kept it) and leave base short of its shop tier.
+// Now every link's stat grant is an ADD delta that the chain SUMS and sends as ADDs.
+describe('/work chain — stat grants are summed atomic ADDs, never an absolute overwrite', () => {
+    test('a 3-link chain of Sweet Potatoes sums to ONE raw ADD + ONE sweetPotatoBuffs ADD, and userDetails is mirrored exactly once per link', async () => {
+        // 0.07 lands in Sweet Potato's own band (cumulative .061-.081); the same pinned value also
+        // picks Sweet's reward index 0 (workMultiplierAmount, +0.2) for every link.
+        Math.random.mockReturnValue(0.07);
+        const user = baseUser({ workMultiplierAmount: 5, sweetPotatoBuffs: { workMultiplierAmount: 1, passiveAmount: 0, bankCapacity: 0 } });
+        dynamoHandler.findUser.mockResolvedValue(user);
+        let callCount = 0;
+        dynamoHandler.calculateWorkTimerValue.mockImplementation((userDetails) => {
+            callCount++;
+            if (callCount <= 2) userDetails._cooldownSkippedByCompanion = { source: 'companion' };
+            return Date.now();
+        });
+
+        await workModule.callback({}, fakeInteraction());
+
+        expect(dynamoHandler.updateUserFields).toHaveBeenCalledTimes(1);
+        const [, setFields, addFields] = dynamoHandler.updateUserFields.mock.calls[0];
+        expect(addFields.workMultiplierAmount).toBeCloseTo(0.6);
+        expect(addFields['sweetPotatoBuffs.workMultiplierAmount']).toBeCloseTo(0.6);
+        expect(addFields.workCount).toBe(3);
+        expect(setFields).not.toHaveProperty('workMultiplierAmount');
+        expect(setFields).not.toHaveProperty('sweetPotatoBuffs');
+
+        // Mirrored onto the in-memory object exactly once per link (3 x 0.2), not double-applied —
+        // the once-per-chain quest/achievement checks after the loop read these.
+        expect(user.workMultiplierAmount).toBeCloseTo(5.6);
+        expect(user.sweetPotatoBuffs.workMultiplierAmount).toBeCloseTo(1.6);
+    });
+});

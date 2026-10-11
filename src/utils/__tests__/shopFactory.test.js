@@ -146,10 +146,39 @@ describe('attemptShopBuy', () => {
 
         expect(result.ok).toBe(true);
         expect(result.message).toContain(workShopItem0.name);
-        expect(dynamoHandler.updateUserFields).toHaveBeenCalledWith('u1', {
-            potatoes: 500,
-            workMultiplierAmount: workShopItem0.amount,
+        // Atomic increments (2026-10-11, base-drift refactor — see statWriteFactory.js): the cost
+        // and the tier gap (item.amount minus the player's current exact base) are both ADDs,
+        // never an absolute SET of the stat or potatoes from the snapshot.
+        const user = freshUser({});
+        const gap = workShopItem0.amount - (user.workMultiplierAmount - user.sweetPotatoBuffs.workMultiplierAmount - user.regrades.workMulti.regradeAmount);
+        expect(dynamoHandler.updateUserFields).toHaveBeenCalledWith('u1', {}, {
+            potatoes: -workShopItem0.cost,
+            workMultiplierAmount: gap,
         });
+    });
+
+    test('the stat gap lands base exactly on the purchased tier even when the snapshot carries sweet/regrade bonus', async () => {
+        const user = freshUser({
+            potatoes: workShopItem0.cost,
+            workMultiplierAmount: 1 + 7 + 50,
+            sweetPotatoBuffs: { workMultiplierAmount: 7, passiveAmount: 0, bankCapacity: 0 },
+            regrades: { workMulti: { regradeAmount: 50, failStack: 0 }, passiveAmount: { regradeAmount: 0, failStack: 0 }, bankCapacity: { regradeAmount: 0, failStack: 0 } },
+        });
+        dynamoHandler.findUser.mockResolvedValue(user);
+        await attemptShopBuy('u1', 'user1', 'workShop');
+
+        const [, , addFields] = dynamoHandler.updateUserFields.mock.calls[0];
+        expect(user.workMultiplierAmount + addFields.workMultiplierAmount - 7 - 50).toBeCloseTo(workShopItem0.amount);
+        expect(addFields).not.toHaveProperty('sweetPotatoBuffs');
+    });
+
+    test('starchShop keeps its simple absolute SET (no sweet/regrade component), with the cost as an ADD', async () => {
+        dynamoHandler.findUser.mockResolvedValue(freshUser({ potatoes: 999999999 })); // default maxStarches 25000 -> next tier
+        const result = await attemptShopBuy('u1', 'user1', 'starchShop');
+        expect(result.ok).toBe(true);
+        const [, setFields, addFields] = dynamoHandler.updateUserFields.mock.calls[0];
+        expect(setFields).toHaveProperty('maxStarches');
+        expect(addFields.potatoes).toBeLessThan(0);
     });
 });
 

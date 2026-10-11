@@ -21326,3 +21326,82 @@ when under cap" negative case. Full suite re-run clean: **127 of 128 suites (1 p
 Updated `.claude/systems/tower.md` with a full dated section.
 
 Cross-repo note: `financial-project` doesn't implement Tower at all — no port needed.
+
+## Atomic stat writes: raw + sweetPotatoBuffs + regradeAmount move as ADDs, never absolute SETs (2026-10-11, player-reported "base dropped a tier", direct instruction: "Make refactor")
+
+**Asked.** A player who had clearly maxed every shop (they'd regraded: work 60, passive 36M, bank 200M)
+showed all three base tiers one step below max on `/profile` (Work 50 vs 100, Passive 27M vs 60M,
+Bank 750M vs 1B), with a large sweetPotatoBuffs bonus, and could no longer regrade. After an
+investigation turn ("I still have no idea what can cause the 3 stats drift back… adding to sweet")
+the agreed fix was the full refactor, not just logging.
+
+**What was found.** Base is never stored — it's derived as `raw − sweetPotatoBuffs − regradeAmount` —
+so the three must always move together. Every writer sent ABSOLUTE values computed from a snapshot
+read earlier in the command (`raw = snapshot.raw + x`, the whole stale `sweetPotatoBuffs`/`regrades`
+object, a shop buy's `item.amount + sweet + regrade`), and `updateUserFields` is a plain overwrite
+with no version check. Two overlapping writers with different field subsets (a stat grant writes
+raw + sweet; `/regrade` writes raw + regrade) lose one field's increment but not the other's: e.g.
+a `/regrade` landing between a grant's read and write leaves raw short by one regrade step while sweet
+and regradeAmount both kept theirs. The `/work` chain's read-to-write window (several awaited reads
+across up to 6 links) is the longest in the codebase. Once raw is even slightly short of
+`top tier + sweet + regrade`, `rebirthFactory.healBaseDrift` — which can only snap base DOWN to the
+nearest checkpoint at or below it and cannot tell an under-credit from an over-credit — demotes the
+player a whole tier on that stat and folds the remainder into sweetPotatoBuffs, locking them out of
+`/regrade` and rebirth (both require base at shop max). Three stats = three independent events over
+time (each regrade click is a fresh chance), not one three-stat write. **Honest limits:** the exact
+trigger for the reported account was never observed (no prod DB/logs reachable from a dev session),
+the race was derived from code, not reproduced, and the heal erases its own evidence — which is why
+the heal now logs.
+
+**What changed.**
+- New `src/utils/statWriteFactory.js` (pure): `statGrantAdds`, `regradeSuccessWrites`,
+  `regradeFailAdds`, `mergeAdds`, `applyAddsInMemory`/`applySetsInMemory`. `dynamoHandler.
+  buildUpdateExpression` now expands dotted keys (`sweetPotatoBuffs.passiveAmount`,
+  `regrades.workMulti.regradeAmount`) into per-segment name placeholders (flat keys keep their
+  legacy `#s{i}`/`#a{i}` placeholders), so one `UpdateItem` atomically ADDs every coupled leaf.
+  Increments commute: any interleaving lands on the same totals.
+- Every stat writer converted: Tower payout (`enter-tower.js`), Tower daily-leaderboard bonus,
+  raid `handleStatSplit`/`handlePercentStatSplit`, weekly quest stat rewards, `/take-bounty` and
+  `/rob-npc` (`applyStatRewardGrant` now accumulates adds across the chain), `/work`'s Sweet/Metal
+  Potato and Ancient Potato (regrade step => raw + regradeAmount ADDs + `failStack` leaf SET; free
+  shop tier => ADD of just the tier gap), Festival voucher redemption, `/regrade` (success =>
+  `regradeSuccessWrites`, failure => `regradeFailAdds`, cost as an ADD), shop buy (`attemptShopBuy`
+  ADDs the exact tier gap and `-cost`; `starchShop` keeps its absolute SET), and the admin
+  reset-tower reversal (negative ADDs on raw and `sweetPotatoBuffs.<stat>` instead of re-fetch+SET).
+  `/work`'s chain loop now sums each link's adds, mirrors them in memory once, and sends them as ADDs
+  in its single end-of-chain write; handlers no longer mutate `userDetails` stats/sweet themselves.
+  Rebirth intentionally stays an absolute reset.
+- `findUser`'s heal: now `computeBaseDrifts` + `healBaseDriftConditionally` — a CONDITIONAL per-stat
+  SET of `sweetPotatoBuffs.<stat>` guarded on the raw stat, sweet value and `regradeAmount` still
+  being what the drift was computed from (a whole-object write could clobber a concurrent grant; a
+  naive ADD would double-apply when two commands look the user up at once). A failed condition just
+  skips and re-derives next lookup. Every heal/skip logs stat, before/after base and drift.
+  `healBaseDrift` stays as a thin wrapper for existing callers/tests. Deliberately NOT changed:
+  heal still snaps down (it cannot know direction) — with atomic writes only pre-existing damage
+  reaches it.
+
+**Tests.** New `statWriteFactory.test.js` (helpers + an order-independence regression: a grant and a
+regrade on the same stat leave base exactly on its tier in either order); new `statWriteRace.test.js` — an
+end-to-end harness: a tiny in-memory DynamoDB applies the REAL `UpdateExpression`s, two REAL writers
+(raid `handleStatSplit` vs `attemptShopBuy`, and vs a regrade payload) compute from the same stale
+snapshot and land in both orders (base stays exactly on its tier), plus a CONTROL that replays the old
+absolute-SET shapes through the same harness and shows base dropping short — i.e. exactly the
+shortfall `healBaseDrift` turns into a demotion, proving the harness can see the bug; `dynamoHandler.test.js`
+(nested-path expressions, conditional heal shape, skipped heal, heal log line); a `/work` chain test
+(3 Sweet links => one summed ADD pair, in-memory mirrored once, no whole-object writes); a `/rob-npc`
+write-shape test; every pre-existing test asserting the old absolute shapes (regrade, Tower payout,
+raid splits, quests, shop, Ancient/Metal/Sweet handlers, bounty/Medley, admin reversal) updated.
+Full suite: **129 of 130 suites (1 pre-existing skip) / 2378 tests (18 pre-existing skips, 2360 passing)**,
+clean on the final run (the known pre-existing `rivalNotorietyAccrual` Royal Treasury random-roll flake
+failed on an earlier run in this session and passes in isolation most runs — unrelated).
+
+**Not repaired automatically.** Already-demoted accounts are NOT restored by this change (the heal
+already moved the amount into sweetPotatoBuffs and nothing can tell a legitimate drift from a
+demotion); the reported player needs a one-off manual restore (move the tier gaps back: Work −50,
+Passive −33M, Bank −250M out of sweetPotatoBuffs into base) once it's confirmed from logs that they
+really were maxed.
+
+**Cross-repo.** `financial-project`'s Lambdas write the same table with the same absolute-SET
+shapes (gromp-economy work/shop/regrade/quest, gromp-guilds raid split, gromp-mercenary bounty/heist)
+— ported in the same session; see `NOTES_GROMP_WEB_INTEGRATION.md`'s new entry. Updated
+`.claude/systems/economy-and-work.md` ("Atomic stat writes") and `.claude/systems/guilds.md`.

@@ -94,14 +94,17 @@ describe('/take-bounty — Metal Potato Medley', () => {
         expect(potatoWrite).toBeDefined();
         expect(potatoWrite[1].potatoes).toBe(originalPotatoes + netReward);
 
-        const multiplierWrite = dynamoHandler.updateUserFields.mock.calls.find(([, setAttrs]) => setAttrs && 'workMultiplierAmount' in setAttrs);
-        expect(multiplierWrite[1].workMultiplierAmount).toBeCloseTo(originalWorkMultiplierAmount + Bounty.METAL_POTATO_MEDLEY.I.multiplierReward);
-
-        const passiveWrite = dynamoHandler.updateUserFields.mock.calls.find(([, setAttrs]) => setAttrs && 'passiveAmount' in setAttrs);
-        expect(passiveWrite[1].passiveAmount).toBe(originalPassiveAmount + Bounty.METAL_POTATO_MEDLEY.I.passiveReward);
-
-        const capacityWrite = dynamoHandler.updateUserFields.mock.calls.find(([, setAttrs]) => setAttrs && 'bankCapacity' in setAttrs);
-        expect(capacityWrite[1].bankCapacity).toBe(originalBankCapacity + Bounty.METAL_POTATO_MEDLEY.I.capacityReward);
+        // All three permanent stats are atomic ADDs (raw + sweetPotatoBuffs together) in the chain's
+        // one write (2026-10-11, base-drift refactor — see statWriteFactory.js).
+        const statWrite = dynamoHandler.updateUserFields.mock.calls.find(([, , addAttrs]) => addAttrs && 'workMultiplierAmount' in addAttrs);
+        expect(statWrite).toBeDefined();
+        const statAdds = statWrite[2];
+        expect(statAdds.workMultiplierAmount).toBeCloseTo(Bounty.METAL_POTATO_MEDLEY.I.multiplierReward);
+        expect(statAdds.passiveAmount).toBe(Bounty.METAL_POTATO_MEDLEY.I.passiveReward);
+        expect(statAdds.bankCapacity).toBe(Bounty.METAL_POTATO_MEDLEY.I.capacityReward);
+        expect(statAdds['sweetPotatoBuffs.workMultiplierAmount']).toBeCloseTo(Bounty.METAL_POTATO_MEDLEY.I.multiplierReward);
+        expect(statAdds['sweetPotatoBuffs.passiveAmount']).toBe(Bounty.METAL_POTATO_MEDLEY.I.passiveReward);
+        expect(statAdds['sweetPotatoBuffs.bankCapacity']).toBe(Bounty.METAL_POTATO_MEDLEY.I.capacityReward);
 
         const resultEmbed = interaction.editReply.mock.calls[interaction.editReply.mock.calls.length - 1][0].embeds[0];
         expect(resultEmbed.data.title).toContain('Metal Potato Medley');

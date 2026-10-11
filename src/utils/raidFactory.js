@@ -2,6 +2,7 @@ const dynamoHandler = require("../utils/dynamoHandler");
 const { RaidLevel, Raid, GuildRival, TreasuryInterestScaling, CinderrootTreasuryBonusPercent } = require("../utils/constants");
 const rebirthFactory = require("../utils/rebirthFactory");
 const companionFactory = require("../utils/companionFactory");
+const { statGrantAdds } = require("../utils/statWriteFactory");
 
 // Guild level + raid reward multiplier, computed live from raidCount (wins only) rather
 // than read from a stored field — see constants.js's RaidLevel for the curve and why
@@ -373,20 +374,14 @@ class RaidFactory {
         await Promise.all(raidList.map(async member => {
             const userDetails = await dynamoHandler.findUser(member.id, member.username);
             if (!userDetails) return;
-            let sweetPotatoBuffs = userDetails.sweetPotatoBuffs;
-            const setAttributes = { sweetPotatoBuffs };
-
-            if (rewardType == 'workMultiplierAmount') {
-                setAttributes.workMultiplierAmount = userDetails.workMultiplierAmount + rewardAmount;
-                sweetPotatoBuffs.workMultiplierAmount += rewardAmount;
-            } else if (rewardType == 'passiveAmount') {
-                setAttributes.passiveAmount = userDetails.passiveAmount + rewardAmount;
-                sweetPotatoBuffs.passiveAmount += rewardAmount;
-            } else if (rewardType == 'bankCapacity') {
-                setAttributes.bankCapacity = userDetails.bankCapacity + rewardAmount;
-                sweetPotatoBuffs.bankCapacity += rewardAmount;
+            // Atomic increments (2026-10-11, base-drift refactor — see statWriteFactory.js).
+            const addAttributes = {};
+            if (rewardType == 'workMultiplierAmount' || rewardType == 'passiveAmount' || rewardType == 'bankCapacity') {
+                Object.assign(addAttributes, statGrantAdds(rewardType, rewardAmount));
             }
-            await dynamoHandler.updateUserFields(member.id, setAttributes);
+            if (Object.keys(addAttributes).length > 0) {
+                await dynamoHandler.updateUserFields(member.id, {}, addAttributes);
+            }
         }))
     }
 
@@ -415,11 +410,8 @@ class RaidFactory {
             const userDetails = await dynamoHandler.findUser(member.id, member.username);
             if (!userDetails) return null;
             const { amount } = mercenaryFactory.resolveGrantAmount(grantEntry, userDetails);
-            let sweetPotatoBuffs = userDetails.sweetPotatoBuffs;
-            const setAttributes = { sweetPotatoBuffs };
-            setAttributes[grantEntry.type] = userDetails[grantEntry.type] + amount;
-            sweetPotatoBuffs[grantEntry.type] += amount;
-            await dynamoHandler.updateUserFields(member.id, setAttributes);
+            // Atomic increments (2026-10-11, base-drift refactor — see statWriteFactory.js).
+            await dynamoHandler.updateUserFields(member.id, {}, statGrantAdds(grantEntry.type, amount));
             return amount;
         }));
     }

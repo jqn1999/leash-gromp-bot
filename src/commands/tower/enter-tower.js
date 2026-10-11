@@ -7,6 +7,7 @@ const raidFactory = require("../../utils/raidFactory");
 const companionFactory = require("../../utils/companionFactory");
 const bigEventsChannel = require("../../utils/bigEventsChannel");
 const { awsConfigurations } = require("../../utils/constants.js");
+const { statGrantAdds } = require("../../utils/statWriteFactory");
 
 // Tower Pet (2026-09-13) — leveling grant + Bastion drop rolls both happen against the SAME
 // freshly re-fetched userDetails processRewardPayouts already reads (not the stale
@@ -137,7 +138,10 @@ async function processRewardPayouts(interaction, userId, rewards, username, user
     // handleMetalPotato/handleSweetPotato in workFactory.js, raidFactory.handleStatSplit,
     // questFactory's weekly reward write). One atomic call removes the partial-failure
     // window entirely — either the whole run's reward lands together, or none of it does.
-    let sweetPotatoBuffs = userDetails.sweetPotatoBuffs;
+    // Atomic increments (2026-10-11, base-drift refactor — see statWriteFactory.js): each
+    // stat reward ADDs the same amount to the raw total AND sweetPotatoBuffs in this one
+    // call, never an absolute SET computed from the snapshot read above, so a /regrade or
+    // shop buy landing meanwhile can no longer be overwritten into a base-vs-tier drift.
     const setFields = {};
     const addFields = {};
 
@@ -146,19 +150,13 @@ async function processRewardPayouts(interaction, userId, rewards, username, user
         addFields.totalEarnings = rewards[tC.PAYOUT.POTATOES];
     }
     if (rewards[tC.PAYOUT.WORK_MULTIPLIER]) {
-        setFields.workMultiplierAmount = userDetails.workMultiplierAmount + rewards[tC.PAYOUT.WORK_MULTIPLIER];
-        sweetPotatoBuffs.workMultiplierAmount += rewards[tC.PAYOUT.WORK_MULTIPLIER];
+        Object.assign(addFields, statGrantAdds('workMultiplierAmount', rewards[tC.PAYOUT.WORK_MULTIPLIER]));
     }
     if (rewards[tC.PAYOUT.PASSIVE_INCOME]) {
-        setFields.passiveAmount = userDetails.passiveAmount + rewards[tC.PAYOUT.PASSIVE_INCOME];
-        sweetPotatoBuffs.passiveAmount += rewards[tC.PAYOUT.PASSIVE_INCOME];
+        Object.assign(addFields, statGrantAdds('passiveAmount', rewards[tC.PAYOUT.PASSIVE_INCOME]));
     }
     if (rewards[tC.PAYOUT.BANK_CAPACITY]) {
-        setFields.bankCapacity = userDetails.bankCapacity + rewards[tC.PAYOUT.BANK_CAPACITY];
-        sweetPotatoBuffs.bankCapacity += rewards[tC.PAYOUT.BANK_CAPACITY];
-    }
-    if (rewards[tC.PAYOUT.WORK_MULTIPLIER] || rewards[tC.PAYOUT.PASSIVE_INCOME] || rewards[tC.PAYOUT.BANK_CAPACITY]) {
-        setFields.sweetPotatoBuffs = sweetPotatoBuffs;
+        Object.assign(addFields, statGrantAdds('bankCapacity', rewards[tC.PAYOUT.BANK_CAPACITY]));
     }
 
     if (Object.keys(setFields).length > 0 || Object.keys(addFields).length > 0) {

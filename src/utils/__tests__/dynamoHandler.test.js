@@ -1750,3 +1750,100 @@ describe('removeTowerLeaderboardEntry', () => {
         expect(docClient.update).not.toHaveBeenCalled();
     });
 });
+
+// Nested document-path support in buildUpdateExpression (2026-10-11, base-drift refactor —
+// see statWriteFactory.js): a dotted key expands to one name placeholder per segment so a
+// single UpdateItem can atomically ADD to raw + sweetPotatoBuffs.<stat> + regrades.<track>.
+// regradeAmount instead of overwriting whole objects from a stale snapshot.
+describe('updateUserFields — nested document paths (atomic stat increments)', () => {
+    test('a dotted ADD key becomes a per-segment name path, flat keys keep their legacy placeholders', async () => {
+        docClient.update.mockReturnValue(resolved({ Attributes: {} }));
+        await dynamoHandler.updateUserFields('u1', { potatoes: 5 }, { passiveAmount: 100, 'sweetPotatoBuffs.passiveAmount': 100 });
+
+        const params = docClient.update.mock.calls[0][0];
+        expect(params.UpdateExpression).toBe('set #s0 = :s0 add #a0 :a0, #a1_0.#a1_1 :a1');
+        expect(params.ExpressionAttributeNames).toEqual({
+            '#s0': 'potatoes',
+            '#a0': 'passiveAmount',
+            '#a1_0': 'sweetPotatoBuffs',
+            '#a1_1': 'passiveAmount',
+        });
+        expect(params.ExpressionAttributeValues).toEqual({ ':s0': 5, ':a0': 100, ':a1': 100 });
+    });
+
+    test('a dotted SET key (e.g. a failStack reset) expands the same way and coexists with a sibling-leaf ADD', async () => {
+        docClient.update.mockReturnValue(resolved({ Attributes: {} }));
+        await dynamoHandler.updateUserFields('u1',
+            { 'regrades.workMulti.failStack': 0 },
+            { 'regrades.workMulti.regradeAmount': 10 });
+
+        const params = docClient.update.mock.calls[0][0];
+        expect(params.UpdateExpression).toBe('set #s0_0.#s0_1.#s0_2 = :s0 add #a0_0.#a0_1.#a0_2 :a0');
+        expect(params.ExpressionAttributeNames['#s0_2']).toBe('failStack');
+        expect(params.ExpressionAttributeNames['#a0_2']).toBe('regradeAmount');
+    });
+});
+
+// healBaseDrift's persisted write is a CONDITIONAL per-stat SET (2026-10-11, base-drift
+// refactor — see dynamoHandler.healBaseDriftConditionally): guarded on the raw stat,
+// sweetPotatoBuffs.<stat> and regradeAmount still being exactly what the drift was computed
+// from, so it can neither overwrite a grant that landed since the read (the old whole-object
+// SET did) nor double-apply when two commands look the same user up at once (a naive ADD
+// would). A failed condition just skips the heal; the next findUser re-derives it fresh.
+describe('findUser base-drift heal — conditional, never a whole-object overwrite', () => {
+    function driftedItem(userId) {
+        return {
+            userId, username: 'n',
+            workMultiplierAmount: 148.40, // base 100.80 -> 0.80 above the top tier
+            passiveAmount: 0,
+            bankCapacity: Bank.STARTING_CAPACITY,
+            sweetPotatoBuffs: { workMultiplierAmount: 47.60, passiveAmount: 0, bankCapacity: 0 },
+            regrades: {
+                workMulti: { regradeAmount: 0, failStack: 0 },
+                passiveAmount: { regradeAmount: 0, failStack: 0 },
+                bankCapacity: { regradeAmount: 0, failStack: 0 },
+            },
+        };
+    }
+
+    test('sets only sweetPotatoBuffs.<stat>, guarded by a condition on the raw stat, sweet value and regradeAmount it was computed from', async () => {
+        docClient.query.mockReturnValue(resolved({ Count: 1, Items: [driftedItem('u30')] }));
+        docClient.update.mockReturnValue(resolved({}));
+
+        await dynamoHandler.findUser('u30', 'n');
+
+        const [params] = docClient.update.mock.calls.find(([p]) => p.ConditionExpression);
+        expect(params.UpdateExpression).toBe('set #sw.#st0 = :new0');
+        expect(params.ConditionExpression).toBe('#sw.#st0 = :oldSweet0 AND #st0 = :oldRaw0 AND #rg.#rk0.#ra = :oldRegrade0');
+        expect(params.ExpressionAttributeNames).toMatchObject({ '#sw': 'sweetPotatoBuffs', '#rg': 'regrades', '#st0': 'workMultiplierAmount', '#rk0': 'workMulti', '#ra': 'regradeAmount' });
+        expect(params.ExpressionAttributeValues[':new0']).toBeCloseTo(48.40);
+        expect(params.ExpressionAttributeValues[':oldSweet0']).toBe(47.60);
+        expect(params.ExpressionAttributeValues[':oldRaw0']).toBe(148.40);
+        expect(params.ExpressionAttributeValues[':oldRegrade0']).toBe(0);
+    });
+
+    test('a failed condition (something changed the stat first) skips the heal quietly and returns the record unhealed', async () => {
+        docClient.query.mockReturnValue(resolved({ Count: 1, Items: [driftedItem('u31')] }));
+        docClient.update.mockReturnValue(rejected(Object.assign(new Error('cond'), { code: 'ConditionalCheckFailedException' })));
+        const logSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
+
+        const user = await dynamoHandler.findUser('u31', 'n');
+
+        expect(user.sweetPotatoBuffs.workMultiplierAmount).toBe(47.60);
+        expect(logSpy.mock.calls.some(([m]) => String(m).includes('did not heal base-vs-shop-tier drift for u31'))).toBe(true);
+        logSpy.mockRestore();
+    });
+
+    test('a successful heal logs the exact before/after numbers so an admin can trace a demotion', async () => {
+        docClient.query.mockReturnValue(resolved({ Count: 1, Items: [driftedItem('u32')] }));
+        docClient.update.mockReturnValue(resolved({}));
+        const logSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
+
+        await dynamoHandler.findUser('u32', 'n');
+
+        const line = logSpy.mock.calls.map(([m]) => String(m)).find(m => m.includes('healed base-vs-shop-tier drift for u32'));
+        expect(line).toBeDefined();
+        expect(line).toMatch(/workMultiplierAmount: base 100\.8\d* -> 100 \(\+0\.8\d* into sweetPotatoBuffs\)/);
+        logSpy.mockRestore();
+    });
+});

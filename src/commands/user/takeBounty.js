@@ -13,6 +13,7 @@ const { EmbedFactory } = require("../../utils/embedFactory");
 const embedFactory = new EmbedFactory();
 const achievementFactory = new AchievementFactory();
 const bigEventsChannel = require("../../utils/bigEventsChannel");
+const { statGrantAdds, mergeAdds, applyAddsInMemory } = require("../../utils/statWriteFactory");
 const questFactory = new QuestFactory();
 
 // isChainedReply distinguishes the original /take-bounty invocation (edits the deferred
@@ -45,17 +46,17 @@ async function sendBountyResult(interaction, embed, isChainedReply = false) {
 // math straight into the chain's own accumulator keeps a rare mid-chain stat-reward hit from
 // forcing a second write of its own. Mirrored (not shared) in robNpc.js — same convention
 // this codebase's other small cross-file-duplicated pure helpers already use.
-function applyStatRewardGrant(userDetails, grant) {
-    if (grant.type === 'workMultiplierAmount') {
-        userDetails.workMultiplierAmount += grant.amount;
-        userDetails.sweetPotatoBuffs.workMultiplierAmount += grant.amount;
-    } else if (grant.type === 'passiveAmount') {
-        userDetails.passiveAmount += grant.amount;
-        userDetails.sweetPotatoBuffs.passiveAmount += grant.amount;
-    } else if (grant.type === 'bankCapacity') {
-        userDetails.bankCapacity += grant.amount;
-        userDetails.sweetPotatoBuffs.bankCapacity += grant.amount;
+function applyStatRewardGrant(userDetails, grant, aggregatedAddFields) {
+    if (grant.type !== 'workMultiplierAmount' && grant.type !== 'passiveAmount' && grant.type !== 'bankCapacity') {
+        return;
     }
+    // Atomic increments (2026-10-11, base-drift refactor — see statWriteFactory.js): the
+    // chain's one end-of-chain write ADDs raw + sweetPotatoBuffs together instead of SETting
+    // absolute values from the chain-start snapshot, so a /regrade landing mid-chain can't be
+    // overwritten. The in-memory mirror below stays identical to the DB write's own result.
+    const adds = statGrantAdds(grant.type, grant.amount);
+    applyAddsInMemory(userDetails, adds);
+    Object.assign(aggregatedAddFields, mergeAdds(aggregatedAddFields, adds));
 }
 
 // Resolves immediately, no confirm step — same precedent /start-raid already sets. See
@@ -321,12 +322,8 @@ async function resolveRegularBountyChain(client, interaction, userId, username, 
             // own separate find+write. See this file's own comment on applyStatRewardGrant.
             if (result.won && result.statReward) {
                 for (const grant of result.statReward) {
-                    applyStatRewardGrant(userDetails, grant);
+                    applyStatRewardGrant(userDetails, grant, aggregatedAddFields);
                 }
-                aggregatedSetFields.workMultiplierAmount = userDetails.workMultiplierAmount;
-                aggregatedSetFields.passiveAmount = userDetails.passiveAmount;
-                aggregatedSetFields.bankCapacity = userDetails.bankCapacity;
-                aggregatedSetFields.sweetPotatoBuffs = userDetails.sweetPotatoBuffs;
             }
 
             const { cooldownTimer, cooldownSkipSource, missedSkipChance, shouldChain } =
@@ -495,15 +492,11 @@ async function resolveStatBountyChain(client, interaction, userId, username, use
                     // Bounty's full Band I bundle, doubled, instead of the single
                     // workMultiplierAmount grant a normal Stat Bounty win pays.
                     for (const grant of result.statReward) {
-                        applyStatRewardGrant(userDetails, grant);
+                        applyStatRewardGrant(userDetails, grant, aggregatedAddFields);
                     }
-                    aggregatedSetFields.passiveAmount = userDetails.passiveAmount;
-                    aggregatedSetFields.bankCapacity = userDetails.bankCapacity;
                 } else {
-                    applyStatRewardGrant(userDetails, { type: 'workMultiplierAmount', amount: Bounty.STAT_BOUNTY_REWARD });
+                    applyStatRewardGrant(userDetails, { type: 'workMultiplierAmount', amount: Bounty.STAT_BOUNTY_REWARD }, aggregatedAddFields);
                 }
-                aggregatedSetFields.workMultiplierAmount = userDetails.workMultiplierAmount;
-                aggregatedSetFields.sweetPotatoBuffs = userDetails.sweetPotatoBuffs;
             }
 
             const { cooldownTimer, cooldownSkipSource, missedSkipChance, shouldChain } =

@@ -1,5 +1,6 @@
 const dynamoHandler = require("../utils/dynamoHandler");
 const { TowerLeaderboard } = require("../utils/constants");
+const { statGrantAdds } = require("../utils/statWriteFactory");
 
 function roundToIncrement(value, increment) {
     return Math.round(value / increment) * increment;
@@ -75,10 +76,11 @@ class TowerLeaderboardFactory {
             const userDetails = await dynamoHandler.findUser(entry.userId, entry.username);
             if (!userDetails) continue;
 
+            // Atomic increments (2026-10-11, base-drift refactor — see statWriteFactory.js):
+            // raw + sweetPotatoBuffs move together as ADDs, never an absolute SET from a
+            // snapshot, so this can't overwrite a concurrent /regrade or grant.
             const setFields = {};
             const addFields = index === 0 ? { towerChampionCount: 1 } : {};
-            const sweetPotatoBuffs = userDetails.sweetPotatoBuffs;
-            let earnedAnyStatBonus = false;
 
             // Potato bonus goes into the same pending-balance holding pen Spud Keep's
             // own pot payout uses (2026-09-22, direct instruction), collected only via
@@ -90,22 +92,13 @@ class TowerLeaderboardFactory {
             }
 
             if (bonus.workMultiplier > 0) {
-                setFields.workMultiplierAmount = userDetails.workMultiplierAmount + bonus.workMultiplier;
-                sweetPotatoBuffs.workMultiplierAmount += bonus.workMultiplier;
-                earnedAnyStatBonus = true;
+                Object.assign(addFields, statGrantAdds('workMultiplierAmount', bonus.workMultiplier));
             }
             if (bonus.passiveIncome > 0) {
-                setFields.passiveAmount = userDetails.passiveAmount + bonus.passiveIncome;
-                sweetPotatoBuffs.passiveAmount += bonus.passiveIncome;
-                earnedAnyStatBonus = true;
+                Object.assign(addFields, statGrantAdds('passiveAmount', bonus.passiveIncome));
             }
             if (bonus.bankCapacity > 0) {
-                setFields.bankCapacity = userDetails.bankCapacity + bonus.bankCapacity;
-                sweetPotatoBuffs.bankCapacity += bonus.bankCapacity;
-                earnedAnyStatBonus = true;
-            }
-            if (earnedAnyStatBonus) {
-                setFields.sweetPotatoBuffs = sweetPotatoBuffs;
+                Object.assign(addFields, statGrantAdds('bankCapacity', bonus.bankCapacity));
             }
 
             await dynamoHandler.updateUserFields(entry.userId, setFields, addFields);

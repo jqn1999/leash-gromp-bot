@@ -1,6 +1,7 @@
 const dynamoHandler = require("../utils/dynamoHandler");
 const { getStatValue } = require("../utils/achievementFactory");
 const { Quests, DailyQuest, WeeklyQuest, MercenaryQuest } = require("../utils/constants");
+const { statGrantAdds, mergeAdds } = require("../utils/statWriteFactory");
 
 // Which activeQuests field holds a template's own rotation date — shared by
 // checkAndClaimQuests/getProgress so the three categories' lookup stays in one place
@@ -245,26 +246,25 @@ class QuestFactory {
 
         if (stateChanged) {
             const setFields = { quests: updatedQuestState };
+            // Stat rewards are atomic ADDs of raw + sweetPotatoBuffs together (2026-10-11,
+            // base-drift refactor — see statWriteFactory.js), never absolute SETs from the
+            // snapshot read at the top of this call.
+            const addFields = {};
 
             if (totalPotatoReward > 0) {
                 setFields.potatoes = userDetails.potatoes + totalPotatoReward;
                 setFields.totalEarnings = userDetails.totalEarnings + totalPotatoReward;
             }
 
-            if (Object.keys(statRewards).length > 0) {
-                let sweetPotatoBuffs = userDetails.sweetPotatoBuffs;
-                for (const [statType, amount] of Object.entries(statRewards)) {
-                    setFields[statType] = userDetails[statType] + amount;
-                    sweetPotatoBuffs[statType] += amount;
-                }
-                setFields.sweetPotatoBuffs = sweetPotatoBuffs;
+            for (const [statType, amount] of Object.entries(statRewards)) {
+                Object.assign(addFields, mergeAdds(addFields, statGrantAdds(statType, amount)));
             }
 
             if (additionalSafehouseStorageReward > 0) {
                 setFields.additionalSafehouseStorage = (userDetails.additionalSafehouseStorage || 0) + additionalSafehouseStorageReward;
             }
 
-            await dynamoHandler.updateUserFields(userDetails.userId, setFields);
+            await dynamoHandler.updateUserFields(userDetails.userId, setFields, addFields);
         }
 
         return { completedQuests, totalPotatoReward, statRewards, additionalSafehouseStorageReward };
