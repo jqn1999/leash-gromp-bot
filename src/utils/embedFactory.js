@@ -30,6 +30,13 @@ const POTION_EFFECT_LABELS = {
     passiveAmount: "Passive Income",
     antiRob: "Rob Resistance",
 };
+// Signed work-multiplier delta for the profile/user-stats "Live" figure (2026-10-11) — a net
+// NEGATIVE bonus (Prospector's workMultiplierPercent penalty outweighing every other live
+// source) has to render as "-1.23x", not be dropped.
+function formatSignedMulti(amount) {
+    return `${amount >= 0 ? '+' : '-'}${Math.abs(amount).toFixed(2)}x`;
+}
+
 function formatPotionEffect(potion) {
     const label = POTION_EFFECT_LABELS[potion.effectType] || potion.effectType;
     return `+${(potion.value * 100).toFixed(0)}% ${label}`;
@@ -652,8 +659,13 @@ class EmbedFactory {
             // every other live modifier above.
             const potionWorkMulti = dynamoHandler.isPotionLive(userDetails.activePotion, "workMulti") ? userDetails.workMultiplierAmount * userDetails.activePotion.value : 0;
             const totalWorkBonus = additionalWorkMulti + mercenaryWorkMulti + companionWorkMulti + rebirthWorkMulti + worldBuffWorkMulti + potionWorkMulti;
-            const workMultiLabel = totalWorkBonus > 0
-                ? `${(userDetails.workMultiplierAmount + totalWorkBonus).toFixed(2)}x (+${totalWorkBonus.toFixed(2)}x)`
+            // Shown for a NEGATIVE net bonus too (2026-10-11, player-reported: equipping Prospector,
+            // whose workMultiplierPercent is -8%..-19%, changed nothing on /profile) — this used to
+            // be `> 0`, so any player whose other live bonuses summed to <= 0 saw the stored number
+            // whether or not the penalty was applied, even though /work really does apply it.
+            const hasLiveWorkBonus = Math.abs(totalWorkBonus) >= 0.005;
+            const workMultiLabel = hasLiveWorkBonus
+                ? `${(userDetails.workMultiplierAmount + totalWorkBonus).toFixed(2)}x (${formatSignedMulti(totalWorkBonus)})`
                 : `${(userDetails.workMultiplierAmount).toFixed(2)}x`;
             fields.push({
                 name: "Current Work Multiplier:",
@@ -957,7 +969,7 @@ class EmbedFactory {
             {
                 name: "Current Work Multiplier Upgrade:\n(Base + Bonus + Regrade)",
                 value: `${multiplierName}\n(${userBaseWorkMultiplier.toFixed(2)} + ${userDetails.sweetPotatoBuffs.workMultiplierAmount.toFixed(2)} + ${userDetails.regrades.workMulti.regradeAmount.toFixed(2)})x = ${userDetails.workMultiplierAmount.toFixed(2)}x`
-                    + (liveWorkBonus > 0 ? `\nLive: ${(userDetails.workMultiplierAmount + liveWorkBonus).toFixed(2)}x (+${liveWorkBonus.toFixed(2)}x guild/mercenary/companion/rebirth/world buff/potion)` : ''),
+                    + (Math.abs(liveWorkBonus) >= 0.005 ? `\nLive: ${(userDetails.workMultiplierAmount + liveWorkBonus).toFixed(2)}x (${formatSignedMulti(liveWorkBonus)} guild/mercenary/companion/rebirth/world buff/potion)` : ''),
                 inline: false,
             },
             {

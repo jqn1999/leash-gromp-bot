@@ -21405,3 +21405,32 @@ really were maxed.
 shapes (gromp-economy work/shop/regrade/quest, gromp-guilds raid split, gromp-mercenary bounty/heist)
 — ported in the same session; see `NOTES_GROMP_WEB_INTEGRATION.md`'s new entry. Updated
 `.claude/systems/economy-and-work.md` ("Atomic stat writes") and `.claude/systems/guilds.md`.
+
+## Profile / user-stats: show a net-NEGATIVE live work-multiplier bonus (Prospector's penalty) (2026-10-11, player-reported)
+
+**Asked.** "Is there an issue with prospector? It seems their work multi isn't changing anymore with
+equipping or taking prospector off" → then "is prospector supposed to show negative amount now on
+profile page? it doesnt seem like it is".
+
+**Found.** Prospector's `workMultiplierPercent` perk is -8% (scaling to about -11.6% at max level, -19.2% at
+5 ascension stars) and `/work` genuinely applies it (`getCompanionWorkMulti`, summed into
+`effectiveMultiplier` with no clamping — verified against the real perk code). But `/profile`'s "Current
+Work Multiplier:" (`createUserEmbed`) and `/user-stats`'s "Live:" line (`createUserStatsEmbed`) only
+showed the live figure when the total live bonus was strictly `> 0`; otherwise they printed the stored
+number. A player whose other live bonuses (rebirth, guild, mercenary, potion, world buff) sum to zero
+saw an identical number equipped or not; a player with positive bonuses saw the net correctly, which is
+why it looked player-specific.
+
+**Changed.** Both embeds now show the live figure whenever the net bonus rounds to a non-zero amount
+(`Math.abs(total) >= 0.005`), with a signed delta from a new `formatSignedMulti`: e.g. `90.00x (-10.00x)`
+instead of `100.00x`. A zero net bonus still prints the plain stored number (no `(+0.00x)` noise).
+Display-only — no `/work`, raid-power or any stored value changed.
+
+**Tests.** 3 new `embedFactory.test.js` tests (net-negative on `/profile`, on `/user-stats`, and zero
+net unchanged).
+
+**Cross-repo note (NOT ported — offered).** `financial-project`'s `/gromp` stat-breakdown popover
+(`gromp.component.html` ~263-269) has the identical `> 0` guards on every `workMultiplier` live row
+(including `companion`) and on the `Live Total`, so a Prospector penalty is equally invisible there.
+Needs a template change (`!== 0`, signed values); not done here because the Angular tests can't run
+without Chrome in this environment.

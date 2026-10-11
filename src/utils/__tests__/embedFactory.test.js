@@ -403,6 +403,35 @@ describe('createUserEmbed Mercenary Buff field', () => {
         expect(field.value).toBe('1.00x');
     });
 
+    // Negative net live bonus (2026-10-11, player-reported: equipping Prospector — workMultiplierPercent
+    // -8%..-19% — changed nothing on /profile for a player with no other live bonus). The label used to
+    // require a strictly POSITIVE net bonus, so the penalty /work really applies was invisible.
+    test('"Current Work Multiplier:" shows a net-negative live bonus (e.g. Prospector) instead of hiding it', async () => {
+        const companionFactory = require('../companionFactory');
+        companionFactory.getActivePerkValue.mockImplementation((_, perk) => (perk === 'workMultiplierPercent' ? -0.1 : 0));
+        const embed = await embedFactory.createUserEmbed('user-1', 'Player', 'hash', mercUserDetails({
+            workMultiplierAmount: 100,
+        }), 0);
+        const field = embed.data.fields.find(f => f.name === 'Current Work Multiplier:');
+        expect(field.value).toBe('90.00x (-10.00x)');
+    });
+
+    test('createUserStatsEmbed\'s Live figure also shows a net-negative live bonus', async () => {
+        const companionFactory = require('../companionFactory');
+        companionFactory.getActivePerkValue.mockImplementation((_, perk) => (perk === 'workMultiplierPercent' ? -0.1 : 0));
+        const embed = await embedFactory.createUserStatsEmbed('user-1', 'Player', 'hash', mercUserDetails({
+            workMultiplierAmount: 100,
+        }));
+        const field = embed.data.fields.find(f => f.name.includes('Current Work Multiplier Upgrade'));
+        expect(field.value).toContain('Live: 90.00x (-10.00x');
+    });
+
+    test('a zero net live bonus still shows the plain stored number with no "(+0.00x)" noise', async () => {
+        const embed = await embedFactory.createUserEmbed('user-1', 'Player', 'hash', mercUserDetails({ workMultiplierAmount: 100 }), 0);
+        const field = embed.data.fields.find(f => f.name === 'Current Work Multiplier:');
+        expect(field.value).toBe('100.00x');
+    });
+
     test('createUserStatsEmbed\'s Live work-multiplier figure also reflects an active workMulti Mercenary Buff', async () => {
         const embed = await embedFactory.createUserStatsEmbed('user-1', 'Player', 'hash', mercUserDetails({
             mercenaryBuff: 'workMulti', workMultiplierAmount: 1,
