@@ -2767,12 +2767,13 @@ class EmbedFactory {
     // wins-to-next-rank (now also showing the live reward multiplier, since Rank no
     // longer gates tier access — see mercenaryFactory.getMercenaryRankInfo), a live
     // roll-odds + success-chance line per Bounty tier, and bountyTimer remaining.
-    // `weightedTiers` is bounty-board.js's own precomputed array — raidFactory.
-    // getDynamicTierWeights' output (each { tier, difficulty, reward, penalty, weight })
-    // with `successChance` added — one line per tier rather than one embed field per
-    // tier (12 separate fields would make this embed unwieldy the way /start-raid's own
-    // 4-bracket-max preview never has to worry about).
-    createBountyBoardEmbed(userDisplayName, rankInfo, weightedTiers, cooldownRemainingSeconds, medleyBands = null) {
+    // `bountyModes` is bounty-board.js's own precomputed [{ mode, label, weightedTiers }] — one
+    // entry per Regular/Elite/Legendary mode (2026-10-12, tiers 1-4 / 5-8 / 9-12, mirroring Guild
+    // Raid's own three modes), each `weightedTiers` being raidFactory.getDynamicTierWeights'
+    // output for that mode's OWN 4 tiers (each { tier, difficulty, reward, penalty, weight }) with
+    // `successChance` added — so a tier's odds are its chance of being rolled WITHIN that mode, the
+    // same way /start-raid's per-mode preview reads. One field per mode, one line per tier.
+    createBountyBoardEmbed(userDisplayName, rankInfo, bountyModes, cooldownRemainingSeconds, medleyBands = null) {
         const title = MERCENARY_RANK_TITLES[rankInfo.rank] || `Rank ${rankInfo.rank}`;
         // cooldownReductionPercent (constants.js's MercenaryRank.THRESHOLDS comment) — shown
         // here too, not just on the post-win result embed, so it's visible before taking a
@@ -2786,23 +2787,26 @@ class EmbedFactory {
             ? `Rank ${rankInfo.rank} — ${title} (${rankInfo.rewardMultiplier}x bounty reward${cooldownBonusText}, ${rankInfo.winsToNextRank.toLocaleString()} win${rankInfo.winsToNextRank === 1 ? '' : 's'} to Rank ${rankInfo.rank + 1})`
             : `Rank ${rankInfo.rank} — ${title} (${rankInfo.rewardMultiplier}x bounty reward${cooldownBonusText}, max rank)`;
 
-        // One line per tier (not one embed field per tier, and not two lines per tier
-        // either) — a 12-tier, two-line-per-tier version measured out to 1,257 characters
-        // at a mid-power roster, over Discord's 1,024-char field value limit; this compact
-        // form stays comfortably under it (~700 chars) even at Tier 12's 8-digit numbers.
-        const tierLines = weightedTiers.map(t =>
-            `Tier ${t.tier}: ${(t.weight * 100).toFixed(1)}% odds, ${(t.successChance * 100).toFixed(1)}% success — ✅${t.reward.toLocaleString()} / ❌${Math.abs(t.penalty).toLocaleString()}`
-        ).join('\n');
-
-        const fields = [
-            {
-                name: 'Regular Bounty — all 12 tiers, auto-selected by your current power:',
-                value: tierLines,
+        // One line per tier, one field per mode — each mode's 4-line field stays comfortably under
+        // Discord's 1,024-char field value limit (~400 chars) even at Tier 12's 8-digit numbers,
+        // where the old single 12-line field (~700 chars at a mid-power roster) had to be kept
+        // compact to fit at all.
+        const fields = bountyModes.map(({ label, weightedTiers }) => {
+            const first = weightedTiers[0].tier;
+            const last = weightedTiers[weightedTiers.length - 1].tier;
+            return {
+                name: `${label} — tiers ${first}-${last}, auto-selected by your current power:`,
+                value: weightedTiers.map(t =>
+                    `Tier ${t.tier}: ${(t.weight * 100).toFixed(1)}% odds, ${(t.successChance * 100).toFixed(1)}% success — ✅${t.reward.toLocaleString()} / ❌${Math.abs(t.penalty).toLocaleString()}`
+                ).join('\n'),
                 inline: false,
-            },
+            };
+        });
+
+        fields.push(
             {
                 name: 'Baby Bounty:',
-                value: `Always Tier ${weightedTiers[0].tier} (guaranteed, no risk of a harder roll).`,
+                value: `Always Tier ${bountyModes[0].weightedTiers[0].tier} (guaranteed, no risk of a harder roll).`,
                 inline: false,
             },
             {
@@ -2810,7 +2814,7 @@ class EmbedFactory {
                 value: `${(Bounty.STAT_BOUNTY_SUCCESS_CHANCE * 100).toFixed(0)}% chance for a permanent +${Bounty.STAT_BOUNTY_REWARD.toFixed(2)} work multiplier — costs ${Bounty.STAT_BOUNTY_COST.toLocaleString()} potatoes, charged whether you win or lose.`,
                 inline: false,
             },
-        ];
+        );
 
         // Metal Potato Medley (2026-10-03) — a flat 1% roll on any Regular Bounty attempt,
         // checked AFTER a tier/band is already resolved (not a 13th tier of its own), so it
@@ -2823,7 +2827,7 @@ class EmbedFactory {
                 `Band ${b.band}: ${(b.successChance * 100).toFixed(1)}% success — ✅${b.reward.toLocaleString()} potatoes, +${b.multiplierReward.toFixed(1)} work multiplier, +${b.passiveReward.toLocaleString()} passive, +${b.capacityReward.toLocaleString()} bank capacity (all permanent) ❌ nothing, win or lose`
             ).join('\n');
             fields.push({
-                name: `Metal Potato Medley (${(Bounty.METAL_POTATO_MEDLEY_CHANCE * 100).toFixed(0)}% chance on any Regular Bounty, band matches whichever tier you roll):`,
+                name: `Metal Potato Medley (${(Bounty.METAL_POTATO_MEDLEY_CHANCE * 100).toFixed(0)}% chance on any Regular/Elite/Legendary Bounty — Band I on Regular, II on Elite, III on Legendary):`,
                 value: medleyLines,
                 inline: false,
             });
@@ -2995,7 +2999,8 @@ class EmbedFactory {
             });
         }
 
-        const modeLabel = mode === 'baby' ? ' (Baby Bounty)' : '';
+        // Regular is the unmarked default (unchanged title); the other modes name themselves.
+        const modeLabel = { baby: ' (Baby Bounty)', elite: ' (Elite Bounty)', legendary: ' (Legendary Bounty)' }[mode] || '';
         const title = isMetalPotatoMedley
             ? `${userDisplayName} stumbles into a Metal Potato Medley! — Tier ${tier}`
             : `${userDisplayName} takes on ${scenario.name} — Tier ${tier}${modeLabel}`;

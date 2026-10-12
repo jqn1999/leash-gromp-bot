@@ -20,6 +20,20 @@ function getBandLetter(tierNum) {
     return 'III';
 }
 
+// Bounty modes (2026-10-12, direct instruction: "split up 1-4 = regular 5-8 = elite 9-12 =
+// legendary" — mirroring Guild Raid's own Regular/Elite/Legendary modes): each non-baby mode
+// owns exactly one of the 3 bands getBandLetter already defines (B1-4 = I, B5-8 = II, B9-12 =
+// III), so a mode's tier pool is simply "every Bounty.TIERS entry in that band" and which
+// scenario/stat-reward/Yukon/Medley pool it uses (all keyed by band letter) falls out unchanged.
+// Within the chosen mode the tier is still rolled by the mercenary's own power via
+// raidFactory.rollWeightedTier, exactly like a Guild Raid roll within its mode's own 4 tiers.
+const BOUNTY_MODE_BAND = { regular: 'I', elite: 'II', legendary: 'III' };
+
+function getBountyModeTiers(mode) {
+    const band = BOUNTY_MODE_BAND[mode];
+    return band ? Bounty.TIERS.filter(t => getBandLetter(t.tier) === band) : null;
+}
+
 // Threshold lookup, same exact shape/pattern as raidFactory.getRaidLevelInfo off
 // RaidLevel.THRESHOLDS — highest threshold not exceeded by winCount wins; computed live
 // off mercenaryBountyWinCount, never stored (same "guild level" precedent).
@@ -122,10 +136,11 @@ function rollBountyStatReward(tierLetter, userDetails) {
 // computation only, no DB writes; the caller (take-bounty.js) owns persisting the result,
 // same division of labor raidFactory.js's own handlePotatoSplit-vs-startRaid.js split
 // already uses. `mode` is 'baby' (always Bounty.TIERS[0], guaranteed — mirrors Baby
-// Raid's own role) or 'regular' (all 12 tiers, dynamically weighted by the mercenary's own
-// current power via raidFactory.rollWeightedTier — same math Guild Raid's own T1-T4 use,
-// with no rank-gating layered on top: which tier gets rolled is purely a function of
-// power now, see constants.js's Bounty.TIERS comment for the full 2026-08-28 rework).
+// Raid's own role) or one of 'regular' (tiers 1-4) / 'elite' (5-8) / 'legendary' (9-12)
+// (2026-10-12 — see BOUNTY_MODE_BAND above), whose own 4 tiers are dynamically weighted by
+// the mercenary's own current power via raidFactory.rollWeightedTier — same math Guild
+// Raid's own T1-T4 use within a mode, with no rank-gating layered on top (see
+// constants.js's Bounty.TIERS comment for the 2026-08-28 rework this builds on).
 // A mercenary's effective raid-style power for Bounty purposes — same formula both
 // resolveBountyAttempt (below) and resolveStatBounty's own Metal Potato Medley roll need,
 // factored out 2026-10-03 so the two can never drift apart. A 1-person "roster" run through
@@ -155,9 +170,14 @@ async function computeEffectiveBountyPower(userDetails) {
 
 async function resolveBountyAttempt(userDetails, mode) {
     const { effectiveBountyPower, rankInfo } = await computeEffectiveBountyPower(userDetails);
-    const tierEntry = mode === 'baby'
-        ? Bounty.TIERS[0]
-        : rollWeightedTier(Bounty.TIERS, 1, effectiveBountyPower); // guildLevel arg unused — no tier here carries minGuildLevel
+    let tierEntry;
+    if (mode === 'baby') {
+        tierEntry = Bounty.TIERS[0];
+    } else {
+        const modeTiers = getBountyModeTiers(mode);
+        if (!modeTiers) throw new Error(`resolveBountyAttempt: unknown bounty mode "${mode}"`);
+        tierEntry = rollWeightedTier(modeTiers, 1, effectiveBountyPower); // guildLevel arg unused — no tier here carries minGuildLevel
+    }
     const { tier: tierNum, difficulty, reward: rewardBase, penalty: penaltyBase, starchReward: starchRewardBase } = tierEntry;
     const bandLetter = getBandLetter(tierNum);
 
@@ -168,7 +188,7 @@ async function resolveBountyAttempt(userDetails, mode) {
     // Bounty.METAL_POTATO_MEDLEY's own comment in constants.js for the full band-reward
     // derivation (a literal numeric copy of Raid's own Regular/Elite/Legendary Metal King
     // numbers, keyed by band instead of guild mode).
-    const isMetalPotatoMedley = mode === 'regular' && Math.random() < Bounty.METAL_POTATO_MEDLEY_CHANCE;
+    const isMetalPotatoMedley = mode !== 'baby' && Math.random() < Bounty.METAL_POTATO_MEDLEY_CHANCE;
     const medleyBand = isMetalPotatoMedley ? Bounty.METAL_POTATO_MEDLEY[bandLetter] : null;
 
     // A Medley attempt rolls its own success chance against its OWN (much higher) band
@@ -652,6 +672,8 @@ async function getMercenaryCooldownSkipSources(userDetails) {
 
 module.exports = {
     getBandLetter,
+    BOUNTY_MODE_BAND,
+    getBountyModeTiers,
     getMercenaryRankInfo,
     getMercenaryCooldownSkipSources,
     rollBountyStatReward,

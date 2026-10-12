@@ -21454,3 +21454,40 @@ Full detail in `.claude/systems/tower.md`.
 
 **Tests**: 14 new in `towerFactory.test.js`, 3 in `enter-tower.test.js`, 1 in `dynamoHandler.test.js`.
 `financial-project` doesn't implement Tower — no port needed.
+
+## Mercenary bounties split into Regular / Elite / Legendary modes, like Guild Raid (2026-10-12, direct instruction)
+
+**Asked**: "for merc bounties can we make the command and separation more similar to guild that does
+regular/elite/legendary? I want merc bounties split up 1-4 = regular 5-8 = elite 9-12 = legendary. Update
+merc bounty board to reflect that on both web and bot."
+
+**Found**: Bounty already had a 3-band concept (`getBandLetter`: tiers 1-4 = I, 5-8 = II, 9-12 = III) keying
+scenario flavor, the rare stat-reward roll, Yukon drops and Metal Potato Medley numbers, and `/take-bounty`
+had just `regular` (one dynamically-weighted roll across ALL 12 tiers), `baby` and `stat`. The split therefore
+needed no new balance numbers — each mode just owns one existing band.
+
+**Changed (bot)**: `mercenaryFactory` — `BOUNTY_MODE_BAND` (`regular` -> I, `elite` -> II, `legendary` -> III) and
+`getBountyModeTiers(mode)`; `resolveBountyAttempt` rolls `rollWeightedTier` over just that mode's 4 tiers (baby
+still Tier 1; an unknown mode throws instead of silently defaulting) and the Medley's flat 1% now applies to every
+non-baby ladder mode (it was `regular` only; its band is still the rolled tier's band = the mode's band).
+`/take-bounty mode` offers Regular / Elite / Legendary / Baby / Stat (Regular first); result titles gain
+" (Elite Bounty)" / " (Legendary Bounty)" (Regular unmarked, Baby unchanged). `/bounty-board` now builds one
+section per mode, each over its own 4 tiers (a tier's odds are its chance WITHIN that mode, summing to 1), with
+the Baby / Stat / Medley (retitled: Band I on Regular, II on Elite, III on Legendary) / cooldown fields kept;
+`createBountyBoardEmbed`'s second-to-last params changed to `bountyModes = [{ mode, label, weightedTiers }]`.
+Command descriptions kept under Discord's 100-char limit (a test enforces it).
+
+**Judgment calls, not silently decided**: (1) **no rank gating** on Elite/Legendary — none was requested, Bounty
+has never gated tiers on rank since 2026-08-28, and the board shows the player their exact odds; Guild Raid gates
+those modes on guild level, so a rank gate (e.g. Elite at Rank 3, Legendary at Rank 5) is an easy follow-up if
+wanted. (2) A behavioural consequence: a high-power mercenary on Regular now only ever rolls tiers 1-4 (small
+rewards) instead of an auto-picked best-fit tier across all 12 — chasing big payouts means choosing Elite or
+Legendary and accepting their larger loss penalties. No reward/penalty/difficulty numbers changed.
+
+**Tests**: `mercenaryFactory.test.js` (every mode stays in its band across 5 powers x 5 rolls, `getBountyModeTiers`,
+unknown mode throws, higher power skews to the top of Elite, Medley band II/III tests moved onto `elite`/`legendary`),
+`takeBountyModes.test.js` (new — the command's choices and per-mode band), `bountyBoardRankScaling.test.js` (per-mode
+sections, all 12 tiers shown once, rank scaling unchanged), `embedFactory.test.js` (board layout/limits, result-title
+labels), `takeBountyTax.test.js` (the Tier-12 starch case moved to `legendary`). Updated
+`.claude/systems/mercenary-bounties.md`. Web port: see `financial-project`'s `NOTES_GROMP_WEB_INTEGRATION.md`
+(Bot caught up #125).

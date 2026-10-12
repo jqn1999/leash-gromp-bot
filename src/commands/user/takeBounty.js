@@ -66,8 +66,10 @@ function applyStatRewardGrant(userDetails, grant, aggregatedAddFields) {
 // (2026-08-28) dropped manual tier selection entirely in favor of dynamic tier weighting
 // off the mercenary's own current power, the same way Guild Raid's own T1-T4 within
 // Regular mode are auto-rolled rather than player-picked. 'baby' always resolves the
-// easiest tier guaranteed (mirrors Baby Raid's role for new guilds); 'regular' rolls
-// across all 12 tiers, weighted toward whichever the player's own power is closest to.
+// easiest tier guaranteed (mirrors Baby Raid's role for new guilds); 'regular' (tiers 1-4),
+// 'elite' (5-8) and 'legendary' (9-12) (2026-10-12, mirroring Guild Raid's own three modes)
+// each roll within their own 4-tier band, weighted toward whichever tier the player's own
+// power is closest to.
 //
 // 'stat' (2026-09-10, direct instruction — see resolveStatBountyChain's own comment
 // further down) is a third mode, entirely separate from the 12-tier ladder: a flat 300,000-
@@ -82,11 +84,13 @@ module.exports = {
     options: [
         {
             name: 'mode',
-            description: 'Regular (12 tiers), Baby (easiest), or Stat Bounty (300k for 50% chance at +0.2 work multi)',
+            description: 'Regular (tiers 1-4), Elite (5-8), Legendary (9-12), Baby (easiest), or Stat (300k for +0.2 multi)',
             required: true,
             type: ApplicationCommandOptionType.String,
             choices: [
                 { name: 'Regular Bounty', value: 'regular' },
+                { name: 'Elite Bounty', value: 'elite' },
+                { name: 'Legendary Bounty', value: 'legendary' },
                 { name: 'Baby Bounty', value: 'baby' },
                 { name: 'Stat Bounty', value: 'stat' },
             ]
@@ -215,7 +219,8 @@ function applyBountyCompanionLeveling(userDetails) {
     return { leveledCompanions, companionXpGained, companionName };
 }
 
-// The regular 12-tier-ladder / Baby Bounty chain loop (mode 'regular' | 'baby'). Accumulates
+// The regular/elite/legendary tier-ladder / Baby Bounty chain loop (mode 'regular' | 'elite' |
+// 'legendary' | 'baby'). Accumulates
 // every link's own result into userDetails + the aggregated set/add fields below, in memory,
 // and fires exactly ONE dynamoHandler.updateUserFields at the very end — see
 // runBountyAttempt's own top comment for the two accepted tradeoffs this carries forward

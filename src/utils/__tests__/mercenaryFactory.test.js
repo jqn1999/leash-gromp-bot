@@ -528,16 +528,70 @@ describe('resolveBountyAttempt', () => {
             expect(Number.isFinite(result.successChance)).toBe(true);
         });
 
-        test('a maxed-power mercenary is weighted toward Tier 12 (the ladder\'s own top), not locked out of it by rank', async () => {
+        test('a maxed-power mercenary on legendary mode is weighted toward Tier 12 (the ladder\'s own top), not locked out of it by rank', async () => {
             const user = baseUser({ workMultiplierAmount: 2000, mercenaryBountyWinCount: 0 }); // Rank 1, zero wins -- confirms rank no longer gates tier access
             const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.5);
             let result;
             try {
-                result = await mercenaryFactory.resolveBountyAttempt(user, 'regular');
+                result = await mercenaryFactory.resolveBountyAttempt(user, 'legendary');
             } finally {
                 randomSpy.mockRestore();
             }
-            expect(result.tier).toBeGreaterThan(6); // comfortably into the upper half of the ladder at this power
+            expect(result.tier).toBeGreaterThan(10); // at this power, the top of Legendary's own 9-12 band
+        });
+
+        // Bounty modes (2026-10-12, direct instruction: "split up 1-4 = regular 5-8 = elite 9-12 =
+        // legendary", mirroring Guild Raid's Regular/Elite/Legendary): each mode only ever rolls
+        // within its own 4-tier band, whatever the mercenary's power.
+        test.each([
+            ['regular', 1, 4],
+            ['elite', 5, 8],
+            ['legendary', 9, 12],
+        ])('%s mode only ever rolls tiers %i-%i, at any roll value and any power', async (mode, lo, hi) => {
+            for (const power of [0.001, 25, 400, 2000, 100000]) {
+                for (const roll of [0, 0.25, 0.5, 0.75, 0.999999]) {
+                    const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(roll);
+                    let result;
+                    try {
+                        result = await mercenaryFactory.resolveBountyAttempt(baseUser({ workMultiplierAmount: power }), mode);
+                    } finally {
+                        randomSpy.mockRestore();
+                    }
+                    expect(result.tier).toBeGreaterThanOrEqual(lo);
+                    expect(result.tier).toBeLessThanOrEqual(hi);
+                    expect(result.mode).toBe(mode);
+                }
+            }
+        });
+
+        test('getBountyModeTiers returns exactly the 4 tiers of each mode\'s band, and null for baby/stat/unknown', () => {
+            expect(mercenaryFactory.getBountyModeTiers('regular').map(t => t.tier)).toEqual([1, 2, 3, 4]);
+            expect(mercenaryFactory.getBountyModeTiers('elite').map(t => t.tier)).toEqual([5, 6, 7, 8]);
+            expect(mercenaryFactory.getBountyModeTiers('legendary').map(t => t.tier)).toEqual([9, 10, 11, 12]);
+            expect(mercenaryFactory.getBountyModeTiers('baby')).toBeNull();
+            expect(mercenaryFactory.getBountyModeTiers('stat')).toBeNull();
+            expect(mercenaryFactory.getBountyModeTiers('nonsense')).toBeNull();
+        });
+
+        test('an unknown mode throws instead of silently rolling some default pool', async () => {
+            await expect(mercenaryFactory.resolveBountyAttempt(baseUser(), 'nonsense')).rejects.toThrow(/unknown bounty mode/);
+        });
+
+        test('a higher-power mercenary on Elite mode lands in the upper tiers of 5-8 more often than a lower-power one (dynamic weighting within the band)', async () => {
+            const sample = async (power) => {
+                let sum = 0;
+                const n = 400;
+                for (let i = 0; i < n; i++) {
+                    const randomSpy = jest.spyOn(Math, 'random').mockReturnValueOnce((i + 0.5) / n).mockReturnValue(0.99);
+                    try {
+                        sum += (await mercenaryFactory.resolveBountyAttempt(baseUser({ workMultiplierAmount: power }), 'elite')).tier;
+                    } finally {
+                        randomSpy.mockRestore();
+                    }
+                }
+                return sum / n;
+            };
+            expect(await sample(1500)).toBeGreaterThan(await sample(50));
         });
     });
 
@@ -591,13 +645,13 @@ describe('resolveBountyAttempt', () => {
         test('Band II numbers (tier roll lands 5-8): difficulty 883 (45% of guild-derived 1962, 2026-10-09 re-raise rework), +3,935,115 potatoes, matching permanent grants', async () => {
             const user = baseUser({ workMultiplierAmount: 200 });
             const randomSpy = jest.spyOn(Math, 'random')
-                .mockReturnValueOnce(0.5)   // tier roll -> Tier 7 at power 200 (Band II, verified via raidFactory.rollWeightedTier)
+                .mockReturnValueOnce(0.5)   // tier roll within Elite's own tiers 5-8 (Band II)
                 .mockReturnValueOnce(0.005) // Metal Potato Medley trigger HIT
                 .mockReturnValueOnce(0)     // win check: successChance = min(200/883, .95) ≈ .2265, 0 < that -> win
                 .mockReturnValueOnce(0.5);  // reward rangeRoll -> 1.0
             let result;
             try {
-                result = await mercenaryFactory.resolveBountyAttempt(user, 'regular');
+                result = await mercenaryFactory.resolveBountyAttempt(user, 'elite');
             } finally {
                 randomSpy.mockRestore();
             }
@@ -617,13 +671,13 @@ describe('resolveBountyAttempt', () => {
             const maxRankTier = MercenaryRank.THRESHOLDS[MercenaryRank.THRESHOLDS.length - 1];
             const user = baseUser({ workMultiplierAmount: 2000, mercenaryBountyWinCount: maxRankTier.winsRequired }); // max rank -> rewardMultiplier 5.00x
             const randomSpy = jest.spyOn(Math, 'random')
-                .mockReturnValueOnce(0.5)   // tier roll -> Tier 12 at power 2000 (Band III, verified via raidFactory.rollWeightedTier)
+                .mockReturnValueOnce(0.5)   // tier roll within Legendary's own tiers 9-12 (Band III)
                 .mockReturnValueOnce(0.005) // Metal Potato Medley trigger HIT
                 .mockReturnValueOnce(0)     // win check: successChance = min(2000/3245, .95) ≈ .6163, 0 < that -> win
                 .mockReturnValueOnce(0.5);  // reward rangeRoll -> 1.0
             let result;
             try {
-                result = await mercenaryFactory.resolveBountyAttempt(user, 'regular');
+                result = await mercenaryFactory.resolveBountyAttempt(user, 'legendary');
             } finally {
                 randomSpy.mockRestore();
             }

@@ -95,7 +95,7 @@ describe('/take-bounty win tax', () => {
     // as the Spud Keep pot, so a starch-denominated tax is now converted to its potato
     // equivalent BEFORE crediting the house, not credited as raw starches.
     //
-    // 'regular' mode + a rigged Tier 12 power (2026-09-21 rebalance follow-up) — baby mode
+    // 'legendary' mode (tiers 9-12 since 2026-10-12; was 'regular' over all 12) + a rigged Tier 12 power (2026-09-21 rebalance follow-up) — baby mode
     // is hardcoded to Bounty.TIERS[0], whose starchReward (3) is now too small for a 5% tax
     // to ever round above 0 (floor(3 * up to ~1.2) * .05 stays 0 at every roll), so this
     // test can no longer exercise a nonzero tax via baby mode the way it used to. Power
@@ -105,7 +105,7 @@ describe('/take-bounty win tax', () => {
     // Tier 12" test already relies on.
     test('a starch win converts the tax to potatoes before crediting the house — the house never holds starches', async () => {
         dynamoHandler.findUser.mockResolvedValue(baseUser({ workMultiplierAmount: 2000 }));
-        const interaction = fakeInteraction({ mode: 'regular' });
+        const interaction = fakeInteraction({ mode: 'legendary' });
         // BountyScenarios.III[2] ("The Starch Cartel's Kipfler") is starch; pool.length=10,
         // index 2 needs a roll in [0.2, 0.3).
         const randomSpy = jest.spyOn(Math, 'random')
@@ -143,7 +143,7 @@ describe('/take-bounty win tax', () => {
     test('a starch win with a live Spud Keep holder splits the CONVERTED potato amount between house and pot', async () => {
         dynamoHandler.findUser.mockResolvedValue(baseUser({ workMultiplierAmount: 2000 }));
         dynamoHandler.getActiveSpudKeepBuff.mockResolvedValue({ holderType: 'mercenary', holderId: null, expiresAt: Date.now() + 100000 });
-        const interaction = fakeInteraction({ mode: 'regular' });
+        const interaction = fakeInteraction({ mode: 'legendary' });
         const randomSpy = jest.spyOn(Math, 'random')
             .mockReturnValueOnce(0.5)  // tier roll -> Tier 12
             .mockReturnValueOnce(0.99) // Metal Potato Medley trigger miss

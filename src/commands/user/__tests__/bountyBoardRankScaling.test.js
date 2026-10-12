@@ -29,8 +29,32 @@ function mercUser(mercenaryBountyWinCount) {
     };
 }
 
+// createBountyBoardEmbed now receives [{ mode, label, weightedTiers }] — one entry per bounty mode.
+function allShownTiers(bountyModes) {
+    return bountyModes.flatMap(m => m.weightedTiers);
+}
+
 beforeEach(() => {
     jest.clearAllMocks();
+});
+
+test('the board is split into Regular (1-4) / Elite (5-8) / Legendary (9-12), each with odds computed over its OWN 4 tiers', async () => {
+    dynamoHandler.findUser.mockResolvedValue({ ...mercUser(0), workMultiplierAmount: 300 });
+    const spy = jest.spyOn(EmbedFactory.prototype, 'createBountyBoardEmbed').mockReturnValue({});
+
+    await callback({}, fakeInteraction());
+
+    const bountyModes = spy.mock.calls[0][2];
+    expect(bountyModes.map(m => [m.mode, m.label, m.weightedTiers.map(t => t.tier)])).toEqual([
+        ['regular', 'Regular Bounty', [1, 2, 3, 4]],
+        ['elite', 'Elite Bounty', [5, 6, 7, 8]],
+        ['legendary', 'Legendary Bounty', [9, 10, 11, 12]],
+    ]);
+    // Each mode's own weights sum to 1 — the roll draws from that mode's pool alone.
+    for (const m of bountyModes) {
+        expect(m.weightedTiers.reduce((sum, t) => sum + t.weight, 0)).toBeCloseTo(1);
+    }
+    spy.mockRestore();
 });
 
 test('Rank 1 (1.00x, a no-op multiplier): shown rewards match Bounty.TIERS exactly', async () => {
@@ -39,9 +63,11 @@ test('Rank 1 (1.00x, a no-op multiplier): shown rewards match Bounty.TIERS exact
 
     await callback({}, fakeInteraction());
 
-    const [, , weightedTiers] = spy.mock.calls[0];
-    weightedTiers.forEach((t, i) => {
-        expect(t.reward).toBe(Bounty.TIERS[i].reward);
+    // All 12 tiers across the three modes (2026-10-12: Regular 1-4 / Elite 5-8 / Legendary 9-12).
+    const weightedTiers = allShownTiers(spy.mock.calls[0][2]);
+    expect(weightedTiers.map(t => t.tier)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
+    weightedTiers.forEach((t) => {
+        expect(t.reward).toBe(Bounty.TIERS[t.tier - 1].reward);
     });
     spy.mockRestore();
 });
@@ -53,13 +79,12 @@ test('Rank 2 (1.15x): every shown reward is Math.round(base * 1.15), not the raw
 
     await callback({}, fakeInteraction());
 
-    const [, , weightedTiers] = spy.mock.calls[0];
-    weightedTiers.forEach((t, i) => {
-        const expected = Math.round(Bounty.TIERS[i].reward * rank2.rewardMultiplier);
+    allShownTiers(spy.mock.calls[0][2]).forEach((t) => {
+        const expected = Math.round(Bounty.TIERS[t.tier - 1].reward * rank2.rewardMultiplier);
         expect(t.reward).toBe(expected);
         expect(Number.isInteger(t.reward)).toBe(true);
         // Would fail before the fix — the raw reward was shown unscaled at every rank.
-        expect(t.reward).not.toBe(Bounty.TIERS[i].reward);
+        expect(t.reward).not.toBe(Bounty.TIERS[t.tier - 1].reward);
     });
     spy.mockRestore();
 });
@@ -71,9 +96,8 @@ test('a maxed Rank 6 mercenary (5.00x) also sees whole-number, fully-scaled rewa
 
     await callback({}, fakeInteraction());
 
-    const [, , weightedTiers] = spy.mock.calls[0];
-    weightedTiers.forEach((t, i) => {
-        expect(t.reward).toBe(Math.round(Bounty.TIERS[i].reward * rank6.rewardMultiplier));
+    allShownTiers(spy.mock.calls[0][2]).forEach((t) => {
+        expect(t.reward).toBe(Math.round(Bounty.TIERS[t.tier - 1].reward * rank6.rewardMultiplier));
         expect(Number.isInteger(t.reward)).toBe(true);
     });
     spy.mockRestore();
@@ -86,9 +110,8 @@ test('penalty stays unscaled by rewardMultiplier at every rank — losses are de
 
     await callback({}, fakeInteraction());
 
-    const [, , weightedTiers] = spy.mock.calls[0];
-    weightedTiers.forEach((t, i) => {
-        expect(t.penalty).toBe(Bounty.TIERS[i].penalty);
+    allShownTiers(spy.mock.calls[0][2]).forEach((t) => {
+        expect(t.penalty).toBe(Bounty.TIERS[t.tier - 1].penalty);
     });
     spy.mockRestore();
 });

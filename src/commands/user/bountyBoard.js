@@ -11,12 +11,13 @@ const embedFactory = new EmbedFactory();
 // to the channel. See systems/mercenary-bounties.md.
 //
 // Since the 12-Tier Bounty Ladder rework (2026-08-28), no tier is rank-locked anymore —
-// this shows every tier's live ROLL ODDS (how likely Regular Bounty is to land there,
-// given the mercenary's own current power) alongside its success chance, the same
-// bracket-odds shape /start-raid's own preview embed already uses for Guild Raid.
+// this shows every tier's live ROLL ODDS (how likely its mode — Regular tiers 1-4, Elite 5-8,
+// Legendary 9-12, since 2026-10-12 — is to land there, given the mercenary's own current
+// power) alongside its success chance, the same bracket-odds shape /start-raid's own preview
+// embed already uses for Guild Raid.
 module.exports = {
     name: "bounty-board",
-    description: "View your Mercenary Rank and a live odds/success-chance preview of every Bounty tier",
+    description: "View your Mercenary Rank and live odds/success chance for every Regular/Elite/Legendary bounty",
     devOnly: false,
     deleted: false,
     options: [],
@@ -48,10 +49,22 @@ module.exports = {
         // of a whole-number potato amount. Penalty is deliberately left unscaled — see
         // resolveBountyAttempt's own comment: a loss is never reduced by rewardMultiplier,
         // by design, so as rank climbs the risk/reward ratio actually improves.
-        const weightedTiers = getDynamicTierWeights(Bounty.TIERS, 1, effectiveBountyPower).map(t => ({
-            ...t,
-            reward: Math.round(t.reward * rankInfo.rewardMultiplier),
-            successChance: Math.min(effectiveBountyPower / t.difficulty, Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE)
+        // One section per mode (2026-10-12 — Regular = tiers 1-4, Elite = 5-8, Legendary = 9-12,
+        // mirroring Guild Raid's own three modes): each mode's odds are computed over ITS OWN 4
+        // tiers, because that's the pool the roll actually draws from now — see
+        // mercenaryFactory.getBountyModeTiers/resolveBountyAttempt.
+        const bountyModes = [
+            { mode: 'regular', label: 'Regular Bounty' },
+            { mode: 'elite', label: 'Elite Bounty' },
+            { mode: 'legendary', label: 'Legendary Bounty' },
+        ].map(({ mode, label }) => ({
+            mode,
+            label,
+            weightedTiers: getDynamicTierWeights(mercenaryFactory.getBountyModeTiers(mode), 1, effectiveBountyPower).map(t => ({
+                ...t,
+                reward: Math.round(t.reward * rankInfo.rewardMultiplier),
+                successChance: Math.min(effectiveBountyPower / t.difficulty, Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE)
+            }))
         }));
 
         // Metal Potato Medley (2026-10-03) — a flat 1% roll on any Regular Bounty attempt,
@@ -76,7 +89,7 @@ module.exports = {
         const timeSinceLastBountyInSeconds = Math.floor((Date.now() - userDetails.bountyTimer) / 1000);
         const cooldownRemainingSeconds = Math.max(0, Bounty.BOUNTY_TIMER_SECONDS - timeSinceLastBountyInSeconds);
 
-        const embed = embedFactory.createBountyBoardEmbed(userDisplayName, rankInfo, weightedTiers, cooldownRemainingSeconds, medleyBands);
+        const embed = embedFactory.createBountyBoardEmbed(userDisplayName, rankInfo, bountyModes, cooldownRemainingSeconds, medleyBands);
         interaction.editReply({ embeds: [embed] });
     }
 }

@@ -155,7 +155,8 @@ untouched — this pass only touched the reward column.
 
 **Rank no longer gates Bounty tier access at all** — retired 2026-08-28 alongside the
 12-Tier Bounty Ladder rework below (`unlocksTier` removed from `MercenaryRank.THRESHOLDS`
-entirely). Which of Bounty's 12 tiers gets rolled on a Regular Bounty attempt is purely a
+entirely). Which of Bounty's 12 tiers gets rolled on a Regular/Elite/Legendary Bounty attempt (within that
+mode's own 4-tier band since 2026-10-12) is purely a
 function of the mercenary's own current power via dynamic tier weighting — the same way
 Guild Raid's own T1-T4 within Regular mode were never gated by guild level either. Rank
 keeps exactly one job: the `rewardMultiplier` column above.
@@ -292,14 +293,28 @@ regrades and sweet potato/companion buffs so that it is a soloable experience...
 just two options for bounties... baby bounty or regular bounty (which will have all the
 difficulty/reward tiers)."*
 
-**Just two modes now**, both handled by a single `/take-bounty <mode>` command (mirroring
-`/start-raid`'s own `raidSelection` shape — see [Commands](#commands) below):
+**Modes** (all handled by a single `/take-bounty <mode>` command, mirroring `/start-raid`'s own
+`raidSelection` shape — see [Commands](#commands) below). The original 2026-08-28 rework shipped
+just two (Baby + a Regular that rolled across all 12 tiers); **2026-10-12 (direct instruction:
+"split up 1-4 = regular 5-8 = elite 9-12 = legendary", mirroring Guild Raid's own three modes)**
+replaced that single 12-tier Regular with three, each owning one band:
 - **Baby Bounty** — always resolves `Bounty.TIERS[0]` (Tier 1) directly, unconditionally,
   zero risk of a harsher roll. Mirrors Baby Raid's exact role for brand-new guilds.
-- **Regular Bounty** — rolls across all 12 tiers via `raidFactory.rollWeightedTier` (added
-  for this rework — same dynamic weighting math Guild Raid's own T1-T4 use, just returning
-  the single sampled tier directly rather than a Metal-King-combined cumulative array,
-  since Bounty has nothing analogous to Metal King to carve out first).
+- **Regular Bounty** (tiers 1-4, Band I), **Elite Bounty** (tiers 5-8, Band II), **Legendary
+  Bounty** (tiers 9-12, Band III) — each rolls ONE tier within its own 4 via
+  `raidFactory.rollWeightedTier` (same dynamic power-weighting math Guild Raid's own T1-T4 use
+  within a mode, returning the single sampled tier directly rather than a Metal-King-combined
+  cumulative array, since Bounty has nothing analogous to Metal King to carve out first).
+  `mercenaryFactory.BOUNTY_MODE_BAND` maps mode → band letter and `getBountyModeTiers(mode)`
+  returns that band's `Bounty.TIERS` entries (via the same `getBandLetter` that already keys
+  scenario flavor, stat-reward odds, Yukon odds and Medley numbers by band — so a mode's
+  flavor/stat-reward/Yukon/Medley pool falls out unchanged). An unknown mode throws. **No rank
+  gating** was added (none requested; Guild Raid gates Elite/Legendary on guild level, Bounty never
+  gates any tier on rank since the 2026-08-28 rework) — any mercenary may pick any mode, and the
+  board shows exactly what their power gives them. **Behavioral consequence worth knowing:** a
+  mercenary no longer gets one auto-picked "best-fit" tier across all 12 — a high-power player on
+  Regular is always rolling tiers 1-4 (small rewards), so chasing the big payouts now means choosing
+  Elite/Legendary, accepting those tiers' penalties on a loss.
 
 ### Ladder shape: an evenly geometric-spaced 12-tier difficulty curve, NOT Guild's raw 12 values
 
@@ -872,11 +887,11 @@ fields every other Bounty result embed shows.
 12-tier table and Baby Bounty line — the flat 50%/300,000/+0.20 numbers, since there's no
 per-tier table to build for a flat-chance mode.
 
-## Metal Potato Medley (`/take-bounty mode:regular`, 2026-10-03)
+## Metal Potato Medley (`/take-bounty` Regular/Elite/Legendary, 2026-10-03; every non-Baby ladder mode since 2026-10-12)
 
 Bounty's own analog of Guild Raid's flat 1% Metal King roll (`Raid.METAL_KING_DIFFICULTY`
 etc., see [raids-and-world-events.md](raids-and-world-events.md)) — a rare jackpot encounter
-layered on top of a normal Regular Bounty attempt, not a 13th tier of its own. Product/
+layered on top of a normal Regular/Elite/Legendary Bounty attempt (originally Regular only; every non-Baby ladder mode since the 2026-10-12 Regular/Elite/Legendary split, with the Medley band always matching the mode's band), not a 13th tier of its own. Product/
 architect-scoped, user-confirmed design (summarized here; the shipped mechanic only — see
 [roadmap.md](../roadmap.md) for the full design-pass writeup).
 
@@ -1642,8 +1657,8 @@ no `misc/`/`guilds/` category fits a Mercenary-track command):
 |---|---|
 | `/become-mercenary` | No args, no confirm. Rejects if guilded or already a mercenary. |
 | `/retire-mercenary` | No args. Rejects if not currently a mercenary. Confirm/cancel step (2026-09-07 — see "Guild ↔ Mercenary switch cooldown" above), 30s timeout. Progress persists. |
-| `/bounty-board` | No args, read-only (mirrors `/current-raid`/`/quests` — never snapshots/claims by viewing). Rejects if not a mercenary. Shows Mercenary Rank + reward multiplier + cooldown-reduction-on-a-win + wins-to-next-rank, a live roll-odds + success-chance line per Bounty tier (no tier is locked anymore — see the 12-Tier Bounty Ladder above), a 3-band Metal Potato Medley breakdown (2026-10-03), and `bountyTimer` remaining. |
-| `/take-bounty mode:<Regular Bounty\|Baby Bounty>` (Regular listed first, 2026-08-30, direct instruction — "easier") | Rejects if not a mercenary or if `bountyTimer` hasn't elapsed — no more per-tier rank gate. Resolves immediately, no confirm step, same precedent `/start-raid` sets. Baby Bounty always resolves Tier 1; Regular Bounty dynamically rolls one of all 12 tiers by current power, with an independent flat 1% chance (2026-10-03) to instead become a Metal Potato Medley (see its own section above) — Baby Bounty is never eligible. Win/loss + scenario flavor (or Medley's own flavor) + amount/currency + stat-reward callout + Yukon callout + (on a win, Rank 2+) a cooldown-reduction callout, all in one result embed. |
+| `/bounty-board` | No args, read-only (mirrors `/current-raid`/`/quests` — never snapshots/claims by viewing). Rejects if not a mercenary. Shows Mercenary Rank + reward multiplier + cooldown-reduction-on-a-win + wins-to-next-rank, one section per mode — Regular (tiers 1-4), Elite (5-8), Legendary (9-12) (2026-10-12) — each listing its own 4 tiers with a live roll-odds (WITHIN that mode's 4) + success-chance line (no tier is locked — see the 12-Tier Bounty Ladder above), the Baby and Stat sections, a 3-band Metal Potato Medley breakdown (2026-10-03; titled as Band I on Regular / II on Elite / III on Legendary), and `bountyTimer` remaining. |
+| `/take-bounty mode:<Regular Bounty\|Elite Bounty\|Legendary Bounty\|Baby Bounty\|Stat Bounty>` (Regular listed first, 2026-08-30, direct instruction — "easier"; Elite/Legendary added 2026-10-12) | Rejects if not a mercenary or if `bountyTimer` hasn't elapsed — no more per-tier rank gate. Resolves immediately, no confirm step, same precedent `/start-raid` sets. Baby Bounty always resolves Tier 1; Regular/Elite/Legendary Bounty dynamically roll one tier within their own band (1-4 / 5-8 / 9-12) by current power, each with an independent flat 1% chance (2026-10-03; every non-Baby ladder mode since 2026-10-12) to instead become a Metal Potato Medley (see its own section above) — Baby Bounty is never eligible. Elite/Legendary results are titled "(Elite Bounty)"/"(Legendary Bounty)"; Regular stays unmarked. Win/loss + scenario flavor (or Medley's own flavor) + amount/currency + stat-reward callout + Yukon callout + (on a win, Rank 2+) a cooldown-reduction callout, all in one result embed. |
 | `/rob-npc heist-type:<Market Stall\|Merchant's Wagon\|Noble's Vault\|The Royal Treasury>` | Rejects if not a mercenary, if the picked tier isn't unlocked at your Mercenary Rank, or if `npcRobTimer` hasn't elapsed. No confirm step. Dedicated result embed (win/loss + tier + amount or penalty + rare stat-grant callout on The Royal Treasury + (on a win, Rank 2+) a cooldown-reduction callout). |
 | `/set-mercenary-buff buff:<rob-chance\|work-timer\|work-multi\|bounty-timer>` | See [Mercenary Buff](#mercenary-buff-set-mercenary-buff-2026-09-09-direct-instruction) above. Rejects if not a mercenary, rejects a same-category re-pick as a no-op, else rejects if the switch cooldown (15min) hasn't elapsed. On success, sets `mercenaryBuff`/`mercenaryBuffSwitchTimer`. |
 

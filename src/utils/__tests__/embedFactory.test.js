@@ -640,6 +640,28 @@ describe('createRivalConfrontationResultEmbed rank bonus display', () => {
 // (2026-09-05 cooldown-skip overhaul), surfaced only when a skip actually happened this call
 // via the shared cooldownSkipSource param/buildCooldownSkipField, same as every other
 // converted cooldown — replacing the old deterministic "-X%" display.
+// Bounty mode label in the result embed's title (2026-10-12): Regular is the unmarked default,
+// every other mode names itself.
+describe('createBountyResultEmbed mode label', () => {
+    const scenario = { name: 'a rival gang', winFlavor: 'You win.', loseFlavor: 'You lose.', currency: 'potato' };
+    const result = (mode, tier) => ({
+        tier, mode, won: true, successChance: 0.5, scenario,
+        rankInfo: { rank: 1, rewardMultiplier: 1.00, cooldownReductionPercent: 0 },
+        currency: 'potato', rewardAmount: 5000, penaltyAmount: 0, statReward: null,
+    });
+
+    test.each([
+        ['regular', 2, ' — Tier 2', ['(Elite Bounty)', '(Legendary Bounty)', '(Baby Bounty)']],
+        ['elite', 6, '(Elite Bounty)', ['(Legendary Bounty)', '(Baby Bounty)']],
+        ['legendary', 10, '(Legendary Bounty)', ['(Elite Bounty)', '(Baby Bounty)']],
+        ['baby', 1, '(Baby Bounty)', ['(Elite Bounty)', '(Legendary Bounty)']],
+    ])('%s mode title', (mode, tier, expected, unexpected) => {
+        const title = embedFactory.createBountyResultEmbed('User', result(mode, tier)).data.title;
+        expect(title).toContain(expected);
+        for (const u of unexpected) expect(title).not.toContain(u);
+    });
+});
+
 describe('createBountyResultEmbed cooldown skip display', () => {
     const scenario = { name: 'a rival gang', winFlavor: 'You win.', loseFlavor: 'You lose.', currency: 'potato' };
 
@@ -836,7 +858,7 @@ describe('createRobNpcResultEmbed Rival Bounty Hunter (readyNotoriety) note', ()
 });
 
 describe('createBountyBoardEmbed cooldown bonus preview', () => {
-    const weightedTiers = [{ tier: 1, weight: 1, successChance: 0.9, reward: 26000, penalty: -26000 }];
+    const weightedTiers = [{ mode: 'regular', label: 'Regular Bounty', weightedTiers: [{ tier: 1, weight: 1, successChance: 0.9, reward: 26000, penalty: -26000 }] }];
 
     test('shows the cooldown skip chance in the rank line at Rank 6', () => {
         const rankInfo = { rank: 6, rewardMultiplier: 1.75, winsToNextRank: null, cooldownReductionPercent: 0.30 };
@@ -848,6 +870,53 @@ describe('createBountyBoardEmbed cooldown bonus preview', () => {
         const rankInfo = { rank: 1, rewardMultiplier: 1.00, winsToNextRank: 15, cooldownReductionPercent: 0 };
         const embed = embedFactory.createBountyBoardEmbed('User', rankInfo, weightedTiers, 0);
         expect(embed.data.description).not.toContain('cooldown on a win');
+    });
+});
+
+// Bounty modes (2026-10-12): the board shows one field per Regular/Elite/Legendary mode.
+describe('createBountyBoardEmbed — Regular/Elite/Legendary sections', () => {
+    const rankInfo = { rank: 1, rewardMultiplier: 1.00, winsToNextRank: 15, cooldownReductionPercent: 0 };
+    const mk = (mode, label, tiers) => ({
+        mode, label,
+        weightedTiers: tiers.map((tier, i) => ({ tier, weight: 0.25, successChance: 0.5, reward: 1000 * tier, penalty: -500 * tier })),
+    });
+    const bountyModes = [
+        mk('regular', 'Regular Bounty', [1, 2, 3, 4]),
+        mk('elite', 'Elite Bounty', [5, 6, 7, 8]),
+        mk('legendary', 'Legendary Bounty', [9, 10, 11, 12]),
+    ];
+
+    test('one field per mode, each naming its tier range and listing only its own 4 tiers', () => {
+        const embed = embedFactory.createBountyBoardEmbed('User', rankInfo, bountyModes, 0);
+        const names = embed.data.fields.map(f => f.name);
+        expect(names[0]).toContain('Regular Bounty — tiers 1-4');
+        expect(names[1]).toContain('Elite Bounty — tiers 5-8');
+        expect(names[2]).toContain('Legendary Bounty — tiers 9-12');
+        expect(embed.data.fields[1].value.split('\n')).toHaveLength(4);
+        expect(embed.data.fields[1].value).toContain('Tier 5:');
+        expect(embed.data.fields[1].value).not.toContain('Tier 4:');
+        expect(embed.data.fields[2].value).toContain('Tier 12:');
+    });
+
+    test('keeps the Baby and Stat sections, and Baby points at Tier 1', () => {
+        const embed = embedFactory.createBountyBoardEmbed('User', rankInfo, bountyModes, 0);
+        const baby = embed.data.fields.find(f => f.name === 'Baby Bounty:');
+        expect(baby.value).toContain('Tier 1');
+        expect(embed.data.fields.some(f => f.name === 'Stat Bounty:')).toBe(true);
+    });
+
+    test('the Medley field explains which band each mode uses', () => {
+        const medleyBands = ['I', 'II', 'III'].map(band => ({ band, successChance: 0.1, reward: 1, multiplierReward: 1, passiveReward: 1, capacityReward: 1 }));
+        const embed = embedFactory.createBountyBoardEmbed('User', rankInfo, bountyModes, 0, medleyBands);
+        const medley = embed.data.fields.find(f => f.name.startsWith('Metal Potato Medley'));
+        expect(medley.name).toContain('Regular/Elite/Legendary');
+        expect(medley.name).toContain('Band I on Regular, II on Elite, III on Legendary');
+    });
+
+    test('every field value stays under Discord\'s 1,024-char limit even with 9-digit rewards', () => {
+        const big = bountyModes.map(m => ({ ...m, weightedTiers: m.weightedTiers.map(t => ({ ...t, reward: 987654321, penalty: -987654321 })) }));
+        const embed = embedFactory.createBountyBoardEmbed('User', rankInfo, big, 0);
+        for (const f of embed.data.fields) expect(f.value.length).toBeLessThanOrEqual(1024);
     });
 });
 
