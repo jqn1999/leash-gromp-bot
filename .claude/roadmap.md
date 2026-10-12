@@ -21434,3 +21434,23 @@ net unchanged).
 (including `companion`) and on the `Live Total`, so a Prospector penalty is equally invisible there.
 Needs a template change (`!== 0`, signed values); not done here because the Angular tests can't run
 without Chrome in this environment.
+
+## Tower Elite failstack: a capped loss raises that 10-floor band's success cap by 1% toward 100% (2026-10-12, direct instruction)
+
+**Asked**: add a failstack system to Tower — dying (while success was at the 95% cap) on floors 1-10
+raises the Elite success cap for floors 1-10 by 1% for all future runs; separate stacks per 10-floor
+band (1-10, 11-20, ...); 5 such losses → 100% cap and that band can never be failed; only increments when
+the success rate was capped during the run (base multi + temp work modifier combined).
+
+**Changed**: `towerConstants.js` — `ELITE_FAILSTACK_STEP`/`ELITE_FAILSTACK_BAND_SIZE`,
+`getEliteFailStackBand` (`ceil(floor/10)`), `getEliteFailStackCount`, `getEliteSuccessCap`.
+`towerFactory.execElite` — cap is band-aware, `wasCapped` read before clamping, a capped loss (warded or
+not) pushes its band onto `failStackBandsHit`; new 9th constructor arg `failStacks`; `startRun()`'s
+tuple gained a 7th element; the Elite embed shows the raised cap and a failstack note. `enter-tower.js` —
+passes `userDetails.towerFailStacks || {}` in and persists the bands as an atomic nested ADD right after the
+run concludes (whole-map SET fallback if the map isn't healed in yet). `dynamoHandler` default fields —
+`towerFailStacks: {}`. Decision made without a separate confirmation: a Bastion-warded capped loss counts.
+Full detail in `.claude/systems/tower.md`.
+
+**Tests**: 14 new in `towerFactory.test.js`, 3 in `enter-tower.test.js`, 1 in `dynamoHandler.test.js`.
+`financial-project` doesn't implement Tower — no port needed.

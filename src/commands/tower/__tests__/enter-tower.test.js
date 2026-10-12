@@ -664,7 +664,7 @@ describe('admin bypass while tower_access is disabled/unset', () => {
 
         // towerFactory's 8th constructor argument is the resume checkpoint.
         expect(towerFactory).toHaveBeenCalledWith(
-            interaction, 'Admin', tC.ENTRY_GATE_MULTI, false, 0, false, expect.any(Function), pendingCheckpoint
+            interaction, 'Admin', tC.ENTRY_GATE_MULTI, false, 0, false, expect.any(Function), pendingCheckpoint, {}
         );
 
         // The run concluded for real this time — credited normally, leaderboard/personal-best
@@ -763,5 +763,66 @@ describe('admin bypass while tower_access is disabled/unset', () => {
 
         expect(dynamoHandler.updateIfNewRecord).toHaveBeenCalledWith(awsConfigurations.devs[0], 'highestTowerFloor', 10);
         expect(dynamoHandler.recordTowerLeaderboardEntry).not.toHaveBeenCalled();
+    });
+});
+
+// Elite failstack persistence (2026-10-12): the bands a run lost a capped Elite fight in come back
+// as startRun()'s 7th tuple element and are persisted as an atomic nested ADD right when the run
+// concludes (before the results embed / bookkeeping tail), and the player's stored map is passed
+// into towerFactory as its 9th constructor argument.
+describe('Elite failstack persistence', () => {
+    function adminInteraction() {
+        return {
+            deferReply: jest.fn().mockResolvedValue(),
+            editReply: jest.fn().mockResolvedValue(),
+            followUp: jest.fn().mockResolvedValue(),
+            reply: jest.fn().mockResolvedValue(),
+            deferred: true,
+            user: { id: awsConfigurations.devs[0], username: 'Admin', displayName: 'Admin' },
+        };
+    }
+
+    test('a capped loss band is persisted as an ADD on towerFailStacks.<band>, even though the run earned nothing', async () => {
+        dynamoHandler.findUser.mockResolvedValue(baseUser({
+            userId: awsConfigurations.devs[0], workMultiplierAmount: tC.ENTRY_GATE_MULTI, rebirthCount: 0,
+            towerFailStacks: { 1: 2 },
+        }));
+        towerFactory.mockImplementation(() => ({
+            startRun: jest.fn().mockResolvedValue([[0, 0, 0, 0], 10, true, 0, 0, false, [1]]),
+        }));
+
+        await callback({}, adminInteraction());
+
+        expect(dynamoHandler.updateUserFields).toHaveBeenCalledWith(awsConfigurations.devs[0], {}, { 'towerFailStacks.1': 1 });
+        // The stored stacks are what the factory is built with.
+        expect(towerFactory).toHaveBeenCalledWith(
+            expect.anything(), 'Admin', tC.ENTRY_GATE_MULTI, false, 0, false, expect.any(Function), null, { 1: 2 }
+        );
+    });
+
+    test('an account whose towerFailStacks map is missing gets the whole map SET instead of a nested ADD', async () => {
+        dynamoHandler.findUser.mockResolvedValue(baseUser({
+            userId: awsConfigurations.devs[0], workMultiplierAmount: tC.ENTRY_GATE_MULTI, rebirthCount: 0,
+            towerFailStacks: undefined,
+        }));
+        towerFactory.mockImplementation(() => ({
+            startRun: jest.fn().mockResolvedValue([[0, 0, 0, 0], 20, true, 1, 0, false, [2]]),
+        }));
+
+        await callback({}, adminInteraction());
+
+        expect(dynamoHandler.updateUserFields).toHaveBeenCalledWith(awsConfigurations.devs[0], { towerFailStacks: { 2: 1 } });
+    });
+
+    test('a run that lost no capped fight writes no failstack at all', async () => {
+        dynamoHandler.findUser.mockResolvedValue(baseUser({ userId: awsConfigurations.devs[0], workMultiplierAmount: tC.ENTRY_GATE_MULTI, rebirthCount: 0 }));
+        towerFactory.mockImplementation(() => ({
+            startRun: jest.fn().mockResolvedValue([[0, 0, 0, 0], 10, false, 0, 0, false, []]),
+        }));
+
+        await callback({}, adminInteraction());
+
+        const failStackWrites = dynamoHandler.updateUserFields.mock.calls.filter(([, , adds]) => adds && Object.keys(adds).some(k => k.startsWith('towerFailStacks')));
+        expect(failStackWrites).toHaveLength(0);
     });
 });

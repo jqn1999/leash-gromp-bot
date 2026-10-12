@@ -219,6 +219,20 @@ describe('findUser', () => {
         expect(healedFieldNames).toContain('permanentTitles');
     });
 
+    // Elite failstack (2026-10-12) — towerFailStacks defaults to an EMPTY map, healed in by the same
+    // generic loop, so a nested ADD on `towerFailStacks.<band>` always has a parent map to land in; an
+    // existing map (with real stacks) must survive untouched, never be reset.
+    test('heals a pre-existing account missing towerFailStacks to {}, and leaves an existing map alone', async () => {
+        docClient.query.mockReturnValue(resolved({ Count: 1, Items: [{ userId: 'u5d', username: 'name5d' }] }));
+        docClient.update.mockReturnValue(resolved({}));
+        const user = await dynamoHandler.findUser('u5d', 'name5d');
+        expect(user.towerFailStacks).toEqual({});
+
+        docClient.query.mockReturnValue(resolved({ Count: 1, Items: [{ userId: 'u5e', username: 'name5e', towerFailStacks: { 1: 3 } }] }));
+        const kept = await dynamoHandler.findUser('u5e', 'name5e');
+        expect(kept.towerFailStacks).toEqual({ 1: 3 });
+    });
+
     test('does not touch a nested object that already has every sub-key', async () => {
         docClient.query.mockReturnValue(resolved({
             Count: 1,

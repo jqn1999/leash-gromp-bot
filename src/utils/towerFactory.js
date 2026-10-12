@@ -80,7 +80,7 @@ class towerFactory{
     // `checkpoint()` below produces) to resume a previously-crashed, still-unconcluded run from,
     // instead of starting fresh at floor 0. Every field it restores is exactly what a fresh run
     // would otherwise default — see each field's own line below for the resumeFrom branch.
-    constructor(_interaction, _username, multi, autoContinue = false, rewardBonus = 0, hasWard = false, onFloorComplete = null, resumeFrom = null) {
+    constructor(_interaction, _username, multi, autoContinue = false, rewardBonus = 0, hasWard = false, onFloorComplete = null, resumeFrom = null, failStacks = null) {
         this.floor = resumeFrom ? resumeFrom.floor : 0
         this.run = resumeFrom
             ? { ...resumeFrom.run, [tC.PAYOUT.ELITE_KILL]: [...resumeFrom.run[tC.PAYOUT.ELITE_KILL]] }
@@ -121,6 +121,14 @@ class towerFactory{
         // restriction, see that check's own comment for why).
         this.rewardBonus = rewardBonus
         this.hasWard = hasWard
+        // Elite failstack (2026-10-12, see towerConstants.js's ELITE_FAILSTACK_STEP) — the player's
+        // persisted `towerFailStacks` map, read live by enter-tower.js before the run (same "live
+        // state, never checkpointed" precedent as `multi`), raising the Elite success cap for each
+        // 10-floor band they've previously lost a capped Elite fight in. failStackBandsHit records
+        // the bands THIS run lost a capped fight in (at most one — a loss ends the climb, warded or
+        // not), returned to enter-tower.js via startRun()'s tuple to persist.
+        this.failStacks = failStacks
+        this.failStackBandsHit = []
         // Consumed at most once per run (enter-tower.js persists userDetails.towerWardUsedToday
         // afterward iff this ends up true) — a single run could otherwise die to multiple
         // Elites in sequence, and the ward should only ever save the FIRST one. Restored from
@@ -205,7 +213,7 @@ class towerFactory{
         // Tower Pet fields appended at the end (2026-09-13) — every existing caller that
         // destructures only `[run, floor, died]` is unaffected (extra trailing elements are
         // simply never read); enter-tower.js is the only consumer that needs the rest.
-        return [this.run, this.floor, this.died, this.elitesSurvivedCount, this.towerCompanionHits, this.wardUsed]
+        return [this.run, this.floor, this.died, this.elitesSurvivedCount, this.towerCompanionHits, this.wardUsed, this.failStackBandsHit]
     }
 
     // Per-floor checkpoint (2026-09-30, extended same-day to a full resume snapshot — see the
@@ -432,8 +440,15 @@ class towerFactory{
     async execElite(difficulty){
         let fl = pickElite(Math.floor(this.floor / 10))
         let success = (this.multi + this.run[tC.MODIFIER.WORK_MULTIPLIER]) / (difficulty * fl.difficulty)
-        if(success > tC.ELITE_SUCCESS_CAP){
-            success = tC.ELITE_SUCCESS_CAP
+        // The cap is no longer a flat 95%: it's raised by this player's failstack for THIS 10-floor
+        // band (towerConstants.js's getEliteSuccessCap). `wasCapped` is read BEFORE clamping — a
+        // loss only earns failstack when the roll really was sitting at the cap (a combination of
+        // base multi and the run's temporary work modifier), never when the player was simply
+        // outmatched, and never once the cap is already 100% (that fight can't be lost).
+        const eliteCap = tC.getEliteSuccessCap(this.failStacks, this.floor)
+        const wasCapped = success >= eliteCap && eliteCap < 1
+        if(success > eliteCap){
+            success = eliteCap
         }
         let fight = await this.createEliteEmbed(fl, success)
 
@@ -469,6 +484,12 @@ class towerFactory{
                 formatPayoutDelta(tC.PAYOUT.POTATOES, eliteApplied),
                 kingKiwiOverflow ? `+${kingKiwiOverflow.toLocaleString()} Potatoes (capped stat converted)` : null)
             return this.createNextEmbed(fl, resultText, "Green")
+        }
+        // A capped loss earns failstack in this fight's band whether or not Bastion's ward then
+        // softens it into a retreat (the fight roll was still lost at the cap) — see
+        // towerConstants.js's ELITE_FAILSTACK_STEP comment.
+        if(wasCapped){
+            this.failStackBandsHit.push(tC.getEliteFailStackBand(this.floor))
         }
         // Bastion, the Tower Warden's Death Ward (2026-09-13, direct instruction; floor
         // restriction removed 2026-09-14 — the original "above floor 10" instruction was
@@ -1000,10 +1021,23 @@ class towerFactory{
         throw new TowerTimeoutError(`Unrecognized click ('${confirmation.customId}') on the Continue/Leave screen at floor ${this.floor}`);
     }
 
+    // One-line failstack note for the Elite embed (2026-10-12) — shown only once this band has any
+    // failstack at all, so a player who has never lost a capped fight here sees exactly the screen
+    // they always did. Each stack is +1% on the cap (ELITE_FAILSTACK_STEP).
+    getFailStackNote(){
+        const stack = tC.getEliteFailStackCount(this.failStacks, this.floor)
+        if(stack <= 0) return ''
+        const band = tC.getEliteFailStackBand(this.floor)
+        const range = `floors ${(band - 1) * tC.ELITE_FAILSTACK_BAND_SIZE + 1}-${band * tC.ELITE_FAILSTACK_BAND_SIZE}`
+        const bonusPercent = Math.round(stack * tC.ELITE_FAILSTACK_STEP * 100)
+        const maxed = tC.getEliteSuccessCap(this.failStacks, this.floor) >= 1
+        return `\nFailstack (${range}): +${bonusPercent}% success cap${maxed ? ' — maxed, this fight can no longer be lost!' : ''}`
+    }
+
     async createEliteEmbed(fl, success){
         const embed = new EmbedBuilder()
             .setTitle(`FLOOR ${this.floor.toLocaleString()}: ELITE\n${fl.name}: ${(this.multi + this.run[tC.MODIFIER.WORK_MULTIPLIER]).toFixed(2)}x (${this.run[tC.MODIFIER.WORK_MULTIPLIER].toFixed(2)}x)`)
-            .setDescription(fl.description + `\n\nSuccess Chance: ${(success*100).toFixed(2)}%`)
+            .setDescription(fl.description + `\n\nSuccess Chance: ${(success*100).toFixed(2)}%${this.getFailStackNote()}`)
             .setColor("Red")
             .setTimestamp(Date.now())
             .setThumbnail(fl.thumbnailUrl)

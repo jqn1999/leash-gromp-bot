@@ -593,6 +593,8 @@ function getDefaultUserFields(userId, username) {
         // reset on the same 8pm ET (America/New_York, DST-safe) cron as canEnterTower (see dynamoHandler.resetTowerWard).
         // See constants.js's Companions entry (id: "bastion") for the full mechanic.
         towerWardUsedToday: false,
+        // Elite failstack (2026-10-12, see towerConstants.js's ELITE_FAILSTACK_STEP) — { "<10-floor band>": count of capped Elite losses }, band 1 = floors 1-10. An EMPTY map by default so ADD on a nested `towerFailStacks.<band>` path always has a parent to land in.
+        towerFailStacks: {},
         workCount: 0,
         workScenarioCounts: {
             regular: 0,

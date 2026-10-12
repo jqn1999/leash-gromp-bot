@@ -270,7 +270,7 @@ module.exports = {
             await dynamoHandler.updateUserDatabase(userId, "towerRunCheckpoint", snapshot);
         };
 
-        let tF = new towerFactory(interaction, username, userMultiplier, userDetails.autoTowerContinue, rewardBonus, hasWard, checkpointTowerRun, resumeFrom)
+        let tF = new towerFactory(interaction, username, userMultiplier, userDetails.autoTowerContinue, rewardBonus, hasWard, checkpointTowerRun, resumeFrom, userDetails.towerFailStacks || {})
         let tower_out;
         try {
             tower_out = await tF.startRun()
@@ -353,6 +353,29 @@ module.exports = {
         let elitesSurvivedCount = tower_out[3] || 0;
         let towerCompanionHits = tower_out[4] || 0;
         let wardUsed = tower_out[5] || false;
+        // Elite failstack (2026-10-12) — the 10-floor bands this run lost a capped Elite fight in
+        // (at most one; see towerFactory's failStackBandsHit), each earning +1% on that band's
+        // success cap for every future run. Persisted right here, BEFORE the results embed and the
+        // bookkeeping tail, so a Discord failure showing the embed can't lose it. An atomic nested
+        // ADD (the same shape statWriteFactory uses) so it can't overwrite anything else; the
+        // whole-map SET fallback only covers an account whose towerFailStacks map hasn't been
+        // healed in yet (findUser normally adds it on the very first lookup).
+        const failStackBands = Array.isArray(tower_out[6]) ? tower_out[6] : [];
+        if (failStackBands.length > 0) {
+            try {
+                if (userDetails.towerFailStacks && typeof userDetails.towerFailStacks === 'object') {
+                    const adds = {};
+                    for (const band of failStackBands) adds[`towerFailStacks.${band}`] = (adds[`towerFailStacks.${band}`] || 0) + 1;
+                    await dynamoHandler.updateUserFields(userId, {}, adds);
+                } else {
+                    const map = {};
+                    for (const band of failStackBands) map[band] = (map[band] || 0) + 1;
+                    await dynamoHandler.updateUserFields(userId, { towerFailStacks: map });
+                }
+            } catch (failStackError) {
+                console.error(`Failed to persist Tower failstack for ${username} (${userId}) bands ${failStackBands.join(',')}:`, failStackError);
+            }
+        }
 
         // embed for final results
         let embed = createResult(rewards, floor, username)

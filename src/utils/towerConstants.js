@@ -39,6 +39,38 @@ const POLICY = {
 // only ever matters once a player's power has outgrown Elite difficulty's own geometric climb.
 const ELITE_SUCCESS_CAP = 0.95
 
+// Elite failstack (2026-10-12, direct instruction): every time a player LOSES an Elite fight while
+// their success chance was already sitting at the cap, the cap for THAT band of floors rises by
+// ELITE_FAILSTACK_STEP for every future run, until it reaches 100% (5 such losses from the 95% base)
+// and that band can never be failed again. Banded every ELITE_FAILSTACK_BAND_SIZE floors with
+// floors 1-10 together, 11-20 together, and so on (so floor 10's forced Elite and any
+// mid-climb greedy Elite on floors 1-9 share one stack) — deliberately `ceil(floor / size)`, NOT
+// the floor-then-+1 banding TOWER_FLOOR_CAP_BAND_SIZE uses for the per-run reward caps, since the
+// request put floor 10 in the FIRST band. Only a loss while at the cap counts (a loss from
+// simply being outmatched isn't a pity case — that's the whole point of the stack, and it also
+// means entering with a deliberately weak multi can't farm it). A Bastion-warded loss counts too:
+// the fight roll was still lost at the cap, the ward only softens the consequence.
+const ELITE_FAILSTACK_STEP = 0.01
+const ELITE_FAILSTACK_BAND_SIZE = 10
+
+function getEliteFailStackBand(floor) {
+    return Math.max(1, Math.ceil(floor / ELITE_FAILSTACK_BAND_SIZE))
+}
+
+// failStacks is the player's persisted `towerFailStacks` map ({ "<band>": count }); a missing/
+// malformed entry is just 0. Rounded to 4 places so 0.95 + 5 * 0.01 lands on exactly 1 rather
+// than a hair under (floating-point accumulation), and clamped at 1 — Math.random() < 1 is
+// always true, so a 100% cap genuinely never fails.
+function getEliteFailStackCount(failStacks, floor) {
+    const n = failStacks ? Number(failStacks[getEliteFailStackBand(floor)]) : 0
+    return Number.isFinite(n) && n > 0 ? n : 0
+}
+
+function getEliteSuccessCap(failStacks, floor) {
+    const cap = ELITE_SUCCESS_CAP + getEliteFailStackCount(failStacks, floor) * ELITE_FAILSTACK_STEP
+    return Math.min(1, Math.round(cap * 10000) / 10000)
+}
+
 // Replaces this.difficulty's old starting value of 1 and its old flat `+= 4.5` per forced Elite
 // with a constant-ratio geometric climb — see systems/tower.md's "Difficulty curve rework" for the
 // full rationale (arithmetic growth's ratio between consecutive Elites approaches 1 as N grows,
@@ -661,6 +693,11 @@ module.exports = {
     REWARD_PAYOUT,
     POLICY,
     ELITE_SUCCESS_CAP,
+    ELITE_FAILSTACK_STEP,
+    ELITE_FAILSTACK_BAND_SIZE,
+    getEliteFailStackBand,
+    getEliteFailStackCount,
+    getEliteSuccessCap,
     TOWER_ELITE_DIFFICULTY_INITIAL,
     TOWER_ELITE_DIFFICULTY_RATIO,
     ELITE_TIER_BANDS,

@@ -2247,3 +2247,157 @@ describe('Overflow-to-potato conversion reported on the result screen (2026-10-1
         expect(description).not.toContain('converted');
     });
 });
+
+// Elite failstack (2026-10-12, direct instruction): normally an Elite fight caps at 95% success;
+// every time a player LOSES one while their success chance was already at the cap, the cap for that
+// 10-floor band (floors 1-10, 11-20, ...) rises by 1% for every future run — 5 such losses and that
+// band is 100% and can never be failed again. Only a loss at the cap counts (not simply being
+// outmatched), and a Bastion-warded loss counts too.
+describe('Elite failstack (2026-10-12)', () => {
+    function choice(customId) {
+        return { customId, update: jest.fn().mockResolvedValue() };
+    }
+    function fakeInteraction(responses) {
+        let i = 0;
+        const editReply = jest.fn(async () => ({
+            awaitMessageComponent: jest.fn(async () => responses[i++]),
+        }));
+        return { editReply, user: { id: 'u1' } };
+    }
+    function eliteRunner({ multi = 100000, failStacks = null, hasWard = false, floor = 10 } = {}) {
+        const interaction = fakeInteraction([choice('fight'), choice('leave')]);
+        const tF = new towerFactory(interaction, 'tester', multi, false, 0, hasWard, null, null, failStacks);
+        tF.floor = floor;
+        return { tF, interaction };
+    }
+    let randomSpy;
+    afterEach(() => { if (randomSpy) randomSpy.mockRestore(); randomSpy = null; });
+
+    describe('constants', () => {
+        test('floors 1-10 are band 1, 11-20 band 2, 21-30 band 3 (floor 10 belongs to the FIRST band)', () => {
+            expect([1, 5, 9, 10].map(tC.getEliteFailStackBand)).toEqual([1, 1, 1, 1]);
+            expect([11, 15, 20].map(tC.getEliteFailStackBand)).toEqual([2, 2, 2]);
+            expect([21, 30].map(tC.getEliteFailStackBand)).toEqual([3, 3]);
+        });
+
+        test('the cap is 95% with no stack, +1% per stack for that band only, and clamps at exactly 100%', () => {
+            expect(tC.getEliteSuccessCap(null, 10)).toBe(0.95);
+            expect(tC.getEliteSuccessCap({}, 10)).toBe(0.95);
+            expect(tC.getEliteSuccessCap({ 1: 3 }, 10)).toBe(0.98);
+            expect(tC.getEliteSuccessCap({ 1: 3 }, 20)).toBe(0.95); // band 2 has its own, separate stack
+            expect(tC.getEliteSuccessCap({ 2: 2 }, 20)).toBe(0.97);
+            expect(tC.getEliteSuccessCap({ 1: 5 }, 10)).toBe(1);
+            expect(tC.getEliteSuccessCap({ 1: 9 }, 10)).toBe(1);
+        });
+
+        test('garbage stack values (negative, NaN, strings) are treated as 0', () => {
+            expect(tC.getEliteSuccessCap({ 1: -4 }, 10)).toBe(0.95);
+            expect(tC.getEliteSuccessCap({ 1: 'x' }, 10)).toBe(0.95);
+        });
+    });
+
+    test('a stacked band shows its raised cap and a failstack note on the Elite embed', async () => {
+        randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0);
+        const { tF, interaction } = eliteRunner({ failStacks: { 1: 3 } });
+        await tF.execElite(tC.TOWER_ELITE_DIFFICULTY_INITIAL);
+        const description = interaction.editReply.mock.calls[0][0].embeds[0].data.description;
+        expect(description).toContain('Success Chance: 98.00%');
+        expect(description).toContain('Failstack (floors 1-10): +3% success cap');
+    });
+
+    test('with no failstack the Elite embed is unchanged (95%, no note)', async () => {
+        randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0);
+        const { tF, interaction } = eliteRunner();
+        await tF.execElite(tC.TOWER_ELITE_DIFFICULTY_INITIAL);
+        const description = interaction.editReply.mock.calls[0][0].embeds[0].data.description;
+        expect(description).toContain('Success Chance: 95.00%');
+        expect(description).not.toContain('Failstack');
+    });
+
+    test('losing while capped records that band, and the death still happens', async () => {
+        randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.99); // above a 95% cap -> lose
+        const { tF } = eliteRunner({ floor: 10 });
+        await tF.execElite(tC.TOWER_ELITE_DIFFICULTY_INITIAL);
+        expect(tF.died).toBe(true);
+        expect(tF.failStackBandsHit).toEqual([1]);
+    });
+
+    test('the band follows the Elite\'s own floor (floor 20 -> band 2; a mid-climb Elite on floor 5 -> band 1)', async () => {
+        randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.99);
+        const second = eliteRunner({ floor: 20 });
+        await second.tF.execElite(tC.TOWER_ELITE_DIFFICULTY_INITIAL);
+        expect(second.tF.failStackBandsHit).toEqual([2]);
+
+        const midClimb = eliteRunner({ floor: 5 });
+        await midClimb.tF.execElite(tC.TOWER_ELITE_DIFFICULTY_INITIAL);
+        expect(midClimb.tF.failStackBandsHit).toEqual([1]);
+    });
+
+    test('a loss while NOT capped (simply outmatched) earns no failstack', async () => {
+        randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.99);
+        // multi 20 against a floor-10 Elite is far below the cap (the calibrated ~50% fresh-entrant fight).
+        const { tF } = eliteRunner({ multi: 20, floor: 10 });
+        await tF.execElite(tC.TOWER_ELITE_DIFFICULTY_INITIAL);
+        expect(tF.died).toBe(true);
+        expect(tF.failStackBandsHit).toEqual([]);
+    });
+
+    test('capped by a combination of base multi and the run\'s temporary work modifier still counts', async () => {
+        randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.99);
+        // Base multi alone is under the cap for this Elite; the temp modifier pushes the SUM over it.
+        const probe = eliteRunner({ multi: 20, floor: 10 });
+        const needed = (0.96 * tC.TOWER_ELITE_DIFFICULTY_INITIAL * tC.ELITES[0].difficulty) - 20; // enough modifier to clear a 95% cap
+        const { tF } = eliteRunner({ multi: 20, floor: 10 });
+        tF.run[tC.MODIFIER.WORK_MULTIPLIER] = needed + 10; // comfortably above
+        await tF.execElite(tC.TOWER_ELITE_DIFFICULTY_INITIAL);
+        expect(probe.tF.failStackBandsHit).toEqual([]);
+        expect(tF.failStackBandsHit).toEqual([1]);
+    });
+
+    test('a 100% cap can never be lost: a roll of 0.999999 still wins, and nothing is recorded', async () => {
+        randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.999999);
+        const { tF } = eliteRunner({ failStacks: { 1: 5 }, floor: 10 });
+        await tF.execElite(tC.TOWER_ELITE_DIFFICULTY_INITIAL);
+        expect(tF.died).toBe(false);
+        expect(tF.failStackBandsHit).toEqual([]);
+        expect(tF.elitesSurvivedCount).toBe(1);
+    });
+
+    test('a stack of 4 (99% cap) still loses to a roll at/above 0.99, and a loss records the band again', async () => {
+        randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.995);
+        const { tF } = eliteRunner({ failStacks: { 1: 4 }, floor: 10 });
+        await tF.execElite(tC.TOWER_ELITE_DIFFICULTY_INITIAL);
+        expect(tF.died).toBe(true);
+        expect(tF.failStackBandsHit).toEqual([1]);
+    });
+
+    test('a Bastion-warded capped loss counts too, and the run is saved (not a death)', async () => {
+        randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.99);
+        const { tF } = eliteRunner({ hasWard: true, floor: 10 });
+        await tF.execElite(tC.TOWER_ELITE_DIFFICULTY_INITIAL);
+        expect(tF.died).toBe(false);
+        expect(tF.wardUsed).toBe(true);
+        expect(tF.failStackBandsHit).toEqual([1]);
+    });
+
+    test('declining the fight (Leave) never records anything', async () => {
+        const interaction = fakeInteraction([choice('leave')]);
+        const tF = new towerFactory(interaction, 'tester', 100000, false, 0, false, null, null, null);
+        tF.floor = 10;
+        await tF.execElite(tC.TOWER_ELITE_DIFFICULTY_INITIAL);
+        expect(tF.failStackBandsHit).toEqual([]);
+    });
+
+    test('startRun() returns the bands hit as the 7th tuple element', async () => {
+        randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.99);
+        const interaction = fakeInteraction([
+            choice('policy_safe'),
+            choice('fast_forward'),
+            choice('fight'), // the forced Elite at floor 10 — lost at the 95% cap
+        ]);
+        const tF = new towerFactory(interaction, 'tester', 100000);
+        const out = await tF.startRun();
+        expect(out[2]).toBe(true); // died
+        expect(out[6]).toEqual([1]);
+    });
+});

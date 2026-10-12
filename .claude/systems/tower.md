@@ -3956,3 +3956,58 @@ that read and write could still be overwritten into a base-vs-shop-tier drift. `
 now ADD the same amount to the raw stat and `sweetPotatoBuffs.<stat>` together as atomic nested-path
 increments (`statWriteFactory.statGrantAdds`) — still one call, now also race-proof. See
 `systems/economy-and-work.md`'s "Atomic stat writes" and the roadmap's 2026-10-11 entry.
+
+## Elite failstack: capped losses raise that 10-floor band's success cap toward 100% (2026-10-12, direct instruction)
+
+**Asked**: "can we add a failstack system to tower? normally players cap at 95% success against elites,
+however i want it so if a user dies on floor 1-10, then their elite success cap for floors 1-10 is
+increased by 1% for all future runs. This is separated every 10 floors so floor 1-10, 11-20, 21-30,
+etc so each has their own failstack. Cap will go to 100%, so after a user fails 95% chance of success
+5 times at a given range then their cap is eventually 100% and they'll never fail it again... This
+failstack should only increment when their success rate is capped during the run (this can be due to
+a combination of their work multi and the temp work multi combination to calculate success)."
+
+**Mechanic.** The Elite success cap is no longer the flat `ELITE_SUCCESS_CAP` (95%): it's
+`min(1, 0.95 + 0.01 × stack)` for the fight's own 10-floor band (`towerConstants.js`'s
+`getEliteSuccessCap(failStacks, floor)`, `ELITE_FAILSTACK_STEP = 0.01`, `ELITE_FAILSTACK_BAND_SIZE = 10`).
+Bands are `ceil(floor / 10)` — floors 1-10 are band 1, 11-20 band 2, and so on — so floor 10's forced
+Elite shares a band with any mid-climb greedy Elite on floors 1-9 (deliberately NOT the floor-then-+1
+banding the per-run reward caps use, which would put floor 10 in the second band). The stack lives on
+the player record as `towerFailStacks: { "<band>": count }` (default `{}`), is read live by
+`enter-tower.js` and passed to `towerFactory` as its 9th constructor argument (never checkpointed — same
+"live state" precedent as `multi`), and only applies to future runs. At exactly 5 stacks the cap is
+`1.0`; since `Math.random() < 1` is always true, that band can never be lost again.
+
+**What counts.** In `execElite` the raw success (`(multi + temp work modifier) / (difficulty × elite
+difficulty)`) is compared to the band's current cap BEFORE clamping: a loss earns a stack only when the
+roll really was sitting at the cap (`success >= cap && cap < 1`) — never when the player was simply
+outmatched, and so it can't be farmed by entering weak (and the sum of base multi and the run's temporary
+work modifier both feed it, per the request). Stacks keep accruing at 96/97/98/99% caps too. **Decision
+made without a separate confirmation:** a Bastion-warded loss counts as well (the fight roll was still
+lost at the cap; the ward only softens the consequence) — a declined fight (Leave) obviously doesn't,
+and only one stack can be earned per run since a loss ends the climb either way.
+
+**Plumbing.** `startRun()`'s return tuple gained a 7th element, `failStackBandsHit` (an array, at most
+one band). `enter-tower.js` persists it right after the run concludes — before the results embed and the
+bookkeeping tail, so a Discord failure there can't lose it — as an atomic nested ADD
+(`updateUserFields(userId, {}, { 'towerFailStacks.<band>': 1 })`, the same dotted-path support the
+2026-10-11 atomic stat writes added), falling back to a whole-map SET only for an account whose
+`towerFailStacks` hasn't been healed in yet (`findUser`'s generic top-level heal normally adds the empty
+map on first lookup). The Elite embed shows the raised cap plus a one-line note —
+`Failstack (floors 1-10): +3% success cap` (and "maxed, this fight can no longer be lost!" at 100%) —
+only once that band has any stack, so a player who has never lost a capped fight sees the same screen as
+before.
+
+**Balance note, not acted on.** At 5 stacks a band becomes a guaranteed pass, which removes the Elite's
+only risk for that band forever; deeper bands where players rarely sit at the cap will accrue far more
+slowly than floors 1-10, so this mostly softens the early game. No change to rewards, difficulty or the
+Ward.
+
+**Tests** (`towerFactory.test.js`, 14 new in "Elite failstack"): band mapping (floor 10 → band 1),
+cap values per stack/band and clamping at exactly 1, garbage stack values; the Elite embed with and
+without a stack; a capped loss records its band (floor 20 → band 2, mid-climb floor 5 → band 1); an
+outmatched loss records nothing; a cap reached through base multi + the temp modifier counts; a 100% cap
+wins a 0.999999 roll; a 99% cap still loses at 0.995; a warded capped loss counts; Leave records nothing;
+`startRun()`'s 7th tuple element. `enter-tower.test.js` (3 new) covers the nested-ADD persistence, the
+missing-map SET fallback, and no write when nothing was hit; `dynamoHandler.test.js` covers the
+`towerFailStacks` default heal. `financial-project` doesn't implement Tower — no port needed.
