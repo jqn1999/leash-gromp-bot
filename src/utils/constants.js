@@ -5287,6 +5287,70 @@ const shops = [
             }
         ],
         title: "Starch Storage Shop (increase max starches)"
+    },
+    // Work Chain shop (2026-10-12, direct instruction: "a shop upgrade that has 5 tiers and
+    // increases [the skip cap of 5] to 10... fairly expensive"). Appended LAST so the
+    // positional shops[0..3] reads in embedFactory.createUserEmbed stay valid. Unlike the
+    // three coupled-stat shops, tier progress is just the count of upgrades owned
+    // (userDetails.workChainUpgrades, 0-5) — no sweet/regrade component to subtract — so
+    // currentAmount/amount are upgrade counts, and the effective /work chain cap is
+    // Work.MAX_COOLDOWN_SKIP_CHAIN_LENGTH + upgrades (shopFactory.getWorkChainCap). Cost
+    // ladder totals ~9.2B: each tier is worth less than the last (a chain of N extra links
+    // only happens with probability skipChance^N, so late links almost never fire), so the
+    // price curve is steep on purpose — a flex/completionist sink, not a power-curve gate,
+    // which is also why it is NOT part of rebirth eligibility. Single top tier (4B) sits
+    // above the 2B bank / 1.5B work shop ceilings deliberately for the same reason.
+    {
+        shopId: "workChainShop",
+        description: "Hire more hands for the long road — each upgrade lets one more free /work skip chain before the cooldown holds (cap 5 → 10). Only /work is affected.",
+        items: [
+            {
+                currentAmount: 0,
+                amount: 1,
+                cost: 400000000,
+                description: "A second pair of hands to keep the fields turning (chain cap 6)",
+                id: 1,
+                name: "The Hired Field Hand",
+                type: "workChain"
+            },
+            {
+                currentAmount: 1,
+                amount: 2,
+                cost: 800000000,
+                description: "A seasoned crew that never stops for tea (chain cap 7)",
+                id: 2,
+                name: "The Harvest Crew",
+                type: "workChain"
+            },
+            {
+                currentAmount: 2,
+                amount: 3,
+                cost: 1500000000,
+                description: "A whole stewardship dedicated to your plots (chain cap 8)",
+                id: 3,
+                name: "The Steward's Charter",
+                type: "workChain"
+            },
+            {
+                currentAmount: 3,
+                amount: 4,
+                cost: 2500000000,
+                description: "A royal writ keeps the granary doors forever open to you (chain cap 9)",
+                id: 4,
+                name: "The Granary Writ",
+                type: "workChain"
+            },
+            {
+                currentAmount: 4,
+                amount: 5,
+                cost: 4000000000,
+                description: "The Crown itself speeds your harvests along (chain cap 10)",
+                id: 5,
+                name: "The Royal Harvest Decree",
+                type: "workChain"
+            }
+        ],
+        title: "Work Chain Shop (increase /work skip chain cap)"
     }
 ]
 

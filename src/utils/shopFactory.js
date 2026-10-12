@@ -3,7 +3,7 @@
 // their own version of getNextItemFromShop, and /shop had no way to show a user's current
 // tier — or buy anything — at all).
 const dynamoHandler = require("./dynamoHandler");
-const { shops } = require("./constants");
+const { shops, Work } = require("./constants");
 
 // Maps each command's shop-select option to the shopId it maps to in `shops` (constants.js).
 const SHOP_ID_BY_SELECT = {
@@ -11,7 +11,24 @@ const SHOP_ID_BY_SELECT = {
     'passive-income-shop': 'passiveIncomeShop',
     'bank-shop': 'bankShop',
     'starch-shop': 'starchShop',
+    'work-chain-shop': 'workChainShop',
 };
+
+// workChainShop tracks a plain count of owned upgrades (0-5) rather than a stat with
+// sweet/regrade layers. Clamped at the shop's top tier because the purchase is an atomic ADD
+// of 1 (like the stat shops' gap ADDs): two overlapping buys from the same snapshot would
+// otherwise each add 1 and push the count past the ladder, and the cap must never exceed
+// what five tiers pay for.
+const WORK_CHAIN_MAX_UPGRADES = 5;
+function getWorkChainUpgrades(userDetails) {
+    const owned = Number(userDetails.workChainUpgrades) || 0;
+    return Math.max(0, Math.min(WORK_CHAIN_MAX_UPGRADES, Math.floor(owned)));
+}
+// Effective /work cooldown-skip chain cap: the global safety valve plus owned upgrades.
+// /work only — Bounty/Heist/Guild Raid keep Work.MAX_BOUNTY_RAID_COOLDOWN_SKIP_CHAIN_LENGTH.
+function getWorkChainCap(userDetails) {
+    return Work.MAX_COOLDOWN_SKIP_CHAIN_LENGTH + getWorkChainUpgrades(userDetails);
+}
 
 // Each shop tracks tier progress against a different userDetails field, and (except
 // starchShop) has to subtract sweetPotatoBuffs/regrades back out first, since those are
@@ -30,6 +47,8 @@ function getUserBaseShopValue(userDetails, shopId) {
             return userDetails.bankCapacity - userDetails.sweetPotatoBuffs.bankCapacity - userDetails.regrades.bankCapacity.regradeAmount;
         case 'starchShop':
             return userDetails.maxStarches;
+        case 'workChainShop':
+            return getWorkChainUpgrades(userDetails);
         default:
             return undefined;
     }
@@ -72,6 +91,7 @@ const SHOP_VALUE_FORMATTERS = {
     passiveIncomeShop: (value) => `${Number(value).toLocaleString()} potatoes/day`,
     bankShop: (value) => `${Number(value).toLocaleString()} potatoes`,
     starchShop: (value) => `${Number(value).toLocaleString()} max starches`,
+    workChainShop: (value) => `${Number(value)} / ${WORK_CHAIN_MAX_UPGRADES} upgrades (/work chain cap ${Work.MAX_COOLDOWN_SKIP_CHAIN_LENGTH + Number(value)})`,
 };
 function formatShopValue(shopId, value) {
     const formatter = SHOP_VALUE_FORMATTERS[shopId];
@@ -112,6 +132,11 @@ const SHOP_PURCHASE_HANDLERS = {
         field: 'maxStarches',
         newValue: item.amount,
         label: (value) => `Max starches is now ${value.toLocaleString()}.`,
+    }),
+    workChainShop: (userDetails, item) => ({
+        field: 'workChainUpgrades',
+        gap: 1,
+        label: (value) => `Your /work skip chain cap is now ${Work.MAX_COOLDOWN_SKIP_CHAIN_LENGTH + Math.min(WORK_CHAIN_MAX_UPGRADES, value)}.`,
     }),
 };
 
@@ -154,7 +179,7 @@ async function attemptShopBuy(userId, username, shopId) {
     let newValue;
     if (purchase.gap !== undefined) {
         addFields[purchase.field] = purchase.gap;
-        newValue = userDetails[purchase.field] + purchase.gap;
+        newValue = (Number(userDetails[purchase.field]) || 0) + purchase.gap;
     } else {
         setFields[purchase.field] = purchase.newValue;
         newValue = purchase.newValue;
@@ -168,6 +193,8 @@ module.exports = {
     SHOP_ID_BY_SELECT,
     SHOP_TIER_STATUS,
     getUserBaseShopValue,
+    getWorkChainCap,
+    getWorkChainUpgrades,
     getNextItemFromShop,
     getShopTierStatus,
     formatShopValue,

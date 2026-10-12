@@ -1,8 +1,8 @@
 jest.mock('../dynamoHandler');
 
 const dynamoHandler = require('../dynamoHandler');
-const { SHOP_ID_BY_SELECT, SHOP_TIER_STATUS, getUserBaseShopValue, getNextItemFromShop, getShopTierStatus, formatShopValue, attemptShopBuy } = require('../shopFactory');
-const { shops } = require('../constants');
+const { SHOP_ID_BY_SELECT, SHOP_TIER_STATUS, getUserBaseShopValue, getNextItemFromShop, getShopTierStatus, formatShopValue, attemptShopBuy, getWorkChainCap, getWorkChainUpgrades } = require('../shopFactory');
+const { shops, Work } = require('../constants');
 
 function freshUser(overrides = {}) {
     return {
@@ -233,5 +233,72 @@ describe('starchShop tiers 6-7', () => {
         for (let i = 1; i < efficiencies.length; i++) {
             expect(efficiencies[i]).toBeGreaterThan(efficiencies[i - 1]);
         }
+    });
+});
+
+
+describe('workChainShop (skip chain cap upgrade)', () => {
+    const chainShop = shops.find(s => s.shopId === 'workChainShop');
+
+    beforeEach(() => {
+        jest.clearAllMocks();
+        dynamoHandler.updateUserFields.mockResolvedValue({});
+    });
+
+    test('is wired to the work-chain-shop choice and appended after the original four shops', () => {
+        expect(SHOP_ID_BY_SELECT['work-chain-shop']).toBe('workChainShop');
+        expect(shops.findIndex(s => s.shopId === 'workChainShop')).toBe(4);
+    });
+
+    test('has 5 contiguous tiers taking the count 0 -> 5, costs strictly rising and "fairly expensive"', () => {
+        expect(chainShop.items).toHaveLength(5);
+        chainShop.items.forEach((item, i) => {
+            expect(item.currentAmount).toBe(i);
+            expect(item.amount).toBe(i + 1);
+        });
+        const costs = chainShop.items.map(i => i.cost);
+        expect([...costs].sort((a, b) => a - b)).toEqual(costs);
+        expect(costs[0]).toBeGreaterThanOrEqual(400000000);
+        expect(costs.reduce((a, b) => a + b, 0)).toBe(9200000000);
+    });
+
+    test('effective cap is the base chain cap plus owned upgrades, clamped to 0..5', () => {
+        expect(getWorkChainCap({})).toBe(Work.MAX_COOLDOWN_SKIP_CHAIN_LENGTH);
+        expect(getWorkChainCap({ workChainUpgrades: 3 })).toBe(Work.MAX_COOLDOWN_SKIP_CHAIN_LENGTH + 3);
+        expect(getWorkChainCap({ workChainUpgrades: 5 })).toBe(10);
+        expect(getWorkChainCap({ workChainUpgrades: 9 })).toBe(10);
+        expect(getWorkChainUpgrades({ workChainUpgrades: -2 })).toBe(0);
+    });
+
+    test('tier progress reads the plain upgrade count', () => {
+        expect(getUserBaseShopValue(freshUser({ workChainUpgrades: 2 }), 'workChainShop')).toBe(2);
+        expect(getNextItemFromShop(chainShop, 2).id).toBe(3);
+        expect(getNextItemFromShop(chainShop, 5)).toBe(-1);
+    });
+
+    test('a missing field (pre-existing account) is treated as 0 upgrades', async () => {
+        dynamoHandler.findUser.mockResolvedValue(freshUser({ potatoes: 500000000 }));
+        const result = await attemptShopBuy('u1', 'user1', 'workChainShop');
+        expect(result.ok).toBe(true);
+        const [, setFields, addFields] = dynamoHandler.updateUserFields.mock.calls[0];
+        expect(setFields).toEqual({});
+        expect(addFields).toEqual({ potatoes: -400000000, workChainUpgrades: 1 });
+        expect(result.message).toMatch(/cap is now 6/);
+    });
+
+    test('rejects an unaffordable tier and a maxed ladder without writing', async () => {
+        dynamoHandler.findUser.mockResolvedValue(freshUser({ potatoes: 1, workChainUpgrades: 4 }));
+        let result = await attemptShopBuy('u1', 'user1', 'workChainShop');
+        expect(result.ok).toBe(false);
+        expect(result.message).toMatch(/do not have enough/);
+        dynamoHandler.findUser.mockResolvedValue(freshUser({ potatoes: 9e12, workChainUpgrades: 5 }));
+        result = await attemptShopBuy('u1', 'user1', 'workChainShop');
+        expect(result.ok).toBe(false);
+        expect(result.message).toMatch(/already maxed out/);
+        expect(dynamoHandler.updateUserFields).not.toHaveBeenCalled();
+    });
+
+    test('formats progress with the resulting chain cap', () => {
+        expect(formatShopValue('workChainShop', 3)).toBe('3 / 5 upgrades (/work chain cap 8)');
     });
 });

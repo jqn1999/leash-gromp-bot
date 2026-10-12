@@ -21491,3 +21491,35 @@ sections, all 12 tiers shown once, rank scaling unchanged), `embedFactory.test.j
 labels), `takeBountyTax.test.js` (the Tier-12 starch case moved to `legendary`). Updated
 `.claude/systems/mercenary-bounties.md`. Web port: see `financial-project`'s `NOTES_GROMP_WEB_INTEGRATION.md`
 (Bot caught up #125).
+
+## Work Chain shop: five purchasable upgrades raise the `/work` skip-chain cap from 5 to 10 (2026-10-12, direct instruction)
+
+**Asked**: "can you add a shop that allows a user to increase their skip cap count? at the moment everyone has a cap
+of 5 for works, i want a shop upgrade that has 5 tiers and increases it to 10. Plan out the prices for it, it should
+be fairly expensive." (The cap meant is the cooldown-skip CHAIN length, `Work.MAX_COOLDOWN_SKIP_CHAIN_LENGTH` = 5 extra
+auto-resolved links, not the skip-chance cap.)
+
+**Found**: the chain cap was a single global constant read in exactly two places in `work.js` (the continue-or-stop
+check and the Chain Cap notice's number). Bounty/Heist/rob-npc/Guild Raid use their own separate constant, so a
+per-player /work cap needs no shared-state changes. Value per tier is steeply diminishing — link N+1 only fires with
+probability `skipChance^(N+1)` — so a 40% skip player gains almost nothing while a 65% player gains roughly +17%
+extra resolutions per command for the full 5 -> 10; that shaped the price ladder, not a power-curve need.
+
+**Changed**: new `workChainShop` (5th `shops` entry, appended so `shops[0..3]` index reads in `embedFactory` stay
+valid), 5 tiers whose `currentAmount`/`amount` are upgrade counts 0..5, costs 400M / 800M / 1.5B / 2.5B / 4B
+(9.2B total; the top tier deliberately exceeds the 2B bank / 1.5B work ceilings since it is a flex sink, not a
+progression gate). New user field `workChainUpgrades` (default 0; existing accounts heal to 0 via `findUser`).
+`shopFactory.getWorkChainCap(userDetails)` = base cap + upgrades, clamped to 0..5 (the purchase is an atomic ADD of
+1, so two overlapping buys from one snapshot could otherwise overshoot the ladder); `work.js` reads it once per
+command and uses it for both the chain loop and the Chain Cap notice. `/shop` and `/buy` gain a `work-chain-shop`
+choice (`SHOP_ID_BY_SELECT`, `getUserBaseShopValue`, `formatShopValue`, `SHOP_PURCHASE_HANDLERS` — potatoes
+`-cost` and `workChainUpgrades` `+1` as ADDs, consistent with the atomic-write refactor).
+
+**Judgment calls, not silently decided**: (1) **/work only** — Bounty/Heist/rob-npc/Guild Raid keep their own cap of
+5. (2) **Not part of rebirth** — the field is untouched by rebirth and not a rebirth-eligibility requirement (it is
+a convenience, not a power stat). (3) The price ladder above; easy to retune in `constants.js` alone.
+
+**Tests**: `shopFactory.test.js` (shop shape/contiguity/total, cap clamping, missing-field user, unaffordable/maxed
+rejection, formatter), `workCooldownSkipChainCap.test.js` (chain length and notice number at 0/2/5 upgrades).
+Updated `.claude/systems/economy-and-work.md` (Personal shops). Web port: see `financial-project`'s
+`NOTES_GROMP_WEB_INTEGRATION.md` (Bot caught up #126).

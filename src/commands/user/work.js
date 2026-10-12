@@ -10,6 +10,7 @@ const { EmbedFactory } = require("../../utils/embedFactory");
 const { WORK_SCENARIO_INDICES } = require("../../utils/eventFactory");
 const bigEventsChannel = require("../../utils/bigEventsChannel");
 const festivalFactory = require("../../utils/festivalFactory");
+const { getWorkChainCap } = require("../../utils/shopFactory");
 const { mergeAdds, applyAddsInMemory, applySetsInMemory } = require("../../utils/statWriteFactory");
 const embedFactory = new EmbedFactory();
 const workFactory = new WorkFactory();
@@ -286,7 +287,7 @@ var workScenarios = [
 ]
 
 // One full /work resolution, covering the ENTIRE cooldown-skip chain (1 to
-// Work.MAX_COOLDOWN_SKIP_CHAIN_LENGTH + 1 links) in one pass, rather than one performWork
+// Work.MAX_COOLDOWN_SKIP_CHAIN_LENGTH + Work Chain shop upgrades + 1 links) in one pass, rather than one performWork
 // call per link recursing into the next. Rewritten 2026-10-03 (direct instruction — the
 // full rewrite option, not the scoped-down safe win) to hit a specific target: this
 // player's own dynamoHandler.updateUserFields gets called exactly ONCE no matter how deep
@@ -369,6 +370,9 @@ async function performWork(interaction, userId, username, userDisplayName, workG
     const pendingBigEvents = [];
     let chainDepth = 0;
     let cappedWithSkip = false;
+    // Per-player cap (Work Chain shop, 2026-10-12) — read once up front from the freshly
+    // fetched userDetails; the shop purchase can't change mid-chain in any way that matters.
+    const workChainCap = getWorkChainCap(userDetails);
 
     // Auto-recovery (2026-09-14, player-reported: "the embed didn't display" on a Mimic
     // kill) — mirrors enter-tower.js's own "Auto-recovery" fix exactly. If any scenario's
@@ -475,7 +479,7 @@ async function performWork(interaction, userId, username, userDisplayName, workG
             if (!userDetails._cooldownSkippedByCompanion) {
                 break;
             }
-            if (chainDepth < Work.MAX_COOLDOWN_SKIP_CHAIN_LENGTH) {
+            if (chainDepth < workChainCap) {
                 chainDepth++;
                 continue;
             }
@@ -491,7 +495,7 @@ async function performWork(interaction, userId, username, userDisplayName, workG
             // instruction) — appended to in place rather than rebuilt, since it's already
             // sitting in pendingMessages, not yet sent.
             cappedWithSkip = true;
-            embedFactory.addChainCapNotice(pendingMessages[pendingMessages.length - 1].embed, Work.MAX_COOLDOWN_SKIP_CHAIN_LENGTH);
+            embedFactory.addChainCapNotice(pendingMessages[pendingMessages.length - 1].embed, workChainCap);
             break;
         }
 

@@ -29,6 +29,10 @@ module.exports = {
                 {
                     name: 'starch-shop',
                     value: 'starch-shop'
+                },
+                {
+                    name: 'work-chain-shop',
+                    value: 'work-chain-shop'
                 }
             ]
         }

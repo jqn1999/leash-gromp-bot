@@ -280,7 +280,7 @@ const COOLDOWN_SKIP_FLAVOR = {
 // Chain Cap notice (2026-10-04, direct instruction: "Whenever a full 5 additional work,
 // raid, bounty, or rob-npc chain happens... make sure the skip text says something about
 // how they reached the max amount of skips, timer not reduced") — every cooldown-skip
-// chain (/work, Guild Raid, Bounty/Heist) caps at Work.MAX_COOLDOWN_SKIP_CHAIN_LENGTH or
+// chain (/work, Guild Raid, Bounty/Heist) caps at Work.MAX_COOLDOWN_SKIP_CHAIN_LENGTH (+ the player's Work Chain shop upgrades, /work only) or
 // Work.MAX_BOUNTY_RAID_COOLDOWN_SKIP_CHAIN_LENGTH extra links; the FINAL link's own roll
 // can still hit the skip chance, but the chain can't extend any further, so that roll's
 // cooldown gets overwritten back to a real, full cooldown immediately after (see each

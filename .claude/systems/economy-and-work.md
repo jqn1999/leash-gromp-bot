@@ -822,9 +822,9 @@ Key properties:
 
 ## Personal shops
 
-Four tiered shops defined statically in `constants.js` `shops` array — `workShop`
+Five tiered shops defined statically in `constants.js` `shops` array — `workShop`
 (`workMultiplierAmount`), `passiveIncomeShop` (`passiveAmount`), `bankShop` (`bankCapacity`),
-`starchShop` (`maxStarches`). Each item has `{currentAmount, amount, cost, id, name, description, type}`
+`starchShop` (`maxStarches`), `workChainShop` (`workChainUpgrades`, see below). Each item has `{currentAmount, amount, cost, id, name, description, type}`
 — `currentAmount` is the stat value required to be *eligible* for that tier, `amount` is what it
 upgrades to.
 
@@ -905,6 +905,18 @@ flow) specifically so cost was visible before committing — superseded by this 
 itself started showing that same cost/afford information up front and gained its own buy button;
 requiring a second click to confirm what the player could already see stopped adding safety and just
 added friction, so both `/shop`'s button and `/buy` now execute immediately instead.
+
+### Work Chain shop (2026-10-12)
+
+`workChainShop` is the one shop that tracks a plain count rather than a stat: `userDetails.workChainUpgrades`
+(0-5, default 0) is its base value, so there is no sweet/regrade subtraction and `currentAmount`/`amount` are
+upgrade counts. Five tiers — 400M, 800M, 1.5B, 2.5B, 4B (9.2B total) — each add one link to `/work`'s
+cooldown-skip chain: effective cap = `Work.MAX_COOLDOWN_SKIP_CHAIN_LENGTH` (5) + upgrades, via
+`shopFactory.getWorkChainCap` (clamped to 0..5 because the purchase is an atomic ADD of +1, which two overlapping
+buys could otherwise push past the ladder). `work.js` reads the cap once per command for the loop and the Chain Cap
+notice. `/work` only: Bounty/Heist/rob-npc/Guild Raid keep `Work.MAX_BOUNTY_RAID_COOLDOWN_SKIP_CHAIN_LENGTH`.
+Rebirth neither resets nor requires it. Value is steeply diminishing (link N+1 fires with probability
+`skipChance^(N+1)`), which is why the ladder is pure late-game sink pricing.
 
 ## Regrade (gacha enhancement)
 

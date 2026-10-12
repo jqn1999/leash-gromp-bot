@@ -595,6 +595,8 @@ function getDefaultUserFields(userId, username) {
         towerWardUsedToday: false,
         // Elite failstack (2026-10-12, see towerConstants.js's ELITE_FAILSTACK_STEP) — { "<10-floor band>": count of capped Elite losses }, band 1 = floors 1-10. An EMPTY map by default so ADD on a nested `towerFailStacks.<band>` path always has a parent to land in.
         towerFailStacks: {},
+        // Work Chain shop upgrades owned, 0-5 (shopFactory.getWorkChainCap adds this to Work.MAX_COOLDOWN_SKIP_CHAIN_LENGTH). Not reset by rebirth.
+        workChainUpgrades: 0,
         workCount: 0,
         workScenarioCounts: {
             regular: 0,

@@ -147,4 +147,19 @@ describe('/work chain-cap-hit-on-its-own-skip', () => {
         expect(capField.value).toContain(`${Work.MAX_COOLDOWN_SKIP_CHAIN_LENGTH}`);
         expect(capField.value.toLowerCase()).toContain('not');
     });
+
+    // Work Chain shop (2026-10-12): the cap is per-player, base cap + owned upgrades.
+    test.each([0, 2, 5])('a player with %i Work Chain upgrades chains exactly base cap + upgrades extra links, and the notice shows that cap', async (upgrades) => {
+        dynamoHandler.findUser.mockResolvedValue(baseUser({ workChainUpgrades: upgrades }));
+        const interaction = fakeInteraction();
+
+        await workModule.callback({}, interaction);
+
+        const expectedCap = Work.MAX_COOLDOWN_SKIP_CHAIN_LENGTH + upgrades;
+        const [, , addFields] = dynamoHandler.updateUserFields.mock.calls[0];
+        expect(addFields.workCount).toBe(expectedCap + 1);
+        const lastCall = interaction.followUp.mock.calls[interaction.followUp.mock.calls.length - 1];
+        const capField = lastCall[0].embeds[0].data.fields.find(f => f.name.includes('Chain Cap Reached'));
+        expect(capField.value).toContain(`${expectedCap}`);
+    });
 });
