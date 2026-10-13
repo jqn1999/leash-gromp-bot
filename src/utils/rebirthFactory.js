@@ -175,7 +175,9 @@ function computeRebirthState(userDetails) {
         regrades: {
             workMulti: { regradeAmount: 0, failStack: 0 },
             passiveAmount: { regradeAmount: 0, failStack: 0 },
-            bankCapacity: { regradeAmount: 0, failStack: 0 }
+            bankCapacity: { regradeAmount: 0, failStack: 0 },
+            // Work Chain progress survives rebirth (2026-10-13): it grants a convenience (more /work auto-chain links), not stat power, and the shop upgrades it builds on are likewise kept, so wiping a ~100B-potato chase would be pure punishment.
+            workChain: userDetails.regrades?.workChain ?? { regradeAmount: 0, failStack: 0 }
         },
         rebirthCount: (userDetails.rebirthCount || 0) + 1
     };

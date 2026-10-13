@@ -3,7 +3,7 @@
 // their own version of getNextItemFromShop, and /shop had no way to show a user's current
 // tier — or buy anything — at all).
 const dynamoHandler = require("./dynamoHandler");
-const { shops, Work } = require("./constants");
+const { shops, Work, REGRADE_CAPS } = require("./constants");
 
 // Maps each command's shop-select option to the shopId it maps to in `shops` (constants.js).
 const SHOP_ID_BY_SELECT = {
@@ -24,10 +24,17 @@ function getWorkChainUpgrades(userDetails) {
     const owned = Number(userDetails.workChainUpgrades) || 0;
     return Math.max(0, Math.min(WORK_CHAIN_MAX_UPGRADES, Math.floor(owned)));
 }
-// Effective /work cooldown-skip chain cap: the global safety valve plus owned upgrades.
+// Work Chain regrades (2026-10-13) — a second +5 on top of the shop's, gated on a maxed shop
+// (regrade.js). Same clamp reasoning: the ADD can't be trusted to stay inside the ladder.
+function getWorkChainRegrades(userDetails) {
+    const owned = Number(userDetails.regrades?.workChain?.regradeAmount) || 0;
+    return Math.max(0, Math.min(REGRADE_CAPS.workChain, Math.floor(owned)));
+}
+// Effective /work cooldown-skip chain cap: the global safety valve (5) plus owned shop
+// upgrades (up to 5) plus Work Chain regrades (up to 5) = 15 at most.
 // /work only — Bounty/Heist/Guild Raid keep Work.MAX_BOUNTY_RAID_COOLDOWN_SKIP_CHAIN_LENGTH.
 function getWorkChainCap(userDetails) {
-    return Work.MAX_COOLDOWN_SKIP_CHAIN_LENGTH + getWorkChainUpgrades(userDetails);
+    return Work.MAX_COOLDOWN_SKIP_CHAIN_LENGTH + getWorkChainUpgrades(userDetails) + getWorkChainRegrades(userDetails);
 }
 
 // Each shop tracks tier progress against a different userDetails field, and (except
@@ -91,7 +98,7 @@ const SHOP_VALUE_FORMATTERS = {
     passiveIncomeShop: (value) => `${Number(value).toLocaleString()} potatoes/day`,
     bankShop: (value) => `${Number(value).toLocaleString()} potatoes`,
     starchShop: (value) => `${Number(value).toLocaleString()} max starches`,
-    workChainShop: (value) => `${Number(value)} / ${WORK_CHAIN_MAX_UPGRADES} upgrades (/work chain cap ${Work.MAX_COOLDOWN_SKIP_CHAIN_LENGTH + Number(value)})`,
+    workChainShop: (value) => `${Number(value)} / ${WORK_CHAIN_MAX_UPGRADES} upgrades (shop cap ${Work.MAX_COOLDOWN_SKIP_CHAIN_LENGTH + Number(value)}; regrades add up to +${REGRADE_CAPS.workChain} more)`,
 };
 function formatShopValue(shopId, value) {
     const formatter = SHOP_VALUE_FORMATTERS[shopId];
@@ -136,7 +143,7 @@ const SHOP_PURCHASE_HANDLERS = {
     workChainShop: (userDetails, item) => ({
         field: 'workChainUpgrades',
         gap: 1,
-        label: (value) => `Your /work skip chain cap is now ${Work.MAX_COOLDOWN_SKIP_CHAIN_LENGTH + Math.min(WORK_CHAIN_MAX_UPGRADES, value)}.`,
+        label: (value) => `Your /work skip chain cap is now ${Work.MAX_COOLDOWN_SKIP_CHAIN_LENGTH + Math.min(WORK_CHAIN_MAX_UPGRADES, value) + getWorkChainRegrades(userDetails)}.`,
     }),
 };
 
@@ -195,6 +202,7 @@ module.exports = {
     getUserBaseShopValue,
     getWorkChainCap,
     getWorkChainUpgrades,
+    getWorkChainRegrades,
     getNextItemFromShop,
     getShopTierStatus,
     formatShopValue,

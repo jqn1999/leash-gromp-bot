@@ -21523,3 +21523,36 @@ a convenience, not a power stat). (3) The price ladder above; easy to retune in 
 rejection, formatter), `workCooldownSkipChainCap.test.js` (chain length and notice number at 0/2/5 upgrades).
 Updated `.claude/systems/economy-and-work.md` (Personal shops). Web port: see `financial-project`'s
 `NOTES_GROMP_WEB_INTEGRATION.md` (Bot caught up #126).
+
+## Work Chain regrades: five more /work chain links on top of the shop, 15 total (2026-10-13, direct instruction)
+
+**Asked**: "add additional regrades for it to go to 10 additional (15 total, 5 base, 5 shop, 5 from regrades" — plus
+"Fix the web skip chain" (the pre-existing web gap flagged with the Work Chain shop).
+
+**Found**: the regrade command was written around three stat tracks whose success always ADDs to a raw stat AND
+`regrades.<key>.regradeAmount`; base shop tier is derived from that pair. A chain track has no stat, so it cannot go
+through `regradeSuccessWrites` (which would invent a raw `workChain` stat and break base derivation). It also needed
+its own max guard: `findCurrentRegradeTier` falls back to the LAST tier once past the ladder, so without one a maxed
+player could keep paying 8B for increments the cap clamps away.
+
+**Changed (bot)**: `workChainRegradeTiers` (5 x `+1`, costs 3B / 4B / 5B / 6B / 8B, chances 45 / 35 / 25 / 15 / 10%,
+failStack +5 / 4 / 3 / 2 / 1 points) and `REGRADE_CAPS.workChain = 5` in `constants.js`. New `regrades.workChain`
+track in `getDefaultUserFields` (existing accounts heal in through `findUser`'s one-level nested backfill).
+`/regrade work-chain` is a fourth `TRACK_CONFIGS` entry with `statField: null`: base for the gate is the Work Chain
+shop count (needs all 5 upgrades), the preview's "Current" is the total chain cap, success is
+`statWriteFactory.chainRegradeSuccessWrites` (one ADD on `regrades.workChain.regradeAmount` + failStack leaf SET) and
+failure `chainRegradeFailAdds`. `shopFactory.getWorkChainCap` = 5 + shop upgrades + chain regrades, each clamped
+0..5. Expected total spend is on the order of 100B potatoes.
+
+**Judgment calls, not silently decided**: (1) **rebirth keeps chain regrade progress** (`computeRebirthState`
+carries `regrades.workChain`), consistent with the shop upgrades also surviving — it is convenience, not stat power,
+and wiping a ~100B chase would be pure punishment; the three stat tracks reset as before. (2) The ladder numbers are
+a first pass in one place (`constants.js`). (3) The maxed-guard is added for this track only; the stat tracks are
+unchanged. (4) Not eligible for Ancient Potato's free-regrade step (that list is stat tracks only).
+
+**Web**: skip-chain fix (any skip source chains, not just an equipped companion) + the same track — see
+`financial-project`'s `NOTES_GROMP_WEB_INTEGRATION.md` (Bot caught up #127).
+
+**Tests**: new `regradeWorkChain.test.js` (ladder shape, success/failure write shape, shop gate, maxed refusal,
+cap math incl. 15, rebirth keeps progress), `workCooldownSkipChainCap.test.js` (16-link maximum),
+`shopFactory.test.js` formatter. Updated `.claude/systems/economy-and-work.md` (Personal shops / Regrade).

@@ -299,6 +299,6 @@ describe('workChainShop (skip chain cap upgrade)', () => {
     });
 
     test('formats progress with the resulting chain cap', () => {
-        expect(formatShopValue('workChainShop', 3)).toBe('3 / 5 upgrades (/work chain cap 8)');
+        expect(formatShopValue('workChainShop', 3)).toBe('3 / 5 upgrades (shop cap 8; regrades add up to +5 more)');
     });
 });

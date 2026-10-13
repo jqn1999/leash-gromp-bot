@@ -625,6 +625,11 @@ function getDefaultUserFields(userId, username) {
             bankCapacity: {
                 regradeAmount: 0,
                 failStack: 0
+            },
+            // Work Chain track (2026-10-13) — regradeAmount counts extra /work chain links (0-5), not a stat; see constants.js's workChainRegradeTiers. Existing accounts heal this in via findUser's one-level nested backfill.
+            workChain: {
+                regradeAmount: 0,
+                failStack: 0
             }
         },
         // Rebalanced 2026-08-24 (down from 25,000) — the old default cost ~250,000,000

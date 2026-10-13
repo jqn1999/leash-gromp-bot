@@ -1,9 +1,10 @@
 const { ApplicationCommandOptionType } = require("discord.js");
 const { getUserInteractionDetails, requireUserDetails, buildConfirmCancelRow, buildPaginationRow, runPaginatedReply } = require("../../utils/helperCommands")
-const { shops, workRegradeTiers, passiveRegradeTiers, bankRegradeTiers, REGRADE_CAPS } = require("../../utils/constants");
+const { shops, workRegradeTiers, passiveRegradeTiers, bankRegradeTiers, workChainRegradeTiers, REGRADE_CAPS } = require("../../utils/constants");
 const dynamoHandler = require("../../utils/dynamoHandler");
 const companionFactory = require("../../utils/companionFactory");
-const { regradeSuccessWrites, regradeFailAdds } = require("../../utils/statWriteFactory");
+const { regradeSuccessWrites, regradeFailAdds, chainRegradeSuccessWrites, chainRegradeFailAdds } = require("../../utils/statWriteFactory");
+const { getUserBaseShopValue, getWorkChainCap } = require("../../utils/shopFactory");
 const { EmbedFactory } = require("../../utils/embedFactory");
 const embedFactory = new EmbedFactory();
 
@@ -39,6 +40,17 @@ const TRACK_CONFIGS = {
         label: 'Bank Capacity',
         unit: 'potatoes',
         statField: 'bankCapacity',
+    },
+    // Not a stat track (2026-10-13): no raw stat / sweetPotatoBuffs component, regradeAmount IS
+    // the value (extra /work chain links). statField stays null so every stat-coupled branch
+    // below (base derivation, raw-stat ADD) is skipped; gated on a fully-bought Work Chain shop.
+    'work-chain': {
+        tiers: workChainRegradeTiers,
+        regradeKey: 'workChain',
+        shopId: 'workChainShop',
+        label: 'Work Chain',
+        unit: 'chain links',
+        statField: null,
     },
 }
 
@@ -83,6 +95,7 @@ function completesBankCapacity(config, regradeAmountAfterAttempt) {
 }
 
 function getBaseAmount(userDetails, config) {
+    if (config.statField === null) return Number(getUserBaseShopValue(userDetails, config.shopId));
     return Math.round(userDetails[config.statField] - userDetails.sweetPotatoBuffs[config.statField] - userDetails.regrades[config.regradeKey].regradeAmount);
 }
 
@@ -96,6 +109,13 @@ function getRequiredBaseAmount(config) {
 // either gate fails, or { currentTier, chanceOfSuccess, failStack } if the player is
 // eligible to see (and, funds permitting, confirm) a regrade attempt.
 function checkEligibility(userDetails, config, interaction, userDisplayName) {
+    // Work Chain only: findCurrentRegradeTier falls back to the LAST tier once past the ladder,
+    // so without this a maxed player could keep paying 8B for increments the cap clamps away.
+    // (The three stat tracks never needed it in practice and are deliberately left unchanged.)
+    if (config.statField === null && userDetails.regrades[config.regradeKey].regradeAmount >= REGRADE_CAPS[config.regradeKey]) {
+        interaction.editReply(`${userDisplayName} your ${config.label} regrade is already fully maxed out!`);
+        return null;
+    }
     const currentTier = findCurrentRegradeTier(config.tiers, userDetails.regrades[config.regradeKey].regradeAmount);
     const requiredBaseAmount = getRequiredBaseAmount(config);
     const baseAmount = getBaseAmount(userDetails, config);
@@ -148,18 +168,23 @@ async function executeRegrade(userId, userDetails, config, currentTier, chanceOf
     const setFields = { companions: leveledCompanions };
     const addFields = { potatoes: -currentTier.cost };
 
-    let newAmount = userDetails[config.statField];
+    const isStatTrack = config.statField !== null;
+    let newAmount = isStatTrack ? userDetails[config.statField] : getWorkChainCap(userDetails);
     let increase = 0;
     if (Math.random() < chanceOfSuccess) {
         increase = currentTier.increase;
-        const writes = regradeSuccessWrites(config.statField, increase);
+        const writes = isStatTrack
+            ? regradeSuccessWrites(config.statField, increase)
+            : chainRegradeSuccessWrites(config.regradeKey, increase);
         Object.assign(addFields, writes.adds);
         Object.assign(setFields, writes.sets);
         userRegrades[config.regradeKey].regradeAmount += increase;
         userRegrades[config.regradeKey].failStack = 0;
-        newAmount = userDetails[config.statField] + increase;
+        newAmount = isStatTrack ? userDetails[config.statField] + increase : getWorkChainCap(userDetails);
     } else {
-        Object.assign(addFields, regradeFailAdds(config.statField, currentTier.failStackIncrease));
+        Object.assign(addFields, isStatTrack
+            ? regradeFailAdds(config.statField, currentTier.failStackIncrease)
+            : chainRegradeFailAdds(config.regradeKey, currentTier.failStackIncrease));
         userRegrades[config.regradeKey].failStack += currentTier.failStackIncrease;
     }
 
@@ -217,6 +242,10 @@ module.exports = {
                 {
                     name: 'bank-capacity',
                     value: 'bank-capacity'
+                },
+                {
+                    name: 'work-chain',
+                    value: 'work-chain'
                 }
             ]
         },
@@ -265,7 +294,9 @@ module.exports = {
         // excludes sweetPotatoBuffs (Bonus) — that bucket comes from unrelated sources (Tower,
         // World Boss, etc.), not shop/regrade grinding, so it stays out of this command's own
         // number the same way baseAmount already did.
-        const currentStatAmount = baseAmount + userDetails.regrades[config.regradeKey].regradeAmount;
+        const currentStatAmount = config.statField === null
+            ? getWorkChainCap(userDetails)
+            : baseAmount + userDetails.regrades[config.regradeKey].regradeAmount;
         const willMaxBankCapacity = completesBankCapacity(config, userDetails.regrades[config.regradeKey].regradeAmount + currentTier.increase);
 
         const previewEmbed = embedFactory.createRegradePreviewEmbed(userDisplayName, userId, userAvatar, userDetails.potatoes, config.label, currentStatAmount, currentTier.cost, currentTier.increase, chanceOfSuccess, failStack, willMaxBankCapacity);

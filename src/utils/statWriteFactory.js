@@ -57,6 +57,20 @@ function regradeFailAdds(statType, failStackIncrease) {
     return { [`regrades.${REGRADE_KEY[statType]}.failStack`]: failStackIncrease };
 }
 
+// Work Chain regrade track (2026-10-13): no raw stat and no sweet component — the track's
+// regradeAmount IS the whole value (extra /work chain links), so success is a single ADD plus
+// the same failStack reset, and failure the same failStack ADD.
+function chainRegradeSuccessWrites(regradeKey, increase) {
+    return {
+        adds: { [`regrades.${regradeKey}.regradeAmount`]: increase },
+        sets: { [`regrades.${regradeKey}.failStack`]: 0 }
+    };
+}
+
+function chainRegradeFailAdds(regradeKey, failStackIncrease) {
+    return { [`regrades.${regradeKey}.failStack`]: failStackIncrease };
+}
+
 // Sums any number of add-maps key by key (a /work chain accumulates one per link, a Tower
 // payout builds one per reward type).
 function mergeAdds(...addMaps) {
@@ -104,6 +118,8 @@ module.exports = {
     statGrantAdds,
     regradeSuccessWrites,
     regradeFailAdds,
+    chainRegradeSuccessWrites,
+    chainRegradeFailAdds,
     mergeAdds,
     applyAddsInMemory,
     applySetsInMemory

@@ -915,7 +915,9 @@ cooldown-skip chain: effective cap = `Work.MAX_COOLDOWN_SKIP_CHAIN_LENGTH` (5) +
 `shopFactory.getWorkChainCap` (clamped to 0..5 because the purchase is an atomic ADD of +1, which two overlapping
 buys could otherwise push past the ladder). `work.js` reads the cap once per command for the loop and the Chain Cap
 notice. `/work` only: Bounty/Heist/rob-npc/Guild Raid keep `Work.MAX_BOUNTY_RAID_COOLDOWN_SKIP_CHAIN_LENGTH`.
-Rebirth neither resets nor requires it. Value is steeply diminishing (link N+1 fires with probability
+Rebirth neither resets nor requires it. A second +5 comes from the `/regrade work-chain` track
+(`regrades.workChain.regradeAmount`, 0-5, gated on all 5 shop upgrades; see Regrade below), so the full cap is
+5 base + 5 shop + 5 regrades = 15 (`getWorkChainCap`). Value is steeply diminishing (link N+1 fires with probability
 `skipChance^(N+1)`), which is why the ladder is pure late-game sink pricing.
 
 ## Regrade (gacha enhancement)
@@ -990,6 +992,16 @@ embeds:
   each row (`tier.currentRegradeAmount + tier.increase >= REGRADE_CAPS.bankCapacity`), so only the
   ladder's actual final rung shows "Unlimited (maxes Bank Capacity!)" instead of its own literal
   increase — every other row, and every row on the other two tracks, is unaffected.
+
+### Work Chain regrade track (2026-10-13)
+
+`/regrade work-chain` is the one regrade track that grants no stat: `regrades.workChain.regradeAmount` counts extra
+`/work` chain links (0-5) and is the whole value, so there is no raw-stat or `sweetPotatoBuffs` write and no base
+derivation. Tiers (`workChainRegradeTiers`): 3B/4B/5B/6B/8B per attempt at 45/35/25/15/10% with failStack
++5/4/3/2/1 points; a success is one atomic ADD on `regradeAmount` (+ failStack leaf reset), a failure an ADD on
+`failStack` (`statWriteFactory.chainRegradeSuccessWrites` / `chainRegradeFailAdds`). Gated on owning all 5 Work
+Chain shop upgrades, and refuses once `regradeAmount` reaches `REGRADE_CAPS.workChain` (5) — unlike the stat tracks,
+whose last tier would otherwise keep being charged. Survives rebirth (`computeRebirthState` carries it).
 
 ## Rebirth (prestige reset)
 

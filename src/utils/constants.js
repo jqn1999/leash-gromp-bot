@@ -5302,7 +5302,7 @@ const shops = [
     // above the 2B bank / 1.5B work shop ceilings deliberately for the same reason.
     {
         shopId: "workChainShop",
-        description: "Hire more hands for the long road — each upgrade lets one more free /work skip chain before the cooldown holds (cap 5 → 10). Only /work is affected.",
+        description: "Hire more hands for the long road — each upgrade lets one more free /work skip chain before the cooldown holds (cap 5 → 10; /regrade work-chain can push it to 15). Only /work is affected.",
         items: [
             {
                 currentAmount: 0,
@@ -5528,13 +5528,29 @@ const bankRegradeTiers = [
     { currentRegradeAmount: 3000000000, cost: 3000000000, increase: 100000000000, chance: .02, failStackIncrease: .01 }
 ]
 
+// Work Chain regrades (2026-10-13, direct instruction: "add additional regrades for it to go to
+// 10 additional (15 total, 5 base, 5 shop, 5 from regrades)"). Unlike the three stat tracks
+// above, this one grants no stat — each success is +1 /work chain link (regradeAmount counts
+// links, 0..5), gated on owning all 5 Work Chain shop upgrades. Costs/chances are deliberately
+// steeper than the shop (this is the "chase" tier of the same feature): ~3B-8B per attempt with
+// success dropping 45% -> 10%, failStack making each miss improve the next roll like every other
+// regrade track. Expected total spend is on the order of 100B.
+const workChainRegradeTiers = [
+    { currentRegradeAmount: 0, cost: 3000000000, increase: 1, chance: .45, failStackIncrease: .05 },
+    { currentRegradeAmount: 1, cost: 4000000000, increase: 1, chance: .35, failStackIncrease: .04 },
+    { currentRegradeAmount: 2, cost: 5000000000, increase: 1, chance: .25, failStackIncrease: .03 },
+    { currentRegradeAmount: 3, cost: 6000000000, increase: 1, chance: .15, failStackIncrease: .02 },
+    { currentRegradeAmount: 4, cost: 8000000000, increase: 1, chance: .10, failStackIncrease: .01 }
+]
+
 // Absolute completion caps for each regrade track — every *RegradeTiers array's last
 // currentRegradeAmount + increase. rebirthFactory.js used to keep a private duplicate of
 // this (it predates the tier tables moving here); it now imports this instead.
 const REGRADE_CAPS = {
     workMulti: 500,
     passiveAmount: 600000000,
-    bankCapacity: 103000000000
+    bankCapacity: 103000000000,
+    workChain: 5
 }
 
 const awsConfigurations = {
@@ -5588,6 +5604,7 @@ module.exports = {
     workRegradeTiers,
     passiveRegradeTiers,
     bankRegradeTiers,
+    workChainRegradeTiers,
     REGRADE_CAPS,
     awsConfigurations,
     ChatMessages,

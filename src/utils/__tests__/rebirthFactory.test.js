@@ -172,7 +172,9 @@ describe('computeRebirthState', () => {
         expect(result.regrades).toEqual({
             workMulti: { regradeAmount: 0, failStack: 0 },
             passiveAmount: { regradeAmount: 0, failStack: 0 },
-            bankCapacity: { regradeAmount: 0, failStack: 0 }
+            bankCapacity: { regradeAmount: 0, failStack: 0 },
+            // Work Chain track is carried through, not wiped (a user without one gets the zero default).
+            workChain: { regradeAmount: 0, failStack: 0 }
         });
     });
 

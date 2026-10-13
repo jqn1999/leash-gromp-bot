@@ -162,4 +162,14 @@ describe('/work chain-cap-hit-on-its-own-skip', () => {
         const capField = lastCall[0].embeds[0].data.fields.find(f => f.name.includes('Chain Cap Reached'));
         expect(capField.value).toContain(`${expectedCap}`);
     });
+
+    test('shop upgrades and Work Chain regrades stack to the 15-link maximum', async () => {
+        dynamoHandler.findUser.mockResolvedValue(baseUser({ workChainUpgrades: 5, regrades: { workChain: { regradeAmount: 5, failStack: 0 } } }));
+        const interaction = fakeInteraction();
+
+        await workModule.callback({}, interaction);
+
+        const [, , addFields] = dynamoHandler.updateUserFields.mock.calls[0];
+        expect(addFields.workCount).toBe(16);
+    });
 });

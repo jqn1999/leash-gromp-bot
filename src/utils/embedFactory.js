@@ -4840,6 +4840,8 @@ class EmbedFactory {
             typeText = 'potatoes';
         } else if (regradeType == 'Bank Capacity') {
             typeText = 'potatoes';
+        } else if (regradeType == 'Work Chain') {
+            typeText = 'chain links (total /work chain cap)';
         }
         let fields = [];
         fields.push({
@@ -4904,7 +4906,7 @@ class EmbedFactory {
     // result it leads into read as the same screen, not two different designs.
     createRegradePreviewEmbed(userDisplayName, userId, userAvatar, userPotatoes, regradeType, currentStatAmount, cost, increaseAmount, successChance, failStack, willMaxBankCapacity = false) {
         const avatarUrl = getUserAvatar(userId, userAvatar);
-        const typeText = regradeType === 'Work Multiplier' ? 'work multi' : 'potatoes';
+        const typeText = regradeType === 'Work Multiplier' ? 'work multi' : regradeType === 'Work Chain' ? 'chain links' : 'potatoes';
         const canAfford = userPotatoes >= cost;
         const fields = [
             { name: 'Current Potatoes:', value: `${userPotatoes.toLocaleString()} potatoes`, inline: true },
