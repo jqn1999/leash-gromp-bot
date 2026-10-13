@@ -21586,3 +21586,33 @@ exclusion messages for favorited/ascended/scavenging, fee gate, every roster pai
 `scavenging`/counters/unrelated active, duplicate-vs-new counters, confirm writes exactly one `companions` SET + fee ADD,
 cancel/timeout write nothing, mid-prompt favorite aborts, autocomplete contents). Updated
 `.claude/systems/companions.md` (Companion Grafting). Web port: `financial-project` notes (Bot caught up #128).
+
+## Stacking Cinderroots: a guild's strength is the number it holds, not its guild level (2026-10-13, direct instruction)
+
+**Asked**: "what if it's just number of cinderroots? Each cinderroot up to 10 is adding on another level... Past 10 it
+requires 2,4,8,16,32 extra cinderroots and those would be like the 'ascension' equivalent... in total for a max
+cinderroot in a guild it'd be 72 total cinderroots", then "Cinderroots can still be sacrificed, it would just decrease
+the count by 1". Open decisions answered via question: existing guilds **reset to count 1**; stars scale **reward +
+interest only**; donate adds 1 / withdraw returns 1.
+
+**Found**: the perk tables were already 10 entries and every consumer read them by guild level, so the change is a
+different index (`min(count, 10)`) plus a star multiplier. Cinderroot drops were already allowed while a guild owned
+one (2026-09-24), so extra finds were being wasted in rosters. The cooldown perk is a skip chance bounded by the
+shared skip-chance cap, so star-scaling it would be near-meaningless — left unscaled.
+
+**Changed**: `CinderrootStacking` (`constants.js`); `guildCompanionFactory` — `getCinderrootCount`, `getCinderrootTier`,
+`getStarMultiplier`, `getTreasuryBonus`, `removeOneCinderroot`, `MAX_CINDERROOT_COUNT` (72), count-driven
+`getRaidCooldownReduction`/`getRaidRewardBonus` (no level arg anymore), donate cap of 72 instead of a singleton,
+`buildDonatedGuildCompanion(guild)` incrementing `count`. Both treasury-interest sites use `getTreasuryBonus`. Donate
+adds 1; withdraw removes 1 (awarded personally); sacrifice removes 1 from a fresh-read count. `/guild`, the sacrifice
+prompt and `/help topic:cinderroot` show/explain the count, level, stars and next star.
+
+**Judgment calls, not silently decided**: (1) A guild record without `count` reads as 1, so existing guilds lose
+strength on deploy (by instruction). (2) Sacrifice drops a star if it crosses a threshold. (3) The market can sell
+Legendary Cinderroots, so stars are purchasable; no market restriction added. (4) `raidHistory.companionSacrificed`
+can miss a sacrifice when a donation lands in the same raid.
+
+**Tests**: new `cinderrootStacking.test.js` (thresholds incl. 72, perk values, star multipliers, clamping, donate/
+remove-one), `guildCompanionFactory.test.js`, `guildCompanionDonate.test.js` (72 cap), `dynamoHandler.test.js` (count
+vs guild level, no-count = 1), `startRaidGuildCompanion.test.js` (lone vs stacked sacrifice, fresh-read). Updated
+`.claude/systems/guilds.md` (Stacking Cinderroots + superseded banner). Web port: `financial-project` notes (Bot caught up #129).

@@ -1,4 +1,4 @@
-const { GuildCompanionDrop, GuildCompanionScaling, GuildRival } = require("./constants");
+const { GuildCompanionDrop, GuildCompanionScaling, GuildRival, CinderrootStacking, CinderrootTreasuryBonusPercent, CompanionFusion } = require("./constants");
 const companionFactory = require("./companionFactory");
 
 // Cinderroot, the Hoardwarden — see systems/guilds.md's "Guild Companion (Cinderroot)
@@ -33,14 +33,58 @@ function getGuildCompanionScalingValue(scaleKey, level) {
     return scale[clampedLevel - 1];
 }
 
-function getRaidCooldownReduction(guild, level) {
+// Stacking Cinderroots (2026-10-13, direct instruction) — a guild's Cinderroot strength is the
+// COUNT of Cinderroots it holds (guild.guildCompanion.count), not its guild level. Counts 1-10 are
+// levels 1-10; each ascension star beyond that costs another CinderrootStacking.STAR_COSTS[i]
+// Cinderroots (2, 4, 8, 16, 32 -> 72 total for a full stack). A guild record written before this
+// change has no `count`, which reads as 1 (direct instruction: existing guilds reset to 1 rather
+// than being grandfathered to their guild level).
+const MAX_CINDERROOT_COUNT = CinderrootStacking.MAX_LEVEL + CinderrootStacking.STAR_COSTS.reduce((a, b) => a + b, 0);
+
+function getCinderrootCount(guild) {
     if (guild.guildCompanion == null) return 0;
-    return getGuildCompanionScalingValue('raidCooldownReductionPercent', level);
+    const raw = Math.floor(Number(guild.guildCompanion.count));
+    return Math.min(Math.max(Number.isFinite(raw) && raw >= 1 ? raw : 1, 1), MAX_CINDERROOT_COUNT);
 }
 
-function getRaidRewardBonus(guild, level) {
+// level 1-10, stars 0-5, and what the next star still needs. nextStarCount is the cumulative count
+// at which the next star lands (null once fully ascended); a count below 10 has no star target yet
+// beyond reaching level 10.
+function getCinderrootTier(count) {
+    const level = Math.min(Math.max(count, 0), CinderrootStacking.MAX_LEVEL);
+    let stars = 0;
+    let threshold = CinderrootStacking.MAX_LEVEL;
+    let nextStarCount = null;
+    for (const cost of CinderrootStacking.STAR_COSTS) {
+        threshold += cost;
+        if (count >= threshold) stars++;
+        else { nextStarCount = threshold; break; }
+    }
+    if (count < CinderrootStacking.MAX_LEVEL) nextStarCount = CinderrootStacking.MAX_LEVEL + CinderrootStacking.STAR_COSTS[0];
+    return { count, level, stars, nextStarCount };
+}
+
+function getStarMultiplier(stars) {
+    return stars > 0 ? CompanionFusion.ASCENSION_MULTIPLIER_BY_STAR[stars - 1] : 1;
+}
+
+function getRaidCooldownReduction(guild) {
     if (guild.guildCompanion == null) return 0;
-    return getGuildCompanionScalingValue('raidRewardBonusPercent', level);
+    return getGuildCompanionScalingValue('raidCooldownReductionPercent', getCinderrootTier(getCinderrootCount(guild)).level);
+}
+
+function getRaidRewardBonus(guild) {
+    if (guild.guildCompanion == null) return 0;
+    const { level, stars } = getCinderrootTier(getCinderrootCount(guild));
+    return getGuildCompanionScalingValue('raidRewardBonusPercent', level) * getStarMultiplier(stars);
+}
+
+// The treasury interest MULTIPLIER bonus (0.25 = +25%) — was read straight off
+// CinderrootTreasuryBonusPercent[guildLevel - 1] at both interest sites; now count/star driven.
+function getTreasuryBonus(guild) {
+    if (guild.guildCompanion == null) return 0;
+    const { level, stars } = getCinderrootTier(getCinderrootCount(guild));
+    return CinderrootTreasuryBonusPercent[Math.min(Math.max(level, 1), CinderrootTreasuryBonusPercent.length) - 1] * getStarMultiplier(stars);
 }
 
 // Cinderroot's 4th perk (2026-09-11, direct instruction: "have cinderroot also buff win
@@ -62,7 +106,7 @@ function getWarbandSuccessBonus(guild) {
 // (below), never straight onto the guild. That member just holds the new instance until
 // their guild's slot frees up (withdraw/sacrifice) or they donate it to a different guild
 // later; the per-guild singleton is enforced entirely at donation time
-// (validateDonateRequest), not at find time. No longer writes anything itself — the actual
+// (validateDonateRequest), not at find time (now a cap of MAX_CINDERROOT_COUNT, not a singleton). No longer writes anything itself — the actual
 // award lands via resolveCinderrootAward below, called by the caller (startRaid.js) with
 // that member's own userDetails, mirroring exactly how Yukon's own acquisition roll
 // (mercenaryFactory.resolveYukonAward) never touches this file at all.
@@ -90,8 +134,8 @@ function resolveCinderrootAward(userDetails) {
 // companion id), it isn't out scavenging, and the guild doesn't already possess one (strict
 // per-guild singleton).
 function validateDonateRequest(userDetails, guild, instanceId) {
-    if (guild.guildCompanion != null) {
-        return { valid: false, error: "your guild already has a Cinderroot — only one is allowed per guild." };
+    if (getCinderrootCount(guild) >= MAX_CINDERROOT_COUNT) {
+        return { valid: false, error: `your guild already holds the maximum of ${MAX_CINDERROOT_COUNT} Cinderroots.` };
     }
     const ownedEntry = companionFactory.getOwnedEntry(userDetails, instanceId);
     if (!ownedEntry || ownedEntry.id !== 'cinderroot') {
@@ -127,11 +171,28 @@ function removeDonatedCompanionFromOwned(userDetails, instanceId) {
 // there's no continuity left to know which raid tier THIS instance was originally found on
 // (owned companion instances never carried that field), so this deliberately doesn't try
 // to fake one.
-function buildDonatedGuildCompanion() {
-    return { id: 'cinderroot', acquiredAt: Date.now(), acquiredRaidTier: null };
+function buildDonatedGuildCompanion(guild = null) {
+    if (guild && guild.guildCompanion != null) {
+        return { ...guild.guildCompanion, count: getCinderrootCount(guild) + 1 };
+    }
+    return { id: 'cinderroot', acquiredAt: Date.now(), acquiredRaidTier: null, count: 1 };
+}
+
+// A sacrifice or a withdraw takes exactly ONE Cinderroot off the stack. Returns the new
+// guild.guildCompanion value: null once the last one is gone, otherwise the record with count - 1.
+function removeOneCinderroot(guild) {
+    const count = getCinderrootCount(guild);
+    if (count <= 1) return null;
+    return { ...guild.guildCompanion, count: count - 1 };
 }
 
 module.exports = {
+    MAX_CINDERROOT_COUNT,
+    getCinderrootCount,
+    getCinderrootTier,
+    getStarMultiplier,
+    getTreasuryBonus,
+    removeOneCinderroot,
     getGuildCompanionById,
     getGuildCompanionScalingValue,
     getRaidCooldownReduction,

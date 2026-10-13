@@ -542,25 +542,26 @@ function buildSpudKeepPayoutShareField(shares, pageIndex = 0) {
 // dedicated /guild-companion status command used to share this too, but was removed
 // (2026-09-11, direct instruction) as redundant with this same field already being
 // visible on /guild.
-function buildCinderrootStatusValue(guild, level) {
+function buildCinderrootStatusValue(guild) {
     const def = guildCompanionFactory.getGuildCompanionById(guild.guildCompanion.id);
     const name = def?.name ?? guild.guildCompanion.id;
-    const cooldownPct = Math.round(guildCompanionFactory.getRaidCooldownReduction(guild, level) * 100);
-    const rewardPct = Math.round(guildCompanionFactory.getRaidRewardBonus(guild, level) * 100);
-    // Treasury interest perk (3c, 2026-09-10 rework) is a level-scaled MULTIPLIER on the
-    // guild's whole computed treasury interest amount, not a flat per-member rate bump —
-    // clamp the level lookup the same way GuildCompanionScaling's own values already are,
-    // in case a future retune shortens the array.
-    const clampedTreasuryLevel = Math.min(Math.max(level, 1), CinderrootTreasuryBonusPercent.length);
-    const treasuryBonusPct = Math.round(CinderrootTreasuryBonusPercent[clampedTreasuryLevel - 1] * 100);
-    // 4th perk (2026-09-11, "similar to Yukon") — flat, not level-scaled, so it needs no
-    // clamped level lookup the way the three perks above do.
+    // Stacking Cinderroots (2026-10-13): strength comes from the COUNT held (levels 1-10, then
+    // ascension stars at 12/16/24/40/72), not the guild's own level.
+    const count = guildCompanionFactory.getCinderrootCount(guild);
+    const { level, stars, nextStarCount } = guildCompanionFactory.getCinderrootTier(count);
+    const cooldownPct = Math.round(guildCompanionFactory.getRaidCooldownReduction(guild) * 100);
+    const rewardPct = Math.round(guildCompanionFactory.getRaidRewardBonus(guild) * 100);
+    // Treasury interest perk (3c) is a MULTIPLIER on the guild's whole computed treasury interest
+    // amount, not a flat per-member rate bump.
+    const treasuryBonusPct = Math.round(guildCompanionFactory.getTreasuryBonus(guild) * 100);
+    // 4th perk (2026-09-11, "similar to Yukon") — flat, not count-scaled.
     const warbandBonusPct = Math.round(guildCompanionFactory.getWarbandSuccessBonus(guild) * 100);
+    const progress = `${count} / ${guildCompanionFactory.MAX_CINDERROOT_COUNT} held — Lv. ${level}${stars > 0 ? ` ${'★'.repeat(stars)}` : ''}${nextStarCount ? `, next ${stars === 0 && count < 10 ? 'milestone' : 'star'} at ${nextStarCount}` : ' (fully ascended)'}`;
     // cooldownPct is a chance to skip the raid cooldown entirely on a win (2026-09-05
     // cooldown-skip overhaul), not a guaranteed reduction — phrased as a chance here so
     // this never promises a number that isn't actually guaranteed (same fix as
     // /bounty-board's own cooldown line).
-    return `${name} — ${cooldownPct}% chance to skip raid cooldown on a win, +${rewardPct}% raid rewards (winning side), +${treasuryBonusPct}% treasury interest, +${warbandBonusPct}% Warband success chance (/repel-warband). Can be sacrificed on a raid loss to void that loss's penalty entirely.`;
+    return `${name} (${progress}) — ${cooldownPct}% chance to skip raid cooldown on a win, +${rewardPct}% raid rewards (winning side), +${treasuryBonusPct}% treasury interest, +${warbandBonusPct}% Warband success chance (/repel-warband). Can be sacrificed on a raid loss to void that loss's penalty entirely (costs one Cinderroot).`;
 }
 
 // Above/below-expected indicator for /profile page 3's Work Encounter Counts (2026-09-30,
@@ -1512,7 +1513,7 @@ class EmbedFactory {
         fields.push({
             name: `Guild Companion:`,
             value: guild.guildCompanion
-                ? buildCinderrootStatusValue(guild, raidLevelInfo.level)
+                ? buildCinderrootStatusValue(guild)
                 : `Your guild doesn't have Cinderroot, the Hoardwarden yet. It's found personally — whoever starts a winning guild raid has a rare chance to find one (see /help topic:cinderroot) — then any member who finds one can donate it to the guild with /guild-companion-donate.`,
             inline: false
         });
@@ -1802,14 +1803,14 @@ class EmbedFactory {
     // they should sacrifice cinderroot") — both optional, defaulting to the old wording, so
     // this degrades gracefully if a future call site is ever added without them rather than
     // rendering "undefined" into the embed.
-    createGuildCompanionSacrificePromptEmbed(lossAmount = null, mobName = null) {
+    createGuildCompanionSacrificePromptEmbed(lossAmount = null, mobName = null, cinderrootCount = 1) {
         const def = guildCompanionFactory.getGuildCompanionById('cinderroot');
         const lossLine = Number.isFinite(lossAmount)
             ? ` against ${mobName ?? 'this raid\'s boss'}, costing your guild **${Math.abs(lossAmount).toLocaleString()} potatoes**`
             : '';
         const embed = new EmbedBuilder()
             .setTitle(`Sacrifice ${def.name}?`)
-            .setDescription(`Your guild's raid has failed${lossLine}. You may sacrifice ${def.name} to void this raid's entire potato penalty — your guild will permanently lose the companion in exchange. This choice is yours alone to make; you have 30 seconds to decide.`)
+            .setDescription(`Your guild's raid has failed${lossLine}. You may sacrifice ${def.name} to void this raid's entire potato penalty — your guild will permanently lose one Cinderroot in exchange${cinderrootCount > 1 ? ` (${cinderrootCount} → ${cinderrootCount - 1})` : ' (its last one)'}. This choice is yours alone to make; you have 30 seconds to decide.`)
             .setColor("Orange")
             .setThumbnail(def.thumbnailUrl)
             .setFooter({ text: "Made by Beggar" })

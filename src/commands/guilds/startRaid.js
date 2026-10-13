@@ -212,7 +212,7 @@ const LEGENDARY_T4_MIN_LEVEL = getGuildLevelClosestToWins(Raid.LEGENDARY_T4_MIN_
 // out of sync.
 function getRaidLevelAndRewardMultiplier(guild) {
     const { level: guildLevel, multiplier: rawRaidRewardMultiplier } = getRaidLevelInfo(guild.raidCount);
-    const companionRewardBonus = guildCompanionFactory.getRaidRewardBonus(guild, guildLevel);
+    const companionRewardBonus = guildCompanionFactory.getRaidRewardBonus(guild);
     const raidRewardMultiplier = rawRaidRewardMultiplier * (1 + companionRewardBonus);
     return { guildLevel, raidRewardMultiplier };
 }
@@ -259,7 +259,12 @@ async function removeFromBankOrPurse(guildId, guildBankStored, raidList, totalRa
     if (sacrificeOffer && sacrificeOffer.guildCompanion != null && totalRaidCost < 0) {
         const accepted = await promptCompanionSacrifice(sacrificeOffer, totalRaidCost, mobName);
         if (accepted) {
-            await dynamoHandler.updateGuildDatabase(guildId, 'guildCompanion', null);
+            // A sacrifice takes exactly ONE Cinderroot off the stack (null once the last is gone).
+            // Computed from a fresh read, not the offer's snapshot taken at raid start — a member
+            // could have donated another since, and writing snapshot-1 would silently eat that donation.
+            const freshGuild = await dynamoHandler.findGuildById(guildId);
+            const source = freshGuild?.guildCompanion != null ? freshGuild : { guildCompanion: sacrificeOffer.guildCompanion };
+            await dynamoHandler.updateGuildDatabase(guildId, 'guildCompanion', guildCompanionFactory.removeOneCinderroot(source));
             return 'sacrificed';   // sentinel — never collides with a real raidSplit (always an array or null)
         }
     }
@@ -286,8 +291,8 @@ async function removeFromBankOrPurse(guildId, guildBankStored, raidList, totalRa
 // 30-second window, default-to-decline-on-timeout via .catch(() => null)). Lives here
 // rather than guildCompanionFactory.js since it needs ButtonBuilder/awaitMessageComponent/
 // embedFactory — no existing factory file touches Discord.js primitives.
-async function promptCompanionSacrifice({ interaction, starterUserId }, lossAmount = null, mobName = null) {
-    const promptEmbed = embedFactory.createGuildCompanionSacrificePromptEmbed(lossAmount, mobName);
+async function promptCompanionSacrifice({ interaction, starterUserId, guildCompanion }, lossAmount = null, mobName = null) {
+    const promptEmbed = embedFactory.createGuildCompanionSacrificePromptEmbed(lossAmount, mobName, guildCompanionFactory.getCinderrootCount({ guildCompanion }));
     const promptRow = buildConfirmCancelRow('cinderroot_sacrifice', 'Sacrifice Cinderroot', 'Take the loss');
     const promptMessage = await interaction.followUp({ embeds: [promptEmbed], components: [promptRow], ephemeral: true }).catch(() => null);
     if (!promptMessage) return false;
@@ -1319,7 +1324,7 @@ async function getRaidCooldownSkipSources(guild, guildLevel) {
         : 0;
     const guildBuffRaidTimerReduction = guild.guildBuff == "raidTimer" ? guildBuffFactory.getGuildBuffValue("raidTimer", guildLevel) : 0;
     // Cinderroot's perk 3a (see systems/guilds.md's "Guild Raid Companion" design).
-    const companionCooldownReduction = guildCompanionFactory.getRaidCooldownReduction(guild, guildLevel);
+    const companionCooldownReduction = guildCompanionFactory.getRaidCooldownReduction(guild);
     const { raidCooldownReductionPercent: guildLevelRaidTimerReduction } = getRaidLevelInfo(guild.raidCount);
     return [
         { key: 'guildBuff', chance: guildBuffRaidTimerReduction, label: guild.guildName },
@@ -1716,7 +1721,7 @@ async function resolveRaid(interaction, raidSelection, isChainedReply, chainDept
     // round-trip, and without threading a new field through any scenario closure's return
     // value (which stays a bare number, per the comment above). See systems/guilds.md's
     // "Guild Raid Companion" design, section 4.
-    const companionSacrificedThisRaid = !wonThisRaid && guild.guildCompanion != null && freshGuild?.guildCompanion == null;
+    const companionSacrificedThisRaid = !wonThisRaid && guild.guildCompanion != null && guildCompanionFactory.getCinderrootCount(freshGuild ?? {}) < guildCompanionFactory.getCinderrootCount(guild);
     const raidHistoryEntry = {
         timestamp: Date.now(),
         raidTier: raidSelection,

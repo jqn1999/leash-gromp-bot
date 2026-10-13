@@ -81,12 +81,13 @@ describe('getRaidCooldownReduction / getRaidRewardBonus', () => {
         expect(getRaidRewardBonus(guild, 10)).toBe(0);
     });
 
-    test('return the correct level-scaled value when the guild possesses it', () => {
-        const guild = { guildCompanion: { id: 'cinderroot' } };
-        expect(getRaidCooldownReduction(guild, 1)).toBe(GuildCompanionScaling.raidCooldownReductionPercent[0]);
-        expect(getRaidCooldownReduction(guild, 10)).toBe(GuildCompanionScaling.raidCooldownReductionPercent[9]);
-        expect(getRaidRewardBonus(guild, 1)).toBe(GuildCompanionScaling.raidRewardBonusPercent[0]);
-        expect(getRaidRewardBonus(guild, 10)).toBe(GuildCompanionScaling.raidRewardBonusPercent[9]);
+    test('return the correct COUNT-scaled value (count 1-10 = level 1-10); a record with no count reads as 1', () => {
+        const at = (count) => ({ guildCompanion: { id: 'cinderroot', count } });
+        expect(getRaidCooldownReduction({ guildCompanion: { id: 'cinderroot' } })).toBe(GuildCompanionScaling.raidCooldownReductionPercent[0]);
+        expect(getRaidCooldownReduction(at(1))).toBe(GuildCompanionScaling.raidCooldownReductionPercent[0]);
+        expect(getRaidCooldownReduction(at(10))).toBe(GuildCompanionScaling.raidCooldownReductionPercent[9]);
+        expect(getRaidRewardBonus(at(1))).toBe(GuildCompanionScaling.raidRewardBonusPercent[0]);
+        expect(getRaidRewardBonus(at(10))).toBe(GuildCompanionScaling.raidRewardBonusPercent[9]);
     });
 });
 
@@ -182,13 +183,14 @@ describe('resolveCinderrootAward', () => {
 });
 
 describe('validateDonateRequest', () => {
-    test('rejects when the guild already possesses one', () => {
+    test('rejects only once the guild already holds the maximum stack (72); a smaller stack still accepts', () => {
         const userDetails = baseUserDetails({ companions: { owned: [{ instanceId: 'i1', id: 'cinderroot', workCount: 0 }], active: null, favorites: [null, null, null, null, null], ownedCount: 1, mythicOwnedCount: 0 } });
-        const guild = { guildCompanion: { id: 'cinderroot' } };
 
-        const result = validateDonateRequest(userDetails, guild, 'i1');
-        expect(result.valid).toBe(false);
-        expect(result.error).toMatch(/already has a cinderroot/i);
+        const full = validateDonateRequest(userDetails, { guildCompanion: { id: 'cinderroot', count: 72 } }, 'i1');
+        expect(full.valid).toBe(false);
+        expect(full.error).toMatch(/maximum of 72 cinderroots/i);
+        expect(validateDonateRequest(userDetails, { guildCompanion: { id: 'cinderroot', count: 71 } }, 'i1').valid).toBe(true);
+        expect(validateDonateRequest(userDetails, { guildCompanion: { id: 'cinderroot' } }, 'i1').valid).toBe(true);
     });
 
     test("rejects when the player doesn't own that instance at all", () => {

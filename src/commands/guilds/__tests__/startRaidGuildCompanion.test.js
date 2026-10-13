@@ -272,16 +272,18 @@ describe('Cinderroot perk 3d: sacrifice mechanic', () => {
         expect(description).toMatch(/against .+, costing your guild/);
     });
 
-    test('accept: companion is set to null (fully destructive), removeFromBankOrPurse short-circuits (zero bank drain / member split)', async () => {
+    test('accept: a lone Cinderroot is removed entirely (guildCompanion null), removeFromBankOrPurse short-circuits (zero bank drain / member split)', async () => {
         weakRosterSetup();
         const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.5);
 
         const guild = guildFixture({ guildCompanion: cinderroot });
         const freshGuildAfter = { ...guild, guildCompanion: null };
-        // 3 sequenced fetches for one non-chained resolution: runStartRaidFlow's own preview
+        // 4 sequenced fetches for one non-chained resolution: runStartRaidFlow's own preview
         // fetch, resolveRaid's own re-fetch right after confirm (still the "before" state),
-        // then the post-resolution freshGuild diff (the "after" state).
-        dynamoHandler.findGuildById.mockResolvedValueOnce(guild).mockResolvedValueOnce(guild).mockResolvedValueOnce(freshGuildAfter);
+        // the sacrifice's own fresh read (it computes count - 1 from live state, not the offer's
+        // snapshot, so a donation landing mid-raid isn't overwritten), then the post-resolution
+        // freshGuild diff (the "after" state).
+        dynamoHandler.findGuildById.mockResolvedValueOnce(guild).mockResolvedValueOnce(guild).mockResolvedValueOnce(guild).mockResolvedValueOnce(freshGuildAfter);
 
         const interaction = fakeInteraction({ sacrificeChoice: 'accept' });
         await runStartRaidFlow(interaction, 'baby');
@@ -295,6 +297,30 @@ describe('Cinderroot perk 3d: sacrifice mechanic', () => {
         const raidHistoryCall = dynamoHandler.updateGuildDatabase.mock.calls.find(([, field]) => field === 'raidHistory');
         const entries = raidHistoryCall[2];
         expect(entries[entries.length - 1].companionSacrificed).toBe(true);
+    });
+
+    // Stacking Cinderroots (2026-10-13): a sacrifice takes exactly ONE off the count, computed from
+    // a fresh read so a donation landing since raid start survives.
+    test('accept with a stack: count drops by exactly 1 and the stack stays, based on the FRESH guild (a mid-raid donation is not lost)', async () => {
+        weakRosterSetup();
+        const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.5);
+
+        const stackAtStart = guildFixture({ guildCompanion: { ...cinderroot, count: 3 } });
+        const stackNow = guildFixture({ guildCompanion: { ...cinderroot, count: 4 } }); // someone donated during the raid
+        const stackAfter = guildFixture({ guildCompanion: { ...cinderroot, count: 3 } });
+        dynamoHandler.findGuildById.mockResolvedValueOnce(stackAtStart).mockResolvedValueOnce(stackAtStart).mockResolvedValueOnce(stackNow).mockResolvedValueOnce(stackAfter);
+
+        const interaction = fakeInteraction({ sacrificeChoice: 'accept' });
+        await runStartRaidFlow(interaction, 'baby');
+        randomSpy.mockRestore();
+
+        const write = dynamoHandler.updateGuildDatabase.mock.calls.find(([, field]) => field === 'guildCompanion');
+        expect(write[2]).toMatchObject({ id: 'cinderroot', count: 3 });
+        expect(mockHandlePotatoSplit).not.toHaveBeenCalled();
+        // Known edge, deliberately not asserted: companionSacrificed in raidHistory is derived from the
+        // count before vs after the raid, so a donation landing in the same raid (4 -> sacrifice -> 3
+        // against a start of 3) hides the sacrifice from that flag. The guild write above is the
+        // source of truth; only the history marker is affected.
     });
 
     test('decline: companion untouched, normal penalty applies', async () => {

@@ -78,7 +78,7 @@ module.exports = {
         // silently discard the other's donation with no compensation. Locking the guild write
         // and ONLY removing the companion from this player's inventory after it succeeds means
         // a lost race costs them nothing — they keep their Cinderroot and can just try again.
-        const guildCompanion = guildCompanionFactory.buildDonatedGuildCompanion();
+        const guildCompanion = guildCompanionFactory.buildDonatedGuildCompanion(guild);
         const written = await dynamoHandler.updateGuildFieldsWithLock(guild.guildId, guild.guildVersion, { guildCompanion });
         if (!written) {
             interaction.editReply(`${userDisplayName}, your guild changed while processing this donation (maybe someone else just donated one). Please try again!`);
@@ -88,6 +88,7 @@ module.exports = {
         const updatedCompanions = guildCompanionFactory.removeDonatedCompanionFromOwned(userDetails, instanceId);
         await dynamoHandler.updateUserFields(userId, { companions: updatedCompanions });
 
-        interaction.editReply(`${userDisplayName} has donated Cinderroot, the Hoardwarden to ${guild.guildName} — it's already protecting the guild's raids and treasury! Check /guild for details.`);
+        const newCount = guildCompanion.count;
+        interaction.editReply(`${userDisplayName} has donated Cinderroot, the Hoardwarden to ${guild.guildName} — the guild now holds ${newCount} Cinderroot${newCount === 1 ? '' : 's'}! Check /guild for details.`);
     }
 }

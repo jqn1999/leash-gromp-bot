@@ -1248,7 +1248,9 @@ const applyGuildTreasuryInterest = async function (timesInADay) {
         // the loose `!= null` check, not `!== null` — see systems/guilds.md's "Guild
         // Companion (Cinderroot) Rework" section.
         if (guild.guildCompanion != null) {
-            interestRaw *= (1 + CinderrootTreasuryBonusPercent[level - 1]);
+            // Lazy require — guildCompanionFactory -> companionFactory pulls in modules that
+            // require this file at top level (same circular-require precedent as raidFactory above).
+            interestRaw *= (1 + require("./guildCompanionFactory").getTreasuryBonus(guild));
         }
 
         const interest = Math.round(interestRaw);

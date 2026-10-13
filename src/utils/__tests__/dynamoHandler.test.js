@@ -777,9 +777,9 @@ describe('applyGuildTreasuryInterest', () => {
     // disguise) — same level-6/101M/4-member scenario as the "base rate scales with guild
     // level" test above, but now with Cinderroot possessed. If this were still the old flat
     // +0.06%/member/day bump, g1 would land far below this value regardless of level.
-    test('the companion multiplier itself scales with guild level, at a non-1 level', async () => {
+    test('the companion multiplier is driven by the Cinderroot COUNT, not guild level (a count-6 stack at guild level 6)', async () => {
         docClient.scan.mockReturnValue(resolved({
-            Items: [{ guildId: 'g1', bankStored: 101000000, bankCapacity: 500000000, raidCount: 200, memberList: [{ id: 'a' }, { id: 'b' }, { id: 'c' }, { id: 'd' }], guildCompanion: { id: 'cinderroot', acquiredAt: 1, acquiredRaidTier: 'regular' } }],
+            Items: [{ guildId: 'g1', bankStored: 101000000, bankCapacity: 500000000, raidCount: 200, memberList: [{ id: 'a' }, { id: 'b' }, { id: 'c' }, { id: 'd' }], guildCompanion: { id: 'cinderroot', acquiredAt: 1, acquiredRaidTier: 'regular', count: 6 } }],
         }));
         docClient.update.mockReturnValue(resolved({}));
 
@@ -790,6 +790,21 @@ describe('applyGuildTreasuryInterest', () => {
         // * (1 + CinderrootTreasuryBonusPercent[5] = .67) = 12,625 * 1.67 = 21,083.75 -> rounds to 21084
         const newValue = Object.values(docClient.update.mock.calls[0][0].ExpressionAttributeValues)[0];
         expect(newValue).toBe(101021084);
+    });
+
+    // A pre-stacking record has no `count`, which reads as 1 (existing guilds reset to count 1, direct
+    // instruction) — so a level-6 guild with an old-shape Cinderroot only gets the count-1 bonus (+25%).
+    test('a Cinderroot record with no count reads as 1: a level-6 guild gets +25%, not +67%', async () => {
+        docClient.scan.mockReturnValue(resolved({
+            Items: [{ guildId: 'g1', bankStored: 101000000, bankCapacity: 500000000, raidCount: 200, memberList: [{ id: 'a' }, { id: 'b' }, { id: 'c' }, { id: 'd' }], guildCompanion: { id: 'cinderroot', acquiredAt: 1, acquiredRaidTier: 'regular' } }],
+        }));
+        docClient.update.mockReturnValue(resolved({}));
+
+        await dynamoHandler.applyGuildTreasuryInterest(288);
+
+        // 12,625 * 1.25 = 15,781.25 -> 15781
+        const newValue = Object.values(docClient.update.mock.calls[0][0].ExpressionAttributeValues)[0];
+        expect(newValue).toBe(101015781);
     });
 
     // Never-healed record (guildCompanion undefined, not null) must be treated identically

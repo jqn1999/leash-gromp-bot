@@ -48,7 +48,8 @@ module.exports = {
             return;
         }
 
-        const written = await dynamoHandler.updateGuildFieldsWithLock(guild.guildId, guild.guildVersion, { guildCompanion: null });
+        const remaining = guildCompanionFactory.removeOneCinderroot(guild);
+        const written = await dynamoHandler.updateGuildFieldsWithLock(guild.guildId, guild.guildVersion, { guildCompanion: remaining });
         if (!written) {
             interaction.editReply(`${userDisplayName}, your guild changed while processing this. Please try again!`);
             return;
@@ -57,6 +58,6 @@ module.exports = {
         const { companions: updatedCompanions } = guildCompanionFactory.resolveCinderrootAward(userDetails);
         await dynamoHandler.updateUserFields(userId, { companions: updatedCompanions });
 
-        interaction.editReply(`${userDisplayName} has withdrawn Cinderroot, the Hoardwarden from ${guild.guildName} — it's no longer protecting the guild, and now sits in ${userDisplayName}'s own companion roster (check /companion).`);
+        interaction.editReply(`${userDisplayName} has withdrawn Cinderroot, the Hoardwarden from ${guild.guildName} — one Cinderroot leaves the stack (${remaining ? `${remaining.count} remain` : 'none remain'}), and it now sits in ${userDisplayName}'s own companion roster (check /companion).`);
     }
 }

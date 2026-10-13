@@ -217,7 +217,7 @@ function getGuildDailyInterest(guild) {
     // (never healed) as well as null (healed, never won one), so this must use the loose
     // `!= null` check, not `!== null`.
     if (guild.guildCompanion != null) {
-        interestRaw *= (1 + CinderrootTreasuryBonusPercent[level - 1]);
+        interestRaw *= (1 + require("./guildCompanionFactory").getTreasuryBonus(guild));
     }
 
     return Math.round(interestRaw);

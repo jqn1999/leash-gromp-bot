@@ -67,14 +67,14 @@ describe('/guild-companion-donate callback', () => {
         expect(dynamoHandler.updateUserFields).not.toHaveBeenCalled();
     });
 
-    test('rejects when the guild already possesses one', async () => {
+    test('rejects when the guild already holds the maximum stack (72)', async () => {
         dynamoHandler.findUser.mockResolvedValue(userWithCinderroot());
-        dynamoHandler.findGuildById.mockResolvedValue(baseGuild({ guildCompanion: { id: 'cinderroot' } }));
+        dynamoHandler.findGuildById.mockResolvedValue(baseGuild({ guildCompanion: { id: 'cinderroot', count: 72 } }));
         const interaction = fakeInteraction('i1');
 
         await callback({}, interaction);
 
-        expect(interaction.editReply).toHaveBeenCalledWith(expect.stringMatching(/already has a cinderroot/i));
+        expect(interaction.editReply).toHaveBeenCalledWith(expect.stringMatching(/maximum of 72 cinderroots/i));
         expect(dynamoHandler.updateGuildFieldsWithLock).not.toHaveBeenCalled();
     });
 

@@ -1194,6 +1194,15 @@ developer-level call, all cosmetic/mechanical rather than logic changes:
 
 ## Guild Companion (Cinderroot) Rework: personal find, donate in, withdraw out
 
+> **Superseded 2026-10-13 — "Stacking Cinderroots" (section at the end of this Cinderroot material,
+> below the Rework section).** A guild no longer holds ONE Cinderroot whose strength is its guild
+> level: it holds a COUNT (`guild.guildCompanion.count`, 1-72), and that count — not guild level —
+> picks the perk tier and ascension stars. Wherever this doc says "per-guild singleton",
+> "guild-level-scaled", "withdraw returns the Cinderroot" or "sacrifice is fully destructive",
+> read it through that section: donate/withdraw/sacrifice each move the count by exactly 1, and the
+> level tables below are indexed by count (1-10).
+
+
 Built off the design in
 [roadmap.md](../roadmap.md#guild-companion-cinderroot-rework-personal-find-guild-equipunequip-2026-09-10-direct-instruction)
 plus a same-day
@@ -1434,6 +1443,39 @@ costing your guild **{amount} potatoes**" when both are provided, and degrades t
 wording when either is omitted (so a hypothetical future caller that forgets one doesn't render
 "undefined" into the embed). `Math.abs()` is applied on display since `totalRaidCost` itself is
 stored negative.
+
+
+### Stacking Cinderroots: strength = number held, not guild level (2026-10-13, direct instruction)
+
+**Rule.** `guild.guildCompanion = { id, acquiredAt, acquiredRaidTier, count }`. `count` 1-10 is Cinderroot
+level 1-10 (the same 10-entry `GuildCompanionScaling` / `CinderrootTreasuryBonusPercent` tables, now indexed by
+count instead of guild level). Past 10, ascension stars cost more Cinderroots: ★1 at 12 total (+2), ★2 at 16
+(+4), ★3 at 24 (+8), ★4 at 40 (+16), ★5 at 72 (+32) — a full stack is 72 (`CinderrootStacking`,
+`guildCompanionFactory.MAX_CINDERROOT_COUNT`). A record with no `count` (every pre-change guild) reads as 1 — direct
+instruction was to reset existing guilds to count 1 rather than grandfather them to their guild level. Guild
+level still drives everything else (reward multiplier, the base treasury rate, the skip-chance from the level itself).
+
+**Perks** (`guildCompanionFactory`, all take just the guild now): cooldown skip chance `getRaidCooldownReduction` —
+count-indexed, NOT star-scaled (the shared skip-chance cap would swallow it); raid reward bonus `getRaidRewardBonus`
+and treasury interest bonus `getTreasuryBonus` — the level-10 value times `CompanionFusion.ASCENSION_MULTIPLIER_BY_STAR`
+(1.55x/1.70x/1.90x/2.15x/2.40x) per star, so 5 stars is +72% rewards and +240% interest; Warband success bonus stays flat.
+Both interest sites (`dynamoHandler.applyGuildTreasuryInterest`, `raidFactory.getGuildDailyInterest`) call
+`getTreasuryBonus` (lazy require, same circular-require reason as elsewhere).
+
+**Commands.** `/guild-companion-donate`: anyone, adds 1 until `MAX_CINDERROOT_COUNT` (version-locked write
+first, then the instance leaves the donor's roster — unchanged ordering). `/guild-companion-withdraw`: Leader/Co-Leader,
+removes exactly 1 (`removeOneCinderroot`, null once the last is gone) and awards one personal instance to the runner.
+**Sacrifice** on a raid loss is still offered to the raid starter and still voids that loss, but takes ONE Cinderroot
+off the count (a star is lost if that falls below its threshold) instead of destroying the companion; the new count is
+computed from a FRESH guild read, not the offer's snapshot, so a donation made mid-raid isn't overwritten. Known edge:
+`raidHistory[].companionSacrificed` is derived from count before vs after the raid, so a donation landing in that
+same raid can hide the sacrifice from that history flag (the guild write itself is unaffected).
+
+**Display.** `/guild`'s Guild Companion field shows `count / 72 held — Lv. N ★★, next star at X` plus the live perk
+numbers; the sacrifice prompt shows `count → count-1`; `/help topic:cinderroot` was rewritten for stacking. Drops are
+unchanged (and were already allowed while the guild owned one), so extra finds now go into the stack instead of
+sitting unused in a roster. Cinderroot is a Legendary and listable on `/companion-market`, so stars are purchasable with
+potatoes at market prices — watch market prices after launch.
 
 ## Guild Rival Warbands
 
