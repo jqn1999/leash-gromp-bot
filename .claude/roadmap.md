@@ -21556,3 +21556,33 @@ unchanged. (4) Not eligible for Ancient Potato's free-regrade step (that list is
 **Tests**: new `regradeWorkChain.test.js` (ladder shape, success/failure write shape, shop gate, maxed refusal,
 cap math incl. 15, rebirth keeps progress), `workCooldownSkipChainCap.test.js` (16-link maximum),
 `shopFactory.test.js` formatter. Updated `.claude/systems/economy-and-work.md` (Personal shops / Regrade).
+
+## `/companion-graft`: 3 Mythics + 500M potatoes -> 1 chosen different Mythic (2026-10-13, direct instruction)
+
+**Asked**: "a command that allows users to combine 3 of one type of mythic companion to get 1 of the other mythic
+companion" -> after the design write-up: "3:1 is right, no ascended or favorite, potato fee of 500million. Make it so
+that user selects what mythic it converts to that isnt itself. This builds for future when i may add more mythics."
+
+**Found**: `/companion-fuse` already exists but is a different mechanic (sacrifices Common/Rare/Legendary into
+Ascension fuel and explicitly refuses Mythics), so this is a separate command. Mythics are only two today (Elder
+Rootbeard, Mochi), but `hasAllMythics`/`getCompanionsByRarity` already read the roster live, so the new factory does
+too. `applyCompanionAward` already handles instance creation and the lifetime counters, and `removeFromOwned`-style
+spreading is what keeps `scavenging` safe from a full `companions` SET.
+
+**Changed**: `CompanionGraft` constants (3 copies, 500,000,000 fee), new `companionGraftFactory.js`
+(`getGraftTargets`, `getAllMythics`, `classifyCopies`, `validateGraftRequest`, `resolveGraft`) and
+`src/commands/user/companionGraft.js` (`from`/`to` autocompletes, preview + confirm, fresh-read re-validation, one
+write: `companions` SET + fee ADD). The 3 lowest-level eligible copies are consumed so a graft never costs a player
+their best Mythic by accident; favorited, ascended (stars or banked fuel) and scavenging copies are never consumed.
+
+**Judgment calls, not silently decided**: (1) Copy selection is automatic (lowest levels), not a picker, to keep the
+flow to two options. (2) Banked `ascensionFuel` with zero stars also blocks a copy, since that fuel is real sunk
+sacrifices. (3) Targets exclude `dropSource` Mythics (a future bounty/raid/Tower-exclusive Mythic could not be
+bought with duplicates); sources do not. (4) The resulting copy is always level 1, like any duplicate award. (5) No
+cooldown or daily cap — the fee and the 3:1 loss are the limiters.
+
+**Tests**: `companionGraft.test.js` (lowest-level selection, target validation incl. self/non-Mythic/unknown,
+exclusion messages for favorited/ascended/scavenging, fee gate, every roster pair valid, resolve keeps
+`scavenging`/counters/unrelated active, duplicate-vs-new counters, confirm writes exactly one `companions` SET + fee ADD,
+cancel/timeout write nothing, mid-prompt favorite aborts, autocomplete contents). Updated
+`.claude/systems/companions.md` (Companion Grafting). Web port: `financial-project` notes (Bot caught up #128).

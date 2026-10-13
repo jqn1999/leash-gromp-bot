@@ -1027,6 +1027,18 @@ const CompanionShop = {
 // are deliberately absent from BASE_FUEL below (and so can never be sacrificed at all) —
 // those are exactly what Prospector farming is FOR, and allowing them as fuel would
 // undercut their own scarcity and the marketplace for them.
+// Companion Grafting (2026-10-13, direct instruction: "combine 3 of one type of mythic
+// companion to get 1 of the other mythic companion... 3:1... no ascended or favorite... potato
+// fee of 500 million... user selects what mythic it converts to that isn't itself"). Lets a
+// player turn duplicate Mythics (Prospector farming, shop/market buys) into the Mythic they
+// are missing — which also unlocks Yamimic's hasAllMythics gate. The 500M fee sits well under
+// a Mythic's ~200-300M-per-copy market price x 3, so it is a real sink on top of the 3:1 loss
+// without making the conversion a worse deal than buying on the market.
+const CompanionGraft = {
+    COPIES_REQUIRED: 3,
+    POTATO_FEE: 500000000
+}
+
 const CompanionFusion = {
     // Flat fuel per sacrifice, by its own rarity, BEFORE folding in its own leveling
     // progress (see companionFactory.getBreakpointFuel) — a fresh Legendary pull alone is
@@ -5643,6 +5655,7 @@ module.exports = {
     CompanionMarket,
     CompanionShop,
     CompanionFusion,
+    CompanionGraft,
     CompanionHunt,
     PoisonMitigation,
     MimicMitigation,

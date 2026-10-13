@@ -1,13 +1,13 @@
 # Companions
 
 [src/utils/constants.js](../../src/utils/constants.js) (`CompanionRarity`, `CompanionRarityOdds`,
-`CompanionMarket`, `CompanionLeveling`, `CompanionScavenging`, `CompanionFusion`, `CompanionHunt`,
+`CompanionMarket`, `CompanionLeveling`, `CompanionScavenging`, `CompanionFusion`, `CompanionGraft`, `CompanionHunt`,
 `Companions`) +
 [src/utils/companionFactory.js](../../src/utils/companionFactory.js) +
 [src/utils/companionMarketFactory.js](../../src/utils/companionMarketFactory.js) +
 [src/utils/companionFusionFactory.js](../../src/utils/companionFusionFactory.js) +
 [src/utils/companionHuntFactory.js](../../src/utils/companionHuntFactory.js) +
-[src/commands/user/{companion,companionFavorite,companionMarket,companionSell,companionSellNpc,companionBuy,companionCancel,companionScavenge,companionScavengeCollect,companionScavengeCancel,companionFuse,companionHunt,companionHuntCollect,companionHuntCancel}.js](../../src/commands/user/).
+[src/commands/user/{companion,companionFavorite,companionMarket,companionSell,companionSellNpc,companionBuy,companionCancel,companionScavenge,companionScavengeCollect,companionScavengeCancel,companionFuse,companionGraft,companionHunt,companionHuntCollect,companionHuntCancel}.js](../../src/commands/user/).
 
 A second permanent-bonus track, separate from `sweetPotatoBuffs`, obtained through luck rather than
 pure grinding. Unlike `sweetPotatoBuffs` (which stacks forever), only **one** companion is ever
@@ -1793,6 +1793,31 @@ companion away. A companion out scavenging can be neither a sacrifice nor the ta
 way `hasReachedMaxLevel`/`hasScavenged` already don't carry over through a resale today; this
 wasn't extended for Ascension so the two stay consistent (leveling investment transfers,
 meta-progress tags don't).
+
+## Companion Grafting (2026-10-13, direct instruction)
+
+`/companion-graft from:<mythic> to:<different mythic>` turns **3 copies of one Mythic + 500,000,000 potatoes**
+(`CompanionGraft.COPIES_REQUIRED` / `POTATO_FEE`) into **1 fresh level-1 copy of a different Mythic the player
+picks**. It exists so duplicate Mythics (Prospector farming, shop/market buys) become the Mythic a player is missing,
+which also unlocks Yamimic's `hasAllMythics` gate. Deliberately NOT part of `/companion-fuse`: fusion feeds
+Common/Rare/Legendary into Ascension and refuses Mythics outright ("too valuable to burn"); grafting is the one
+sanctioned way to consume Mythics.
+
+- **Roster-driven.** `from` is any Mythic; `to` is any Mythic with no `dropSource` (the same pool a normal roll
+  draws from — `companionGraftFactory.getGraftTargets`) other than `from`. Both options autocomplete over the live
+  roster, so a third Mythic needs no code change. A future activity-exclusive (`dropSource`) Mythic can be a source
+  but not a target unless that is changed on purpose.
+- **Which copies are consumed.** Not chosen by the player: the 3 LOWEST-level eligible copies (tiebreak by
+  instanceId so preview and write agree). Ineligible: copies saved in a favorite slot, copies with Ascension stars
+  OR banked `ascensionFuel` (sunk fuel), and the copy currently out scavenging. An equipped consumed copy is
+  unequipped. A short count error says how many were excluded and why.
+- **Flow.** Preview with the exact consumed copies and levels -> Confirm/Cancel (30s) -> fresh read and full
+  re-validation (a copy favorited/sold meanwhile aborts the write) -> one `updateUserFields`: `companions` SET
+  (built by `resolveGraft`: removal spread first so `scavenging`/`favorites`/lifetime counters survive, then
+  `applyCompanionAward` for the new copy, which bumps `ownedCount`/`mythicOwnedCount` only if the target type is
+  new) and the fee as an atomic ADD of `-500,000,000`.
+- **Pricing rationale.** A Mythic's market price is ~200-300M, so 3 copies is ~600-900M for one; the 500M fee is a
+  sink on top of that. Mochi is the stronger Mythic on the numbers, so expect Rootbeard -> Mochi flow.
 
 ## Achievements
 
