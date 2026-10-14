@@ -142,7 +142,7 @@ describe('band roll (per-mode ROLL_CHANCE)', () => {
             .mockReturnValueOnce(0.5)   // randomMultiplier
             .mockReturnValueOnce(0.5)   // mob pick
             .mockReturnValueOnce(0.1)   // success check -> WIN (strong roster, cap .95)
-            .mockReturnValueOnce(0.001) // Stat Reward band roll -> HIT (baby's ROLL_CHANCE is 0.01)
+            .mockReturnValueOnce(0.001) // Stat Reward band roll -> HIT (baby's ROLL_CHANCE is 0.0075)
             .mockReturnValueOnce(0)     // pickStatGrantPool('I') pool-index pick -> TIER_I_GRANT[0] (workMultiplierAmount)
             .mockReturnValue(0.9999);   // everything else (companion drop roll, etc.) misses
         try {
@@ -172,7 +172,7 @@ describe('band roll (per-mode ROLL_CHANCE)', () => {
             .mockReturnValueOnce(0.5) // randomMultiplier
             .mockReturnValueOnce(0.5) // mob pick
             .mockReturnValueOnce(0.1) // success check -> WIN
-            .mockReturnValue(0.5);    // band roll MISS (0.5 >= baby's 0.01) and everything after
+            .mockReturnValue(0.5);    // band roll MISS (0.5 >= baby's 0.0075) and everything after
         try {
             await runStartRaidFlow(interaction, 'baby');
         } finally {
@@ -224,7 +224,7 @@ describe('Guild Level 8+ extra roll stacks with the band roll', () => {
             .mockReturnValueOnce(0.5)   // randomMultiplier
             .mockReturnValueOnce(0.001) // success check -> WIN (strong roster caps LEGENDARY_MAXIMUM_RAID_SUCCESS_RATE)
             .mockReturnValueOnce(0.99)  // cooldown-skip roll -> MISS (guildLevelRaidTimerReduction is the only active source at .23)
-            .mockReturnValueOnce(0.001) // Stat Reward band roll -> HIT (legendary's ROLL_CHANCE is 0.05, tier III -> deterministic, no further draw)
+            .mockReturnValueOnce(0.001) // Stat Reward band roll -> HIT (legendary's ROLL_CHANCE is 0.04, tier III -> deterministic, no further draw)
             .mockReturnValueOnce(0.001) // Level 8+ extra roll -> HIT (its own independent 0.05 chance)
             .mockReturnValueOnce(0)     // extra roll's pickStatGrantPool('I') pool-index pick -> TIER_I_GRANT[0] (workMultiplierAmount)
             .mockReturnValue(0.9999);   // companion drop roll (legendary's 2.5% chance) misses, and anything else
@@ -271,7 +271,7 @@ describe('Big Events: deferred long-shot-win post (section 7 refactor)', () => {
             .mockReturnValueOnce(0.5) // randomMultiplier
             .mockReturnValueOnce(0.5) // mob pick
             .mockReturnValueOnce(0.1) // success check -> WIN (successChance ~0.193, a genuine long shot)
-            .mockReturnValue(0.5);    // Stat Reward band roll MISS (baby's ROLL_CHANCE 0.01), and everything else
+            .mockReturnValue(0.5);    // Stat Reward band roll MISS (baby's ROLL_CHANCE 0.0075), and everything else
         try {
             await runStartRaidFlow(interaction, 'baby');
         } finally {
@@ -337,5 +337,18 @@ describe('Big Events: deferred long-shot-win post (section 7 refactor)', () => {
         }
 
         expect(mockPostBigEvent).not.toHaveBeenCalled();
+    });
+});
+
+// Equal-chances rule (2026-10-14, direct instruction): a guild raid mode rolls at exactly the rate its
+// bounty band does, because GuildRaidStatReward.ROLL_CHANCE is derived from BountyStatReward.ROLL_CHANCE.
+describe('guild and bounty stat-reward chances stay equal', () => {
+    test.each([['baby', 'I'], ['regular', 'I'], ['elite', 'II'], ['legendary', 'III']])('%s raid == bounty band %s', (mode, band) => {
+        expect(GuildRaidStatReward.GRANT_TIER_BY_MODE[mode]).toBe(band);
+        expect(GuildRaidStatReward.ROLL_CHANCE[mode]).toBe(BountyStatReward.ROLL_CHANCE[band]);
+    });
+
+    test('the concrete values are 0.75% / 0.75% / 2% / 4%', () => {
+        expect(GuildRaidStatReward.ROLL_CHANCE).toEqual({ baby: 0.0075, regular: 0.0075, elite: 0.02, legendary: 0.04 });
     });
 });

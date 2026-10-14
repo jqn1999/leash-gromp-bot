@@ -3847,9 +3847,18 @@ const BountyStatReward = {
 // Mercenary Bounty's rollBountyStatReward/pickStatGrant above and reusing its exact
 // TIER_I_GRANT/TIER_II_GRANT/TIER_III_GRANT pools verbatim (no new pools defined).
 const GuildRaidStatReward = {
-    // 1% / 2.5% / 5% per the product owner's own numbers — baby explicitly mirrors regular's
-    // rate, same literal-per-key shape GuildRival.INFAMY_PER_RAID_MODE already uses for baby.
-    ROLL_CHANCE: { baby: 0.01, regular: 0.01, elite: 0.025, legendary: 0.05 },
+    // Originally 1% / 2.5% / 5% (product owner's numbers); lowered 2026-10-14, direct instruction
+    // ("make chances equal for merc and guild. Lower guild to the merc ones"), and now DERIVED from
+    // BountyStatReward.ROLL_CHANCE through the same band each mode already maps to below
+    // (GRANT_TIER_BY_MODE: baby/regular -> I, elite -> II, legendary -> III), so the two tables can
+    // never drift apart again: 0.75% / 0.75% / 2% / 4%. Baby still mirrors regular's rate. The
+    // Level 8+ extra roll below has no bounty-side counterpart and keeps its own 5%.
+    ROLL_CHANCE: {
+        baby: BountyStatReward.ROLL_CHANCE.I,
+        regular: BountyStatReward.ROLL_CHANCE.I,
+        elite: BountyStatReward.ROLL_CHANCE.II,
+        legendary: BountyStatReward.ROLL_CHANCE.III
+    },
     // Which BountyStatReward pool each band's roll draws from — band scales BOTH how often
     // the roll hits AND how big the grant is once it does, mirroring Bounty's own I/II/III
     // band-letter convention exactly (bigger stakes, bigger reward, same shape).

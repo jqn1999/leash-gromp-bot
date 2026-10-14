@@ -2859,3 +2859,13 @@ confirm `MESSAGE CONTENT INTENT` is toggled ON in the Discord Developer Portal f
 production bot token. Not a blocker to writing or shipping this code — a portal setting, not
 something inspectable from this repo — but should be checked before this feature is expected to work
 live.
+
+### Guild Raid Stat Reward chances lowered to match Bounty (2026-10-14, direct instruction)
+
+"Make chances equal for merc and guild. Lower guild to the merc ones." `GuildRaidStatReward.ROLL_CHANCE` went from
+1% / 1% / 2.5% / 5% (baby / regular / elite / legendary) to **0.75% / 0.75% / 2% / 4%**, and is now DERIVED from
+`BountyStatReward.ROLL_CHANCE` through `GRANT_TIER_BY_MODE` (baby/regular -> band I, elite -> II, legendary -> III), so the two
+tables cannot drift. Pools are unchanged (the bounty pools). The Guild Level 8+ extra roll (5%, Tier I pool) has no bounty
+counterpart and keeps its own 5%. Anywhere above that quotes "1% / 2.5% / 5%" is the historical design; the live numbers are these.
+The web port of the whole blessing (it did not exist there) is `financial-project` notes, Bot caught up #130.
+

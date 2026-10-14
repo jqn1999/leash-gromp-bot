@@ -21616,3 +21616,23 @@ can miss a sacrifice when a donation lands in the same raid.
 remove-one), `guildCompanionFactory.test.js`, `guildCompanionDonate.test.js` (72 cap), `dynamoHandler.test.js` (count
 vs guild level, no-count = 1), `startRaidGuildCompanion.test.js` (lone vs stacked sacrifice, fresh-read). Updated
 `.claude/systems/guilds.md` (Stacking Cinderroots + superseded banner). Web port: `financial-project` notes (Bot caught up #129).
+
+## Guild raid stat blessing: chances lowered to equal Bounty's, and ported to the web (2026-10-14, direct instruction)
+
+**Asked**: "Port raid blessing to web. Make chances equal for merc and guild. Lower guild to the merc ones." (After a comparison showed
+guild Legendary rolled 5% vs the Legendary bounty's 4%, with the web lacking the guild roll entirely.)
+
+**Found**: the pools were already shared (startRaid.js calls mercenaryFactory.pickStatGrantPool), so only the chances differed:
+guild 1% / 1% / 2.5% / 5% vs bounty 0.75% (band I) / 2% (II) / 4% (III). On the web, only the "Stats Granted" label helper existed — no
+roll, no Level 8+ extra, no grants.
+
+**Changed (bot)**: `GuildRaidStatReward.ROLL_CHANCE` is now derived from `BountyStatReward.ROLL_CHANCE` via the mode->band map
+(0.75% / 0.75% / 2% / 4%); the Level 8+ extra roll (5%) is untouched since bounties have no equivalent. **Web**: see `financial-project`
+notes #130 (full port, equal chances, a source-text test keeping the two pool blocks identical).
+
+**Judgment calls**: (1) the Level 8+ extra stays at 5% — "equal" can only apply where both sides have a roll. (2) Guild raiders now
+get the blessing a little less often than before at every mode; bounties are unchanged.
+
+**Tests**: `startRaidStatReward.test.js` (new equal-chances block: each mode == its bounty band, concrete values; comments updated).
+Updated `.claude/systems/guilds.md`.
+
