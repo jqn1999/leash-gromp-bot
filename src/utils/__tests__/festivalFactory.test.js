@@ -145,7 +145,7 @@ describe('Festival Tokens — lazy expiry by festivalId tag mismatch', () => {
     });
 });
 
-describe('attemptPurchaseFestivalSlot — 3-gate fail-closed validation', () => {
+describe('attemptPurchaseFestivalSlot — fail-closed validation', () => {
     test('gate 1: rejects outright when no festival is live, without even looking up the user', async () => {
         dynamoHandler.getActiveFestival.mockResolvedValue(null);
 
@@ -156,19 +156,38 @@ describe('attemptPurchaseFestivalSlot — 3-gate fail-closed validation', () => 
         expect(dynamoHandler.findUser).not.toHaveBeenCalled();
     });
 
-    test('gate 2: rejects when the player\'s own stored shop reference is a past, already-ended festival', async () => {
+    // Regression (2026-10-15, player-reported "shop is closed / cannot buy anything"): a stored
+    // festivalShop pointing at a PAST festival used to be rejected outright, locking out everyone who
+    // had bought anything in an earlier festival. It must instead behave like a fresh shop for the
+    // current festival: the buy succeeds, the old festival's purchasedSlots do not carry over, and
+    // the stored reference is re-tagged with the current festivalId.
+    test('a stored shop from a PAST festival does not block buying in the current one, and resets the purchased list', async () => {
         dynamoHandler.getActiveFestival.mockResolvedValue(liveFestival());
         dynamoHandler.findUser.mockResolvedValue(baseUser({
-            festivalShop: { festivalId: 'frost_fair', purchasedSlots: [] },
-            festivalTokens: 9999,
-            festivalTokensFestivalId: 'frost_fair',
+            festivalShop: { festivalId: 'frost_fair', purchasedSlots: ['frost_cosmetic_old', 'harvest_cosmetic_grand'] },
+            festivalTokens: 1000,
+            festivalTokensFestivalId: 'harvest_festival',
         }));
 
         const result = await festivalFactory.attemptPurchaseFestivalSlot('u1', 'Tester', 'harvest_cosmetic_grand');
 
-        expect(result.ok).toBe(false);
-        expect(result.message).toMatch(/shop has already closed/);
-        expect(dynamoHandler.updateUserFields).not.toHaveBeenCalled();
+        expect(result.ok).toBe(true);
+        const [, calledFields] = dynamoHandler.updateUserFields.mock.calls[0];
+        expect(calledFields.festivalShop).toEqual({ festivalId: 'harvest_festival', purchasedSlots: ['harvest_cosmetic_grand'] });
+        expect(calledFields.festivalTokens).toBe(1000 - 300);
+    });
+
+    test('the browse view and the purchase agree for a player holding a past festival\'s stored shop', async () => {
+        const activeFestival = liveFestival();
+        const user = baseUser({ festivalShop: { festivalId: 'frost_fair', purchasedSlots: [] }, festivalTokens: 1000, festivalTokensFestivalId: 'harvest_festival' });
+        const view = festivalFactory.buildFestivalShopView(user, activeFestival);
+        const buyable = view.items.filter(entry => !entry.purchased && entry.affordable);
+        expect(buyable.length).toBeGreaterThan(0);
+
+        dynamoHandler.getActiveFestival.mockResolvedValue(activeFestival);
+        dynamoHandler.findUser.mockResolvedValue(user);
+        const result = await festivalFactory.attemptPurchaseFestivalSlot('u1', 'Tester', buyable[0].item.id);
+        expect(result.ok).toBe(true);
     });
 
     test('gate 3: rejects on insufficient balance, and separately on a stale (tag-mismatched) leftover balance', async () => {
@@ -180,8 +199,7 @@ describe('attemptPurchaseFestivalSlot — 3-gate fail-closed validation', () => 
         expect(insufficient.ok).toBe(false);
         expect(insufficient.message).toMatch(/only have 10/);
 
-        // A large leftover balance from a past festival (no stored festivalShop yet, so
-        // gate 2 never fires) must still read as spendable-zero here, not as 5000.
+        // A large leftover balance from a past festival (no stored festivalShop yet) must still read as spendable-zero here, not as 5000.
         dynamoHandler.findUser.mockResolvedValue(baseUser({ festivalShop: null, festivalTokens: 5000, festivalTokensFestivalId: 'frost_fair' }));
         const stale = await festivalFactory.attemptPurchaseFestivalSlot('u1', 'Tester', 'harvest_cosmetic_grand');
         expect(stale.ok).toBe(false);

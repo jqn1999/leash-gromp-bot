@@ -250,7 +250,7 @@ async function redeemVoucher(userDetails, scenarioHandler) {
     return { mob: entry.mob, result };
 }
 
-// The purchase itself — fail-closed, in the design doc's own explicit 3-gate order, so a
+// The purchase itself — fail-closed (is a festival live, does the item exist, can they afford it), so a
 // currency/shop that's only ever valid inside a bounded window never resolves against a
 // dead festival. Re-fetches userDetails fresh (same discipline every other confirm-button
 // purchase flow in this codebase uses — companionShopFactory.attemptPurchaseSlot,
@@ -267,14 +267,16 @@ async function attemptPurchaseFestivalSlot(userId, username, itemId) {
         return { ok: false, message: "could not be looked up due to a database error, please try again!" };
     }
 
-    // Gate 2 — is THIS PLAYER's own stored shop reference the current festival? A mismatch
-    // means it's a stale reference from a past, already-ended festival (defense in depth —
-    // in practice only reachable if gate 1 somehow passed with a different festival now
-    // live than the one this player's own festivalShop last pointed at).
+    // A stored festivalShop that points at a PAST festival is NORMAL, not an error: it is whatever the
+    // player's last purchase wrote, and nothing clears it when a new festival starts. This used to be
+    // a "gate 2" that rejected with "that festival's shop has already closed" — which locked out
+    // every player who had bought anything in a previous festival from buying anything in the next
+    // one (2026-10-15, player-reported: "shop is telling them they cannot buy anything and shop is
+    // closed"), while /festival-shop's own browse view (buildFestivalShopView) happily rendered the
+    // same players a fresh shop with working buy buttons. The reference now just means "start this
+    // festival with nothing bought" (shopState below), and the purchase write re-tags it with the
+    // current festivalId, dropping the old festival's purchasedSlots.
     const storedShop = freshUserDetails.festivalShop;
-    if (storedShop && storedShop.festivalId && storedShop.festivalId !== activeFestival.festivalId) {
-        return { ok: false, message: "that festival's shop has already closed." };
-    }
 
     const catalog = FestivalShop[activeFestival.festivalId];
     const item = catalog && catalog.items.find(entry => entry.id === itemId);
@@ -305,8 +307,8 @@ async function attemptPurchaseFestivalSlot(userId, username, itemId) {
     // cosmetic ownership, and a voucher id sitting in it would incorrectly show "✅
     // Purchased" (and permanently disable its buy button, per festivalShop.js's own
     // buildRows) after the first buy, contradicting the "no cap" behavior above. festivalId
-    // is still synced unconditionally so gate 2 above stays correct on a player's very
-    // first-ever purchase (voucher or not).
+    // is still synced unconditionally, so the first purchase of ANY festival (voucher or not) moves a
+    // player off the previous festival's stored shop.
     const updatedFestivalShop = {
         festivalId: activeFestival.festivalId,
         purchasedSlots: item.itemType === "voucher" ? shopState.purchasedSlots : [...shopState.purchasedSlots, item.id],

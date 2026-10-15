@@ -715,3 +715,14 @@ which encounter was boosted or by how much. Fixed in four places, all reading th
    the full pipeline) — a standalone, always-available way to check current `/work` odds
    (including any live festival boost AND the caller's own Prospector bonus) without needing a
    festival to be running at all, prompted by the same conversation that found the naming gap.
+
+## Festival shop: a past festival's stored shop no longer blocks buying (2026-10-15, player-reported)
+
+`attemptPurchaseFestivalSlot` used to have a "gate 2" that rejected with "that festival's shop has already closed" whenever
+the player's stored `festivalShop.festivalId` differed from the live festival's. That reference is simply whatever the player's last
+purchase wrote and nothing clears it when a new festival starts, so every player who had bought anything in an earlier festival was locked
+out of buying in the next one, while `/festival-shop`'s browse view (`buildFestivalShopView`) treated the same stale reference as an empty
+shop and showed working buy buttons. Gate 2 is gone: the purchase's existing `shopState` logic already starts that festival with nothing
+bought, and the write re-tags `festivalShop` with the current `festivalId` (dropping the old `purchasedSlots`). The remaining gates are
+unchanged: a festival must be live, the item must exist, and the balance (lazy-expiring tokens) must cover it.
+

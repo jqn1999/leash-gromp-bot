@@ -21636,3 +21636,21 @@ get the blessing a little less often than before at every mode; bounties are unc
 **Tests**: `startRaidStatReward.test.js` (new equal-chances block: each mode == its bounty band, concrete values; comments updated).
 Updated `.claude/systems/guilds.md`.
 
+## Festival shop reported as "closed" for returning players (2026-10-15, player-reported)
+
+**Reported**: with a festival running, "shop is telling them they cannot buy anything and shop is closed."
+
+**Found (root cause, not symptom)**: `festivalFactory.attemptPurchaseFestivalSlot`'s "gate 2" rejected any player whose stored
+`festivalShop.festivalId` was not the live festival's. That field is written by every purchase and never cleared, so anyone who had
+bought in a previous festival hit "that festival's shop has already closed" on every purchase in the next one — even with valid
+current-festival tokens. `/festival-shop`'s browse view already treated the mismatch as an empty shop and showed enabled buy buttons,
+which is why players saw an open shop that refused them. The gate's comment claimed it was reachable only in a corner case; it is hit
+by every returning player. The web port had the identical gate.
+
+**Changed**: gate 2 removed (bot and web). The existing `shopState` fallback starts the new festival with nothing purchased and the
+write re-tags the record with the current `festivalId`. No migration needed.
+
+**Tests**: replaced the test that asserted the rejection with regressions (stale stored shop buys, old purchased list dropped; browse
+and purchase agree), verified failing without the fix. Updated `.claude/systems/seasonal-festivals.md`. Web: `financial-project`
+notes (Bot caught up #131).
+
