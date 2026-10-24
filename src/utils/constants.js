@@ -2113,7 +2113,7 @@ const HelpTopics = [
         id: "raids",
         label: "Raids",
         description: "Guild raid tiers, unlock levels, and reward scale",
-        content: "`/start-raid raid-select:<baby|regular|elite|legendary|stat>` — Baby always resolves the guaranteed-easiest bracket; Regular/Elite/Legendary each dynamically weight-roll across 4 internal brackets (T1-T4, your roster's power decides which you're likely to land in) plus a flat 1% Metal King chance; Stat spends a flat per-head buy-in for a permanent stat reward instead of potatoes. `/join-raid` toggles auto-joining your guild's raids, `/current-raid` shows the live roster/status.\n\nElite unlocks at Guild Level 1, Legendary at Guild Level 3 (both computed off whether that level's reward multiplier clears the tier's own success-rate cap — independent of the win-count curve). T4, the hardest bracket in every mode, additionally needs Guild Level 8 (≈750 wins) on top of its own steep difficulty.\n\nReward scale (win side, before your Guild Level multiplier — see `/help topic:guilds`): Regular T1 100,000 → T4 20,000,000; Elite T1 23,780,000 → T4 60,000,000; Legendary T1 71,340,000 → T4 200,000,000. Penalty escalates by mode: Regular risks the reward back 1:1, Elite 1.5x, Legendary 2x. Metal King (1% flat, any mode) pays 10,000,000 potatoes (30,000,000 Elite / 60,000,000 Legendary) plus a permanent stat boost to every winner, and costs nothing on a miss. A raid's 1-hour cooldown can be skipped entirely on a win by your guild's `raidTimer` buff, Spud Keep, your Guild Level, or Cinderroot — see `/help topic:cinderroot`/`/help topic:spud-keep`."
+        content: "`/start-raid raid-select:<baby|regular|elite|legendary|stat>` — Baby always resolves the guaranteed-easiest bracket; Regular/Elite/Legendary each dynamically weight-roll across 4 internal brackets (T1-T4, your roster's power decides which you're likely to land in) plus a flat 1% Metal King chance; Stat spends a flat per-head buy-in for a permanent stat reward instead of potatoes. `/join-raid` toggles auto-joining your guild's raids, `/current-raid` shows the live roster/status.\n\nElite unlocks at Guild Level 1, Legendary at Guild Level 3 (both computed off whether that level's reward multiplier clears the tier's own success-rate cap — independent of the win-count curve). T4, the hardest bracket in every mode, additionally needs Guild Level 8 (≈750 wins) on top of its own steep difficulty.\n\nReward scale (win side, before your Guild Level multiplier — see `/help topic:guilds`): Regular T1 100,000 → T4 20,000,000; Elite T1 23,780,000 → T4 60,000,000; Legendary T1 71,340,000 → T4 200,000,000. Penalty escalates by mode: Regular risks the reward back 1:1, Elite 1.5x, Legendary 2x. Metal King (1% flat, any mode) pays 10,000,000 potatoes (66,117,753 Elite / 382,081,985 Legendary, before your Guild Level multiplier) plus permanent stats to every winner — work multiplier +2 / +6 / +12, passive +1M / +3M / +6M, bank capacity +10M / +30M / +60M — and costs nothing on a miss. A raid's 1-hour cooldown can be skipped entirely on a win by your guild's `raidTimer` buff, Spud Keep, your Guild Level, or Cinderroot — see `/help topic:cinderroot`/`/help topic:spud-keep`."
     },
     {
         id: "cinderroot",
@@ -2621,11 +2621,25 @@ const Raid = {
     // MEDLEY's own 45%-of-guild-values comment already establishes for the merc-side
     // mirror of this same mechanic).
     ELITE_METAL_KING_DIFFICULTY: 1962,
-    ELITE_METAL_KING_REWARD: 8744699,
+    // POTATO REWARD RE-SCALED 2026-10-24 (player-reported: potato rewards weren't scaling correctly across modes —
+    // Elite paid LESS than Regular, 8.74M vs 10M, and Legendary 26M didn't follow the ladder). Direct instruction: scale with
+    // each mode's own tier 4 reward. Regular's Metal King is METAL_KING_REWARD / T4_RAID_REWARD = 10,000,000 / 3,240,000 ~ 3.086x
+    // its tier 4, so Elite/Legendary keep that same multiple of THEIR tier 4: ELITE_T4_REWARD 21,422,152 -> 66,117,753 and
+    // LEGENDARY_T4_REWARD 123,794,563 -> 382,081,985. (The 2026-10-09 retune cut these to 0.2915x / 0.434x of their old values to stay
+    // "below T4", which Regular's own Metal King never did.) If a mode's T4 reward is retuned again, redo this multiple
+    // — a test (raidFactory.test.js) fails when the three modes drift off the same ratio. A permanent-stat grant (below) is a
+    // separate lever and does NOT follow this.
+    ELITE_METAL_KING_REWARD: 66117753,
     ELITE_METAL_KING_PENALTY: 0,
     ELITE_METAL_KING_MULTIPLIER_REWARD: 6.0,
     ELITE_METAL_KING_PASSIVE_REWARD: 3000000,
-    ELITE_METAL_KING_CAPACITY_REWARD: 8744699,
+    // CORRECTED 2026-10-24 (player-reported: "the numbers don't look right"): the 2026-10-09 retune above
+    // cut this 30,000,000 -> 8,744,699 along with the potato REWARD, but bank capacity is a PERMANENT STAT
+    // grant — the same separately-calibrated lever as multiplierReward/passiveReward, which that pass
+    // deliberately left alone. Cutting it left Elite (8.74M) paying LESS bank capacity than Regular
+    // (10M) and broke the x1/x3/x6 ladder multiplier and passive follow (2/6/12, 1M/3M/6M). Restored to
+    // 30,000,000 (= 3x Regular's 10,000,000).
+    ELITE_METAL_KING_CAPACITY_REWARD: 30000000,
 
     // See ELITE_T1_DIFFICULTY's own comment above for the full 2026-09-12 accessibility
     // retune (both brackets solved together, same methodology, same commit), and its
@@ -2679,11 +2693,14 @@ const Raid = {
     // shrank by (285,108,348 -> 123,794,563, a 0.434x factor); multiplierReward/
     // passiveReward left at their pre-rework values.
     LEGENDARY_METAL_KING_DIFFICULTY: 7210,
-    LEGENDARY_METAL_KING_REWARD: 26052109,
+    // RE-SCALED 2026-10-24 to 382,081,985 — see ELITE_METAL_KING_REWARD's comment (same ~3.086x-of-tier-4 rule).
+    LEGENDARY_METAL_KING_REWARD: 382081985,
     LEGENDARY_METAL_KING_PENALTY: 0,
     LEGENDARY_METAL_KING_MULTIPLIER_REWARD: 12.0,
     LEGENDARY_METAL_KING_PASSIVE_REWARD: 6000000,
-    LEGENDARY_METAL_KING_CAPACITY_REWARD: 26052109,
+    // CORRECTED 2026-10-24 — same mistake as ELITE_METAL_KING_CAPACITY_REWARD above (60,000,000 -> 26,052,109
+    // with the potato reward). Restored to 60,000,000 (= 6x Regular's 10,000,000).
+    LEGENDARY_METAL_KING_CAPACITY_REWARD: 60000000,
 
     // Dynamic roster-power-weighted tier rolling (2026-08-27) — which of a mode's own
     // T1-T4 gets rolled is no longer a fixed table independent of the roster's own
@@ -3687,14 +3704,16 @@ const Bounty = {
     METAL_POTATO_MEDLEY_PENALTY: 0,
     // Bands II/III re-derived 2026-10-09 alongside Raid.ELITE_METAL_KING_*/LEGENDARY_
     // METAL_KING_*'s own re-raise retune (see that constant's comment) — same 45%-of-
-    // guild-difficulty/reward rule this block already followed, multiplierReward/
-    // passiveReward/capacityReward still mirrored unscaled from the guild side. Band I
-    // is untouched: it derives from Raid.METAL_KING_* (Regular mode), which this pass
-    // didn't touch.
+    // guild-difficulty/reward rule this block already followed. multiplierReward/passiveReward/
+    // capacityReward are the guild side's PERMANENT stat grants, mirrored unscaled — and, since
+    // 2026-10-24, read straight off the Raid.* constants instead of being retyped here. The
+    // retyped copies are how Elite/Legendary capacity ended up inheriting the 2026-10-09 retune's
+    // mistaken cut (see Raid.ELITE_METAL_KING_CAPACITY_REWARD) the moment it was made; one source
+    // means the two sides can't disagree again. difficulty/reward stay literal (45% derivations).
     METAL_POTATO_MEDLEY: {
-        I:   { difficulty: 900,  reward: 4500000,  multiplierReward: 2.0,  passiveReward: 1000000, capacityReward: 10000000 },  // 45% of Raid.METAL_KING_* difficulty/reward
-        II:  { difficulty: 883,  reward: 3935115,  multiplierReward: 6.0,  passiveReward: 3000000, capacityReward: 8744699 },   // 45% of Raid.ELITE_METAL_KING_* difficulty/reward
-        III: { difficulty: 3245, reward: 11723449, multiplierReward: 12.0, passiveReward: 6000000, capacityReward: 26052109 }, // 45% of Raid.LEGENDARY_METAL_KING_* difficulty/reward
+        I:   { difficulty: 900,  reward: 4500000,  multiplierReward: Raid.METAL_KING_MULTIPLIER_REWARD,           passiveReward: Raid.METAL_KING_PASSIVE_REWARD,           capacityReward: Raid.METAL_KING_CAPACITY_REWARD },           // 45% of Raid.METAL_KING_* difficulty/reward
+        II:  { difficulty: 883,  reward: 29752989, multiplierReward: Raid.ELITE_METAL_KING_MULTIPLIER_REWARD,     passiveReward: Raid.ELITE_METAL_KING_PASSIVE_REWARD,     capacityReward: Raid.ELITE_METAL_KING_CAPACITY_REWARD },     // 45% of Raid.ELITE_METAL_KING_* difficulty/reward (reward re-derived 2026-10-24: 45% of 66,117,753)
+        III: { difficulty: 3245, reward: 171936893, multiplierReward: Raid.LEGENDARY_METAL_KING_MULTIPLIER_REWARD, passiveReward: Raid.LEGENDARY_METAL_KING_PASSIVE_REWARD, capacityReward: Raid.LEGENDARY_METAL_KING_CAPACITY_REWARD }, // 45% of Raid.LEGENDARY_METAL_KING_* difficulty/reward (reward re-derived 2026-10-24: 45% of 382,081,985)
     }
 }
 

@@ -21654,3 +21654,23 @@ write re-tags the record with the current `festivalId`. No migration needed.
 and purchase agree), verified failing without the fix. Updated `.claude/systems/seasonal-festivals.md`. Web: `financial-project`
 notes (Bot caught up #131).
 
+## Metal King / Medley: bank capacity restored and potato rewards re-scaled across Regular/Elite/Legendary (2026-10-24, player-reported)
+
+**Reported**: a guild's `/raid-odds` showed Metal King bank capacities that "don't look right" (10M / 8.74M / 26.05M), and the potato rewards didn't scale
+correctly between Regular, Elite and Legendary either (Elite paid less than Regular).
+
+**Found (root cause)**: the 2026-10-09 re-raise retune (`2638be5`) cut the Elite/Legendary Metal King reward and capacity by the tier 4 factor, but its
+own comment says permanent stat grants (work multiplier, passive) are a separate lever and were left alone — bank capacity is one too, so cutting it was
+a mistake, which inverted Elite below Regular. The potato reward cut kept Elite under Regular because Regular's Metal King (10M, ~3.086x its 3.24M tier 4) was
+never cut. The bounty Medley retyped these numbers and inherited both.
+
+**Changed**: capacity back to 10M / 30M / 60M; potato reward set to ~3.086x each mode's own tier 4 (Elite 66,117,753, Legendary 382,081,985) per a direct
+choice among three options (the others were restoring 10M / 30M / 60M and a modest 10M / 15M / 40M); Medley rewards 45% of those and its stat grants now
+read the Raid constants directly; `/help` text corrected. Web port: `financial-project` notes (Bot caught up #132).
+
+**Judgment calls**: Metal King is a 1% roll and pays no penalty, so the larger potato payouts raise Elite/Legendary raid EV by a few percent at most;
+capacity stays a flat x1/x3/x6 ladder rather than following the tier 4 ratio (it is a stat grant, not a potato reward).
+
+**Tests**: `raidFactory.test.js` (grants climb every mode, capacity follows passive's ladder, potato reward is the same multiple of each mode's own tier 4),
+`mercenaryFactory.test.js` (Medley mirrors the Raid constants, rewards 45%, capacity 10M / 30M / 60M). Updated `.claude/systems/raids-and-world-events.md`.
+

@@ -1026,16 +1026,44 @@ describe('static Elite/Legendary difficulty ladder (2026-08-26 redesign)', () =>
     // anchor instead. multiplierReward/passiveReward stayed untouched even in this pass.
     test('every mode\'s Metal King bracket after the 2026-10-09 re-raise rework', () => {
         expect(Raid.ELITE_METAL_KING_DIFFICULTY).toBe(1962);
-        expect(Raid.ELITE_METAL_KING_REWARD).toBe(8744699);
+        expect(Raid.ELITE_METAL_KING_REWARD).toBe(66117753); // re-scaled 2026-10-24 (~3.086x its tier 4)
         expect(Raid.ELITE_METAL_KING_MULTIPLIER_REWARD).toBe(6.0);
         expect(Raid.ELITE_METAL_KING_PASSIVE_REWARD).toBe(3000000);
-        expect(Raid.ELITE_METAL_KING_CAPACITY_REWARD).toBe(8744699);
+        expect(Raid.ELITE_METAL_KING_CAPACITY_REWARD).toBe(30000000); // restored 2026-10-24 — a permanent stat grant, not cut with the potato reward
 
         expect(Raid.LEGENDARY_METAL_KING_DIFFICULTY).toBe(7210);
-        expect(Raid.LEGENDARY_METAL_KING_REWARD).toBe(26052109);
+        expect(Raid.LEGENDARY_METAL_KING_REWARD).toBe(382081985); // re-scaled 2026-10-24 (~3.086x its tier 4)
         expect(Raid.LEGENDARY_METAL_KING_MULTIPLIER_REWARD).toBe(12.0);
         expect(Raid.LEGENDARY_METAL_KING_PASSIVE_REWARD).toBe(6000000);
-        expect(Raid.LEGENDARY_METAL_KING_CAPACITY_REWARD).toBe(26052109);
+        expect(Raid.LEGENDARY_METAL_KING_CAPACITY_REWARD).toBe(60000000); // restored 2026-10-24
+    });
+
+    // Regression (2026-10-24, player-reported): the 2026-10-09 retune cut bank capacity together with the potato
+    // reward, leaving Elite (8.74M) below Regular (10M). Multiplier, passive and capacity are all permanent
+    // stat grants and must climb together across modes.
+    test('Metal King permanent grants never go DOWN a mode, and bank capacity follows the same x1/x3/x6 ladder as passive', () => {
+        const modes = [
+            { work: Raid.METAL_KING_MULTIPLIER_REWARD, passive: Raid.METAL_KING_PASSIVE_REWARD, capacity: Raid.METAL_KING_CAPACITY_REWARD },
+            { work: Raid.ELITE_METAL_KING_MULTIPLIER_REWARD, passive: Raid.ELITE_METAL_KING_PASSIVE_REWARD, capacity: Raid.ELITE_METAL_KING_CAPACITY_REWARD },
+            { work: Raid.LEGENDARY_METAL_KING_MULTIPLIER_REWARD, passive: Raid.LEGENDARY_METAL_KING_PASSIVE_REWARD, capacity: Raid.LEGENDARY_METAL_KING_CAPACITY_REWARD },
+        ];
+        for (let i = 1; i < modes.length; i++) {
+            expect(modes[i].work).toBeGreaterThan(modes[i - 1].work);
+            expect(modes[i].passive).toBeGreaterThan(modes[i - 1].passive);
+            expect(modes[i].capacity).toBeGreaterThan(modes[i - 1].capacity);
+        }
+        expect(modes.map(m => m.capacity / modes[0].capacity)).toEqual(modes.map(m => m.passive / modes[0].passive));
+    });
+
+    // Regression (2026-10-24, player-reported): the Metal King POTATO reward didn't scale across modes (Elite paid less than
+    // Regular). Direct instruction: each mode pays the same multiple of ITS OWN tier 4 reward that Regular does.
+    test('Metal King potato reward is the same multiple of each mode\'s own tier 4 reward, and climbs Regular < Elite < Legendary', () => {
+        const ratio = (mk, t4) => mk / t4;
+        const regular = ratio(Raid.METAL_KING_REWARD, Raid.T4_RAID_REWARD);
+        expect(ratio(Raid.ELITE_METAL_KING_REWARD, Raid.ELITE_T4_REWARD)).toBeCloseTo(regular, 4);
+        expect(ratio(Raid.LEGENDARY_METAL_KING_REWARD, Raid.LEGENDARY_T4_REWARD)).toBeCloseTo(regular, 4);
+        expect(Raid.ELITE_METAL_KING_REWARD).toBeGreaterThan(Raid.METAL_KING_REWARD);
+        expect(Raid.LEGENDARY_METAL_KING_REWARD).toBeGreaterThan(Raid.ELITE_METAL_KING_REWARD);
     });
 
     test('Elite/Legendary T4 difficulty after the 2026-10-09 re-raise rework', () => {

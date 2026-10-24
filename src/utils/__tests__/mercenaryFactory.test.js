@@ -659,11 +659,11 @@ describe('resolveBountyAttempt', () => {
             expect(result.isMetalPotatoMedley).toBe(true);
             expect(result.won).toBe(true);
             expect(result.successChance).toBeCloseTo(Math.min(200 / 883, Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE));
-            expect(result.rewardAmount).toBe(Math.round(3935115 * 1.0 * 1.00));
+            expect(result.rewardAmount).toBe(Math.round(29752989 * 1.0 * 1.00));
             expect(result.statReward).toEqual([
                 { type: 'workMultiplierAmount', amount: 6.0 },
                 { type: 'passiveAmount', amount: 3000000 },
-                { type: 'bankCapacity', amount: 8744699 }
+                { type: 'bankCapacity', amount: 30000000 }
             ]);
         });
 
@@ -685,11 +685,11 @@ describe('resolveBountyAttempt', () => {
             expect(result.isMetalPotatoMedley).toBe(true);
             expect(result.won).toBe(true);
             expect(result.successChance).toBeCloseTo(Math.min(2000 / 3245, Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE));
-            expect(result.rewardAmount).toBe(Math.round(11723449 * 1.0 * maxRankTier.rewardMultiplier));
+            expect(result.rewardAmount).toBe(Math.round(171936893 * 1.0 * maxRankTier.rewardMultiplier));
             expect(result.statReward).toEqual([
                 { type: 'workMultiplierAmount', amount: 12.0 },
                 { type: 'passiveAmount', amount: 6000000 },
-                { type: 'bankCapacity', amount: 26052109 }
+                { type: 'bankCapacity', amount: 60000000 }
             ]);
         });
 
@@ -2206,5 +2206,27 @@ describe('resolveStatBounty Metal Potato Medley', () => {
         expect(result.cost).toBe(Bounty.STAT_BOUNTY_COST);
         expect(result.won).toBe(true);
         expect(result.statGrantAmount).toBe(Bounty.STAT_BOUNTY_REWARD);
+    });
+});
+
+// Regression (2026-10-24, player-reported): Medley's permanent grants are read straight off the Raid Metal King
+// constants (one source), so the bounty and guild sides can't disagree and Band II can't pay less capacity than Band I.
+describe('Bounty.METAL_POTATO_MEDLEY permanent grants mirror Raid.METAL_KING_* exactly', () => {
+    const { Bounty } = require('../constants');
+    const mirrors = { I: 'METAL_KING', II: 'ELITE_METAL_KING', III: 'LEGENDARY_METAL_KING' };
+    test.each(Object.entries(mirrors))('band %s == Raid.%s_*', (band, prefix) => {
+        expect(Bounty.METAL_POTATO_MEDLEY[band].multiplierReward).toBe(Raid[`${prefix}_MULTIPLIER_REWARD`]);
+        expect(Bounty.METAL_POTATO_MEDLEY[band].passiveReward).toBe(Raid[`${prefix}_PASSIVE_REWARD`]);
+        expect(Bounty.METAL_POTATO_MEDLEY[band].capacityReward).toBe(Raid[`${prefix}_CAPACITY_REWARD`]);
+    });
+    test('Medley potato reward stays 45% of the matching Raid Metal King reward in every band', () => {
+        const { Bounty } = require('../constants');
+        expect(Bounty.METAL_POTATO_MEDLEY.I.reward).toBe(Math.round(Raid.METAL_KING_REWARD * 0.45));
+        expect(Bounty.METAL_POTATO_MEDLEY.II.reward).toBe(Math.round(Raid.ELITE_METAL_KING_REWARD * 0.45));
+        expect(Bounty.METAL_POTATO_MEDLEY.III.reward).toBe(Math.round(Raid.LEGENDARY_METAL_KING_REWARD * 0.45));
+    });
+    test('bank capacity climbs I < II < III', () => {
+        const caps = ['I', 'II', 'III'].map(b => Bounty.METAL_POTATO_MEDLEY[b].capacityReward);
+        expect(caps).toEqual([10000000, 30000000, 60000000]);
     });
 });

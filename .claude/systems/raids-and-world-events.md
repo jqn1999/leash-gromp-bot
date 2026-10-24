@@ -1457,3 +1457,23 @@ can't drift out of sync with each other. Every write is wrapped in `.catch()` â€
 here must never affect the bot's own in-memory event or its Discord announcement. The bot remains
 the sole decision-maker; the website only ever reads this record, never rolls its own event (see
 financial-project's own `NOTES_GROMP_WEB_INTEGRATION.md`, "Bot caught up #48").
+
+### Metal King / Metal Potato Medley: permanent grants and potato reward corrected (2026-10-24, player-reported)
+
+Screenshot of a guild's `/raid-odds` showed the Metal King numbers off: bank capacity 10M / **8.74M** / 26.05M and potatoes 10M / **8.74M** / 26.05M across
+Regular / Elite / Legendary (Elite paying LESS than Regular), while work multiplier (+2 / +6 / +12) and passive (+1M / +3M / +6M) climbed evenly.
+
+**Cause.** The 2026-10-09 re-raise retune (commit `2638be5`, section above) cut `ELITE_/LEGENDARY_METAL_KING_REWARD` AND `..._CAPACITY_REWARD`
+by the tier 4 factor (30M -> 8,744,699; 60M -> 26,052,109) while deliberately leaving `MULTIPLIER_REWARD`/`PASSIVE_REWARD` alone as "separately calibrated
+permanent stat grants". Bank capacity is also a permanent stat grant, so it was cut by mistake, and the potato reward cut kept Elite under Regular
+(whose Metal King, 3.086x its tier 4, was never cut). `Bounty.METAL_POTATO_MEDLEY` retyped the same numbers, so it inherited both problems.
+
+**Fixed.**
+- **Bank capacity** restored to **10M / 30M / 60M** (x1 / x3 / x6, the same ladder as passive). `Bounty.METAL_POTATO_MEDLEY` now reads
+  multiplier/passive/capacity straight off the `Raid.*METAL_KING_*` constants (one source) instead of retyping them.
+- **Potato reward** re-scaled, by direct instruction, to the same multiple of each mode's own tier 4 reward that Regular uses
+  (10,000,000 / 3,240,000 ~ 3.086x): Elite **66,117,753** (21,422,152 x 3.086), Legendary **382,081,985** (123,794,563 x 3.086). Medley rewards stay 45%
+  of those: Band II 29,752,989, Band III 171,936,893. A test fails if the three modes drift off the same multiple again.
+- `/help topic:raid`'s Metal King line quoted the pre-retune 30M / 60M potatoes; it now states the real numbers.
+- The web copies (`gromp-guilds` Metal King constants, `gromp-mercenary` Medley) need the same values â€” see `financial-project` notes.
+
