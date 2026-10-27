@@ -138,7 +138,31 @@ rank 2→5 span combined:
 | 3 | 50 | 1.30x | 11% |
 | 4 | 125 | 2.00x | 18% |
 | 5 | 275 | 3.30x | 27% |
-| 6 (max) | 525 | 5.00x | 38% |
+| 6 | 525 | 5.00x | 38% |
+| 7 | 800 | 5.20x | 38% |
+| 8 | 1,200 | 6.70x | 38% |
+| 9 | 1,800 | 8.30x | 38% |
+| 10 (max) | 2,700 | 10.00x | 38% |
+
+**Ranks 7-10 added 2026-10-27** (direct instruction: "make the ladder similar to the guild
+multiplier ladder by bounty level" — see roadmap.md). Rank N's `rewardMultiplier` for N = 7..10
+is `RaidLevel.THRESHOLDS`' own Level N multiplier (5.2x/6.7x/8.3x/10x), so a Rank 8 mercenary and
+a Level 8 guild sit at the same 6.7x. Win thresholds roughly double each step (800/1,200/1,800/
+2,700, i.e. ~1.5x), against a solo player's one bounty per hour. Only the reward column moves:
+`cooldownReductionPercent` stays 38% (the shared 40% skip cap makes more dead weight),
+`rivalSuccessBonus` stays +30/+22/+15, `MercenaryBuffScaling`'s four arrays repeat their Rank 6
+value for Ranks 7-10, Heist tier chances already max out at Rank 6, and the rank multiplier
+still applies to Bounty WINS only (never penalties, never Heist). Rank 6 (5.00x) is NOT
+mirrored to guild L6 (4.00x), which is why 6→7 is a small +0.2x step while 7→10 are +1.5x/+1.6x/
++1.7x; the strictly-accelerating-deltas invariant above therefore holds for Ranks 1-6 only.
+Players who already hold 800+ wins are promoted past Rank 6 the moment the code ships (rank is
+computed live from `mercenaryBountyWinCount`, nothing is stored).
+
+**Bounty reward bump, 2026-10-27**: `Bounty.TIERS` B5-B12 rewards ×1.25 (rounded to the
+nearest 1,000; `starchReward` re-derived at the 13,000 reference price), Metal Potato Medley
+Bands II/III ×1.25 on top of their 45%-of-Metal-King derivation (37,191,236 / 214,921,117).
+Penalties, B1-B4 and Band I are unchanged, so the penalty:reward ratio now dips at B5 (1.09x)
+and climbs again to 1.60x at B12 instead of 1.0x→2.0x monotonic.
 
 `cooldownReductionPercent`'s max was deliberately NOT pushed as high proportionally as the
 other two — see its own dedicated section further down for why (it feeds a SHARED cap with
@@ -165,7 +189,7 @@ Shown on `/profile` page 1 (next to Active Companion), only when `isMercenary` i
 `Mercenary Rank: Rank <n> — <title> (<rewardMultiplier>x bounty reward, <wins> wins)`.
 Titles are potato-punned (`embedFactory.js`'s `MERCENARY_RANK_TITLES`), not mechanically
 load-bearing, same status `Achievements`' names already have: Spud Recruit → Tater Tracker
-→ Root Ranger → Tuber Marauder → Tater Highwayman → The Iron Tuber (Rank 6, the cap).
+→ Root Ranger → Tuber Marauder → Tater Highwayman → The Iron Tuber (Rank 6) → Furrow Warden → Spud Warlord → Tater Baron of the Barrows → The Crowned Tuber (Rank 10, the cap).
 
 Rank also gates how many [Safehouses](safehouses.md) a mercenary can own — one slot unlocks per
 Rank tier, each a separately-purchased, separately-balanced stash of extra bank capacity
@@ -584,14 +608,16 @@ penalty(tier) = round(reward(tier) * ratio(tier) / 1000) * 1000
 | B2 | 74,000 | -78,000 | 1.05x |
 | B3 | 129,000 | -152,000 | 1.18x |
 | B4 | 225,000 | -290,000 | 1.29x |
-| B5 | 402,000 | -550,000 | 1.37x |
-| B6 | 695,000 | -1,012,000 | 1.46x |
-| B7 | 1,205,000 | -1,861,000 | 1.54x |
-| B8 | 2,072,000 | -3,390,000 | 1.64x |
-| B9 | 3,553,000 | -6,139,000 | 1.73x |
-| B10 | 6,086,000 | -11,065,000 | 1.82x |
-| B11 | 10,536,000 | -20,114,000 | 1.91x |
-| B12 | 24,651,000 | -49,302,000 | 2.00x |
+| B5 | 503,000 | -550,000 | 1.09x |
+| B6 | 869,000 | -1,012,000 | 1.16x |
+| B7 | 1,506,000 | -1,861,000 | 1.24x |
+| B8 | 2,590,000 | -3,390,000 | 1.31x |
+| B9 | 4,441,000 | -6,139,000 | 1.38x |
+| B10 | 7,608,000 | -11,065,000 | 1.45x |
+| B11 | 13,170,000 | -20,114,000 | 1.53x |
+| B12 | 30,814,000 | -49,302,000 | 1.60x |
+
+**B5-B12 rewards (and the ratio column for those rows) reflect the 2026-10-27 +25% bump** (penalties untouched, see the Mercenary Rank section's bump note); the ratio formula above describes the B1-B4 climb and the pre-bump intent.
 
 **Reward/penalty values above reflect the 2026-09-14 seventh-retune dial-back (×2.3, see that
 update's own section below) off the same 2026-09-12 fifth-retune (×0.4580) base — the sixth-retune
@@ -1730,7 +1756,7 @@ exact shape:
 |---|---|---|
 | `mercenary_recruit` | Tater Bounty Hunter | `mercenaryBountyWinCount >= 1` |
 | `mercenary_veteran` | Seasoned Mercenary | `mercenaryBountyWinCount >= 25` |
-| `mercenary_legend` | The Iron Tuber | `mercenaryBountyWinCount >= 525` (Rank 6, the rank cap) |
+| `mercenary_legend` | The Iron Tuber | `mercenaryBountyWinCount >= 525` (Rank 6; no longer the rank cap since 2026-10-27, threshold kept so earned achievements stay valid) |
 
 ## `workFactory.js` export widening
 

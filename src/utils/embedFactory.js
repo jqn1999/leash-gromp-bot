@@ -205,14 +205,20 @@ const PERK_LABELS = {
 // Mercenary Rank titles — potato-punned, same non-load-bearing flavor status
 // Achievements' names already have (naming exercise, not mechanically meaningful). Rank 1
 // and Rank 6 are pinned by the design doc ("Spud Recruit" -> ... -> "The Iron Tuber");
-// the middle four fill in the same escalating-outlaw theme.
+// the middle four fill in the same escalating-outlaw theme. Ranks 7-10 (2026-10-27) carry
+// the climb past the outlaw tier into the kingdom's own nobility vocabulary (wardens,
+// warlords, barons, a crowned tuber), per lore.md's medieval-institutions rule.
 const MERCENARY_RANK_TITLES = {
     1: "Spud Recruit",
     2: "Tater Tracker",
     3: "Root Ranger",
     4: "Tuber Marauder",
     5: "Tater Highwayman",
-    6: "The Iron Tuber"
+    6: "The Iron Tuber",
+    7: "Furrow Warden",
+    8: "Spud Warlord",
+    9: "Tater Baron of the Barrows",
+    10: "The Crowned Tuber"
 };
 
 // Companion Fusion / Ascension (2026-09-07) — the same replace-not-stack rule

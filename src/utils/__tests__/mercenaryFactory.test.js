@@ -45,13 +45,13 @@ describe('getMercenaryRankInfo', () => {
     // nothing for Rival odds" complaint. Reworked into an accelerating curve 2026-09-07
     // (direct instruction — "i want 4-5-6 to feel better to hit... numbers slightly
     // higher") — verifies the current per-scenario caps: +30%/+22%/+15% (easy/medium/hard)
-    // at max Rank 6, 0 at Rank 1, accelerating (not linear) in between.
+    // at max rank (pinned at their Rank 6 values for Ranks 7-10), 0 at Rank 1, accelerating (not linear) in between.
     test('rivalSuccessBonus is 0 across all three scenarios at Rank 1', () => {
         const result = mercenaryFactory.getMercenaryRankInfo(0);
         expect(result.rivalSuccessBonus).toEqual({ easy: 0, medium: 0, hard: 0 });
     });
 
-    test('rivalSuccessBonus hits the exact requested caps at max Rank 6', () => {
+    test('rivalSuccessBonus hits the exact requested caps at max rank', () => {
         const maxTier = MercenaryRank.THRESHOLDS[MercenaryRank.THRESHOLDS.length - 1];
         const result = mercenaryFactory.getMercenaryRankInfo(maxTier.winsRequired);
         expect(result.rivalSuccessBonus).toEqual({ easy: 0.30, medium: 0.22, hard: 0.15 });
@@ -81,7 +81,7 @@ describe('getMercenaryRankInfo', () => {
         expect(result.cooldownReductionPercent).toBe(0);
     });
 
-    test('cooldownReductionPercent hits the confirmed 38% cap at max Rank 6', () => {
+    test('cooldownReductionPercent hits the confirmed 38% cap at max rank', () => {
         const maxTier = MercenaryRank.THRESHOLDS[MercenaryRank.THRESHOLDS.length - 1];
         const result = mercenaryFactory.getMercenaryRankInfo(maxTier.winsRequired);
         expect(result.cooldownReductionPercent).toBe(0.38);
@@ -101,7 +101,7 @@ describe('getMercenaryRankInfo', () => {
         expect(mercenaryFactory.getMercenaryRankInfo(rank3.winsRequired - 1).rank).toBe(2);
     });
 
-    test('caps at rank 6 and reports no further rank once maxed', () => {
+    test('caps at rank 10 and reports no further rank once maxed', () => {
         const maxTier = MercenaryRank.THRESHOLDS[MercenaryRank.THRESHOLDS.length - 1];
         const result = mercenaryFactory.getMercenaryRankInfo(maxTier.winsRequired + 999999);
         expect(result.rank).toBe(maxTier.rank);
@@ -121,25 +121,78 @@ describe('getMercenaryRankInfo', () => {
     // one where later ranks are bigger jumps than earlier ones, mirroring
     // RaidLevel.THRESHOLDS' own accelerating multiplier curve. Verifies the actual SHAPE,
     // not just the endpoint values already covered above.
-    test('rewardMultiplier deltas strictly increase every rank from rank 3 onward — later ranks are bigger jumps, not smaller', () => {
+    test('rewardMultiplier deltas strictly increase every rank from rank 3 through rank 6 — later ranks are bigger jumps, not smaller', () => {
         const deltas = [];
-        for (let i = 1; i < MercenaryRank.THRESHOLDS.length; i++) {
+        for (let i = 1; i < 6; i++) {
             deltas.push(MercenaryRank.THRESHOLDS[i].rewardMultiplier - MercenaryRank.THRESHOLDS[i - 1].rewardMultiplier);
         }
         for (let i = 2; i < deltas.length; i++) {
             expect(deltas[i]).toBeGreaterThan(deltas[i - 1]);
         }
         // The single rank 5->6 jump alone beats the combined rank 2->3->4->5 span, i.e.
-        // the top of the ladder is now unambiguously the most exciting rank to hit.
+        // the top of the original ladder is unambiguously the most exciting rank to hit.
         const lastDelta = deltas[deltas.length - 1];
         const earlierDeltasSum = deltas.slice(0, deltas.length - 1).reduce((a, b) => a + b, 0);
         expect(lastDelta).toBeGreaterThan(0);
-        expect(lastDelta).toBeLessThan(earlierDeltasSum); // still sane, not literally bigger than everything before it combined
+        expect(lastDelta).toBeLessThan(earlierDeltasSum);
+    });
+
+    // Ranks 7-10 (2026-10-27, direct instruction: "make the ladder similar to the guild
+    // multiplier ladder") — the reward multiplier at Rank N for N = 7..10 is literally
+    // RaidLevel.THRESHOLDS' own Level N multiplier, so a Rank 8 mercenary and a Level 8 guild
+    // sit at the same 6.7x. Rank 6 (5.00x) is deliberately NOT mirrored (guild L6 is 4x) — it
+    // predates this and stays untouched, which is why 6->7 is only +0.2x.
+    test('Ranks 7-10 mirror RaidLevel.THRESHOLDS levels 7-10 reward multipliers', () => {
+        const { RaidLevel } = require('../constants');
+        [7, 8, 9, 10].forEach(n => {
+            const merc = MercenaryRank.THRESHOLDS.find(t => t.rank === n);
+            const guild = RaidLevel.THRESHOLDS.find(t => t.level === n);
+            expect(merc.rewardMultiplier).toBe(guild.multiplier);
+        });
+        expect(MercenaryRank.THRESHOLDS.map(t => t.rank)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    });
+
+    test('ranks past 6 resolve by win count, keeping the Rank 6 rival/cooldown values', () => {
+        const at = w => mercenaryFactory.getMercenaryRankInfo(w);
+        expect(at(525).rank).toBe(6);
+        expect(at(799).rank).toBe(6);
+        expect(at(800)).toMatchObject({ rank: 7, rewardMultiplier: 5.2, winsToNextRank: 400 });
+        expect(at(1200)).toMatchObject({ rank: 8, rewardMultiplier: 6.7 });
+        expect(at(1800)).toMatchObject({ rank: 9, rewardMultiplier: 8.3 });
+        expect(at(2699).rank).toBe(9);
+        expect(at(2700)).toMatchObject({ rank: 10, rewardMultiplier: 10, winsToNextRank: null });
+        [7, 8, 9, 10].forEach(n => {
+            const t = MercenaryRank.THRESHOLDS.find(x => x.rank === n);
+            expect(t.cooldownReductionPercent).toBe(0.38);
+            expect(t.rivalSuccessBonus).toEqual({ easy: 0.30, medium: 0.22, hard: 0.15 });
+        });
+    });
+
+    test('Mercenary Buff values past Rank 6 clamp to the Rank 6 value', () => {
+        const buffFactory = require('../mercenaryBuffFactory');
+        const { MercenaryBuffScaling } = require('../constants');
+        Object.keys(MercenaryBuffScaling).forEach(k => {
+            expect(buffFactory.getMercenaryBuffValue(k, 10)).toBe(MercenaryBuffScaling[k][5]);
+        });
+    });
+
+    test('Bounty tiers 5-12 carry the 2026-10-27 +25% reward bump (penalties and tiers 1-4 untouched)', () => {
+        const old = [402000, 695000, 1205000, 2072000, 3553000, 6086000, 10536000, 24651000];
+        old.forEach((r, i) => {
+            const tier = Bounty.TIERS[4 + i];
+            expect(Math.abs(tier.reward - r * 1.25)).toBeLessThanOrEqual(500);
+            expect(tier.reward % 1000).toBe(0);
+            expect(tier.starchReward).toBe(Math.round(tier.reward / Bounty.STARCH_REFERENCE_PRICE));
+        });
+        expect(Bounty.TIERS.slice(0, 4).map(t => t.reward)).toEqual([41000, 74000, 129000, 225000]);
+        expect(Bounty.TIERS[11].penalty).toBe(-49302000);
+        expect(Bounty.METAL_POTATO_MEDLEY.II.reward).toBe(Math.round(Raid.ELITE_METAL_KING_REWARD * 0.45 * 1.25));
+        expect(Bounty.METAL_POTATO_MEDLEY.III.reward).toBe(Math.round(Raid.LEGENDARY_METAL_KING_REWARD * 0.45 * 1.25));
     });
 
     test('rivalSuccessBonus.easy deltas strictly increase every rank from rank 3 onward, same accelerating shape as rewardMultiplier', () => {
         const deltas = [];
-        for (let i = 1; i < MercenaryRank.THRESHOLDS.length; i++) {
+        for (let i = 1; i < 6; i++) { // Ranks 7-10 hold Rank 6's value (2026-10-27)
             deltas.push(MercenaryRank.THRESHOLDS[i].rivalSuccessBonus.easy - MercenaryRank.THRESHOLDS[i - 1].rivalSuccessBonus.easy);
         }
         for (let i = 2; i < deltas.length; i++) {
@@ -149,7 +202,7 @@ describe('getMercenaryRankInfo', () => {
 
     test('cooldownReductionPercent deltas strictly increase every rank from rank 3 onward, same accelerating shape', () => {
         const deltas = [];
-        for (let i = 1; i < MercenaryRank.THRESHOLDS.length; i++) {
+        for (let i = 1; i < 6; i++) { // Ranks 7-10 hold Rank 6's value (2026-10-27)
             deltas.push(MercenaryRank.THRESHOLDS[i].cooldownReductionPercent - MercenaryRank.THRESHOLDS[i - 1].cooldownReductionPercent);
         }
         for (let i = 2; i < deltas.length; i++) {
@@ -659,7 +712,7 @@ describe('resolveBountyAttempt', () => {
             expect(result.isMetalPotatoMedley).toBe(true);
             expect(result.won).toBe(true);
             expect(result.successChance).toBeCloseTo(Math.min(200 / 883, Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE));
-            expect(result.rewardAmount).toBe(Math.round(29752989 * 1.0 * 1.00));
+            expect(result.rewardAmount).toBe(Math.round(37191236 * 1.0 * 1.00));
             expect(result.statReward).toEqual([
                 { type: 'workMultiplierAmount', amount: 6.0 },
                 { type: 'passiveAmount', amount: 3000000 },
@@ -667,7 +720,7 @@ describe('resolveBountyAttempt', () => {
             ]);
         });
 
-        test('Band III numbers (tier roll lands 9-12): difficulty 3245 (45% of guild-derived 7210, 2026-10-09 re-raise rework), +11,723,449 potatoes, matching permanent grants, reward scaled by Mercenary Rank', async () => {
+        test('Band III numbers (tier roll lands 9-12): difficulty 3245 (45% of guild-derived 7210, 2026-10-09 re-raise rework), +214,921,117 potatoes, matching permanent grants, reward scaled by Mercenary Rank', async () => {
             const maxRankTier = MercenaryRank.THRESHOLDS[MercenaryRank.THRESHOLDS.length - 1];
             const user = baseUser({ workMultiplierAmount: 2000, mercenaryBountyWinCount: maxRankTier.winsRequired }); // max rank -> rewardMultiplier 5.00x
             const randomSpy = jest.spyOn(Math, 'random')
@@ -685,7 +738,7 @@ describe('resolveBountyAttempt', () => {
             expect(result.isMetalPotatoMedley).toBe(true);
             expect(result.won).toBe(true);
             expect(result.successChance).toBeCloseTo(Math.min(2000 / 3245, Raid.REGULAR_MAXIMUM_RAID_SUCCESS_RATE));
-            expect(result.rewardAmount).toBe(Math.round(171936893 * 1.0 * maxRankTier.rewardMultiplier));
+            expect(result.rewardAmount).toBe(Math.round(214921117 * 1.0 * maxRankTier.rewardMultiplier));
             expect(result.statReward).toEqual([
                 { type: 'workMultiplierAmount', amount: 12.0 },
                 { type: 'passiveAmount', amount: 6000000 },
@@ -768,18 +821,19 @@ describe('Bounty.TIERS ladder shape', () => {
     // climbing ratio restored -> set flat 1:1 (direct instruction, "look at how guild raid
     // reward and penalty is done") -> reverted again ("have merc penalties go up to 2x
     // again scaling") back to the original climbing 1.0x->2.0x shape, landing here.
-    test('B1 keeps the original 1:1 penalty:reward ratio; B12 reaches exactly 2.0x', () => {
+    // 2026-10-27 reward bump: tiers 5-12 rewards went up ~25% with penalties deliberately left
+    // alone, so the ratio now dips at B5 (1.09x, down from 1.29x at B4) and climbs again from
+    // there to 1.60x at B12. B1-B4 keep the original 1:1 -> ~1.29x climb.
+    test('B1 keeps the original 1:1 penalty:reward ratio; B12 now reaches 1.6x after the reward bump', () => {
         expect(Bounty.TIERS[0].penalty).toBe(-Bounty.TIERS[0].reward);
-        expect(Math.abs(Bounty.TIERS[11].penalty)).toBe(Bounty.TIERS[11].reward * 2);
+        expect(Math.abs(Bounty.TIERS[11].penalty) / Bounty.TIERS[11].reward).toBeCloseTo(1.6, 2);
     });
 
-    test('penalty:reward ratio increases monotonically with tier', () => {
+    test('penalty:reward ratio increases monotonically within B1-B4 and again within B5-B12', () => {
         const ratios = Bounty.TIERS.map(t => Math.abs(t.penalty) / t.reward);
-        for (let i = 1; i < ratios.length; i++) {
-            expect(ratios[i]).toBeGreaterThan(ratios[i - 1]);
-        }
+        for (let i = 1; i < 4; i++) expect(ratios[i]).toBeGreaterThan(ratios[i - 1]);
+        for (let i = 5; i < ratios.length; i++) expect(ratios[i]).toBeGreaterThan(ratios[i - 1]);
         expect(ratios[0]).toBeCloseTo(1.0, 5);
-        expect(ratios[ratios.length - 1]).toBeCloseTo(2.0, 5);
     });
 
     test('B1 (Baby Bounty\'s fixed tier) keeps the pre-rework Tier I difficulty (10) — continuity for the universal newbie landmark', () => {
@@ -2219,11 +2273,11 @@ describe('Bounty.METAL_POTATO_MEDLEY permanent grants mirror Raid.METAL_KING_* e
         expect(Bounty.METAL_POTATO_MEDLEY[band].passiveReward).toBe(Raid[`${prefix}_PASSIVE_REWARD`]);
         expect(Bounty.METAL_POTATO_MEDLEY[band].capacityReward).toBe(Raid[`${prefix}_CAPACITY_REWARD`]);
     });
-    test('Medley potato reward stays 45% of the matching Raid Metal King reward in every band', () => {
+    test('Medley potato reward stays 45% of the matching Raid Metal King reward in Band I; II/III carry the 2026-10-27 +25% bounty bump on top', () => {
         const { Bounty } = require('../constants');
         expect(Bounty.METAL_POTATO_MEDLEY.I.reward).toBe(Math.round(Raid.METAL_KING_REWARD * 0.45));
-        expect(Bounty.METAL_POTATO_MEDLEY.II.reward).toBe(Math.round(Raid.ELITE_METAL_KING_REWARD * 0.45));
-        expect(Bounty.METAL_POTATO_MEDLEY.III.reward).toBe(Math.round(Raid.LEGENDARY_METAL_KING_REWARD * 0.45));
+        expect(Bounty.METAL_POTATO_MEDLEY.II.reward).toBe(Math.round(Raid.ELITE_METAL_KING_REWARD * 0.45 * 1.25));
+        expect(Bounty.METAL_POTATO_MEDLEY.III.reward).toBe(Math.round(Raid.LEGENDARY_METAL_KING_REWARD * 0.45 * 1.25));
     });
     test('bank capacity climbs I < II < III', () => {
         const caps = ['I', 'II', 'III'].map(b => Bounty.METAL_POTATO_MEDLEY[b].capacityReward);

@@ -246,11 +246,12 @@ const Achievements = [
 
     // Mercenary Bounties — mirrors raid_novice/raid_veteran's exact shape/thresholds,
     // keyed on mercenaryBountyWinCount instead of guildRaidWinCount. mercenary_legend's
-    // threshold (525) is Rank 6, MercenaryRank.THRESHOLDS' own max — a real long-run
+    // threshold (525) is Rank 6 (the cap until Ranks 7-10 were added 2026-10-27; kept at 525 so
+    // already-earned achievements stay valid) — a real long-run
     // capstone, same category as full_roster/serial_rebirther.
     { id: "mercenary_recruit", name: "Tater Bounty Hunter", description: "Win your first mercenary bounty", statPath: "mercenaryBountyWinCount", threshold: 1 },
     { id: "mercenary_veteran", name: "Seasoned Mercenary", description: "Win 25 mercenary bounties", statPath: "mercenaryBountyWinCount", threshold: 25 },
-    { id: "mercenary_legend", name: "The Iron Tuber", description: "Reach max Mercenary Rank (525 bounty wins)", statPath: "mercenaryBountyWinCount", threshold: 525 },
+    { id: "mercenary_legend", name: "The Iron Tuber", description: "Reach Mercenary Rank 6 (525 bounty wins)", statPath: "mercenaryBountyWinCount", threshold: 525 },
 
     // Rival Bounty Hunters — keyed on the new LIFETIME rivalConfrontationWinCount, not
     // mercenaryNotoriety (which resets to 0 on every resolution and can't back a monotonic
@@ -2137,7 +2138,7 @@ const HelpTopics = [
         id: "safehouses",
         label: "Safehouses",
         description: "Mercenary-only extra, compartmentalized bank capacity",
-        content: "Mercenary-exclusive (`/safehouse`) — extra, PROTECTED bank capacity on top of your personal bank. Nothing spends from `/shop` directly out of it; it's purely defensive. `/safehouse buy` purchases the next slot in order, gated by BOTH Mercenary Rank and cost (cost → capacity):\n\nSlot 1 — Rank 1 — 2,000,000 → 3,000,000.\nSlot 2 — Rank 2 (15 wins) — 8,000,000 → 12,000,000.\nSlot 3 — Rank 3 (50 wins) — 25,000,000 → 25,000,000.\nSlot 4 — Rank 4 (125 wins) — 75,000,000 → 60,000,000.\nSlot 5 — Rank 5 (275 wins) — 200,000,000 → 150,000,000.\nSlot 6 — Rank 6, max (525 wins) — 400,000,000 → 250,000,000.\n\nA fully-ranked mercenary who buys all 6 holds 500,000,000 potatoes of extra protected capacity. Your personal bank is also shown here as \"Main Safehouse\" (slot 0, never purchased — it's just your existing `/bank` balance/capacity under a mercenary-flavored name).\n\nWhy several small houses instead of one big pool: funding a purchase only ever needs withdrawing from ONE house, so the amount that briefly becomes liquid (and `/rob`-able) is bounded by that one house's balance — everything sitting in your other houses stays fully protected the whole time. A house is never itself a direct `/rob` target — this only shrinks how much you're ever forced to expose at once, it doesn't remove the exposure entirely. Deposits are taxed the same as `/bank` (1,000 flat + 5%); withdrawals are free, and `/safehouse deposit`/`withdraw` spread automatically across your owned houses if you don't pick one."
+        content: "Mercenary-exclusive (`/safehouse`) — extra, PROTECTED bank capacity on top of your personal bank. Nothing spends from `/shop` directly out of it; it's purely defensive. `/safehouse buy` purchases the next slot in order, gated by BOTH Mercenary Rank and cost (cost → capacity):\n\nSlot 1 — Rank 1 — 2,000,000 → 3,000,000.\nSlot 2 — Rank 2 (15 wins) — 8,000,000 → 12,000,000.\nSlot 3 — Rank 3 (50 wins) — 25,000,000 → 25,000,000.\nSlot 4 — Rank 4 (125 wins) — 75,000,000 → 60,000,000.\nSlot 5 — Rank 5 (275 wins) — 200,000,000 → 150,000,000.\nSlot 6 — Rank 6, last slot (525 wins) — 400,000,000 → 250,000,000.\n\nA fully-ranked mercenary who buys all 6 holds 500,000,000 potatoes of extra protected capacity. Your personal bank is also shown here as \"Main Safehouse\" (slot 0, never purchased — it's just your existing `/bank` balance/capacity under a mercenary-flavored name).\n\nWhy several small houses instead of one big pool: funding a purchase only ever needs withdrawing from ONE house, so the amount that briefly becomes liquid (and `/rob`-able) is bounded by that one house's balance — everything sitting in your other houses stays fully protected the whole time. A house is never itself a direct `/rob` target — this only shrinks how much you're ever forced to expose at once, it doesn't remove the exposure entirely. Deposits are taxed the same as `/bank` (1,000 flat + 5%); withdrawals are free, and `/safehouse deposit`/`withdraw` spread automatically across your owned houses if you don't pick one."
     },
     {
         id: "economy",
@@ -2149,7 +2150,7 @@ const HelpTopics = [
         id: "mercenary",
         label: "Mercenary Bounties",
         description: "The solo, guild-independent alternative to Guild Raids",
-        content: "`/become-mercenary` opts you in — mutually exclusive with guild membership, but reversible any time with `/retire-mercenary` (no progress lost; a 15-minute switch cooldown applies either direction after leaving one side). `/bounty-board` shows your Mercenary Rank and a live success-chance preview across all 12 Bounty tiers. `/take-bounty mode:<baby|regular|stat>` resolves immediately — Baby always rolls the guaranteed-easiest tier (B1); Regular auto-weights toward whichever of the 12 tiers (B1 difficulty 10 → B12 difficulty 2,000) matches your own power. Rewards run B1 18,000 → B12 10,718,000 potatoes (or starches on some rolls); losses climb from an even 1:1 of the reward at B1 to 2:1 at B12. A 5% tax applies to bounty WINS only. Stat Bounty is a third, tier-less mode: pay 300,000 potatoes (charged win or lose) for a flat 50% chance at a permanent +0.2 work multiplier — no currency reward, no tax, no tier.\n\n**Mercenary Rank** (computed live off lifetime bounty wins, never resets) — wins / reward multiplier / cooldown-skip chance on a win / Rival Bounty Hunter bonus (easy/medium/hard): R1 0/1.00x/0%/+0/+0/+0; R2 15/1.15x/6%/+4/+3/+2; R3 50/1.30x/11%/+8/+6/+4; R4 125/1.55x/18%/+14/+10/+7; R5 275/1.90x/27%/+21/+16/+10; R6 (max) 525/2.35x/38%/+30/+22/+15.\n\n`/set-mercenary-buff` picks ONE standing bonus (15-min switch cooldown), scaling with Rank: `workMulti` +2% (R1) → +7% (R6, `/work`-only); `workTimer`/`bountyTimer` 3% (R1) → 12% (R6) cooldown-skip chance; `robChance` +3% (R1) → +10% (R6), applying to BOTH real `/rob` and `/rob-npc` (Heist). See `/help topic:heist` for the separate Heist ladder."
+        content: "`/become-mercenary` opts you in — mutually exclusive with guild membership, but reversible any time with `/retire-mercenary` (no progress lost; a 15-minute switch cooldown applies either direction after leaving one side). `/bounty-board` shows your Mercenary Rank and a live success-chance preview across all 12 Bounty tiers. `/take-bounty mode:<baby|regular|stat>` resolves immediately — Baby always rolls the guaranteed-easiest tier (B1); Regular auto-weights toward whichever of the 12 tiers (B1 difficulty 10 → B12 difficulty 2,000) matches your own power. Rewards run B1 18,000 → B12 10,718,000 potatoes (or starches on some rolls); losses climb from an even 1:1 of the reward at B1 to 2:1 at B12. A 5% tax applies to bounty WINS only. Stat Bounty is a third, tier-less mode: pay 300,000 potatoes (charged win or lose) for a flat 50% chance at a permanent +0.2 work multiplier — no currency reward, no tax, no tier.\n\n**Mercenary Rank** (computed live off lifetime bounty wins, never resets) — wins / reward multiplier / cooldown-skip chance on a win / Rival Bounty Hunter bonus (easy/medium/hard): R1 0/1.00x/0%/+0/+0/+0; R2 15/1.15x/6%/+4/+3/+2; R3 50/1.30x/11%/+8/+6/+4; R4 125/2.00x/18%/+14/+10/+7; R5 275/3.30x/27%/+21/+16/+10; R6 525/5.00x/38%/+30/+22/+15; R7 800/5.20x; R8 1,200/6.70x; R9 1,800/8.30x; R10 (max) 2,700/10.00x (R7-R10 only raise the reward multiplier — skip chance and Rival bonuses stay at R6's).\n\n`/set-mercenary-buff` picks ONE standing bonus (15-min switch cooldown), scaling with Rank: `workMulti` +6% (R1) → +15% (R6+, `/work`-only); `workTimer`/`bountyTimer` 6% (R1) → 25% (R6+) cooldown-skip chance; `robChance` +6% (R1) → +20% (R6+), applying to BOTH real `/rob` and `/rob-npc` (Heist). See `/help topic:heist` for the separate Heist ladder."
     },
     {
         id: "heist",
@@ -3422,7 +3423,17 @@ const MercenaryRank = {
         { rank: 3, winsRequired: 50,  rewardMultiplier: 1.30, rivalSuccessBonus: { easy: 0.08, medium: 0.06, hard: 0.04 }, cooldownReductionPercent: 0.11 },
         { rank: 4, winsRequired: 125, rewardMultiplier: 2.00, rivalSuccessBonus: { easy: 0.14, medium: 0.10, hard: 0.07 }, cooldownReductionPercent: 0.18 },
         { rank: 5, winsRequired: 275, rewardMultiplier: 3.30, rivalSuccessBonus: { easy: 0.21, medium: 0.16, hard: 0.10 }, cooldownReductionPercent: 0.27 },
-        { rank: 6, winsRequired: 525, rewardMultiplier: 5.00, rivalSuccessBonus: { easy: 0.30, medium: 0.22, hard: 0.15 }, cooldownReductionPercent: 0.38 },  // max
+        { rank: 6, winsRequired: 525, rewardMultiplier: 5.00, rivalSuccessBonus: { easy: 0.30, medium: 0.22, hard: 0.15 }, cooldownReductionPercent: 0.38 },
+        // Ranks 7-10 (2026-10-27, direct instruction): the reward-multiplier ladder now mirrors
+        // RaidLevel.THRESHOLDS' L7-L10 (5.2x/6.7x/8.3x/10x) so Rank N sits beside Guild Level N
+        // at the top end. Only rewardMultiplier moves: rivalSuccessBonus and cooldownReductionPercent
+        // stay pinned at Rank 6's values (the cooldown-skip is already at the shared 38% rank source,
+        // and the combined skip cap is 40%, so more would be dead weight), Heist odds already cap at
+        // Rank 6, and MercenaryBuffScaling is clamped to its last entry for any higher rank.
+        { rank: 7,  winsRequired: 800,  rewardMultiplier: 5.20,  rivalSuccessBonus: { easy: 0.30, medium: 0.22, hard: 0.15 }, cooldownReductionPercent: 0.38 },
+        { rank: 8,  winsRequired: 1200, rewardMultiplier: 6.70,  rivalSuccessBonus: { easy: 0.30, medium: 0.22, hard: 0.15 }, cooldownReductionPercent: 0.38 },
+        { rank: 9,  winsRequired: 1800, rewardMultiplier: 8.30,  rivalSuccessBonus: { easy: 0.30, medium: 0.22, hard: 0.15 }, cooldownReductionPercent: 0.38 },
+        { rank: 10, winsRequired: 2700, rewardMultiplier: 10.00, rivalSuccessBonus: { easy: 0.30, medium: 0.22, hard: 0.15 }, cooldownReductionPercent: 0.38 },  // max
     ]
 }
 
@@ -3613,14 +3624,14 @@ const Bounty = {
         { tier: 2,  difficulty: 16,   reward: 74000,    penalty: -78000,      starchReward: 6 },    // 1.05x
         { tier: 3,  difficulty: 26,   reward: 129000,   penalty: -152000,     starchReward: 10 },   // 1.18x
         { tier: 4,  difficulty: 42,   reward: 225000,   penalty: -290000,     starchReward: 17 },   // 1.29x
-        { tier: 5,  difficulty: 69,   reward: 402000,   penalty: -550000,     starchReward: 31 },   // 1.37x
-        { tier: 6,  difficulty: 111,  reward: 695000,   penalty: -1012000,    starchReward: 53 },   // 1.46x
-        { tier: 7,  difficulty: 180,  reward: 1205000,  penalty: -1861000,    starchReward: 93 },   // 1.54x
-        { tier: 8,  difficulty: 291,  reward: 2072000,  penalty: -3390000,    starchReward: 159 },  // 1.64x
-        { tier: 9,  difficulty: 471,  reward: 3553000,  penalty: -6139000,    starchReward: 273 },  // 1.73x
-        { tier: 10, difficulty: 763,  reward: 6086000,  penalty: -11065000,   starchReward: 468 },  // 1.82x
-        { tier: 11, difficulty: 1236, reward: 10536000, penalty: -20114000,   starchReward: 810 },  // 1.91x
-        { tier: 12, difficulty: 2000, reward: 24651000, penalty: -49302000,   starchReward: 1896 }, // 2.00x — set to exactly reward*2
+        { tier: 5,  difficulty: 69,   reward: 503000,   penalty: -550000,     starchReward: 39 },   // 1.09x
+        { tier: 6,  difficulty: 111,  reward: 869000,   penalty: -1012000,    starchReward: 67 },   // 1.16x
+        { tier: 7,  difficulty: 180,  reward: 1506000,  penalty: -1861000,    starchReward: 116 },  // 1.24x
+        { tier: 8,  difficulty: 291,  reward: 2590000,  penalty: -3390000,    starchReward: 199 },  // 1.31x
+        { tier: 9,  difficulty: 471,  reward: 4441000,  penalty: -6139000,    starchReward: 342 },  // 1.38x
+        { tier: 10, difficulty: 763,  reward: 7608000,  penalty: -11065000,   starchReward: 585 },  // 1.45x
+        { tier: 11, difficulty: 1236, reward: 13170000, penalty: -20114000,   starchReward: 1013 }, // 1.53x
+        { tier: 12, difficulty: 2000, reward: 30814000, penalty: -49302000,   starchReward: 2370 }, // 1.60x
     ],
     // House tax on a WON bounty (2026-08-31, direct instruction: "add 5% bounty tax,
     // nothing on rob-npc") — taken off the top of result.rewardAmount before crediting the
@@ -3712,8 +3723,8 @@ const Bounty = {
     // means the two sides can't disagree again. difficulty/reward stay literal (45% derivations).
     METAL_POTATO_MEDLEY: {
         I:   { difficulty: 900,  reward: 4500000,  multiplierReward: Raid.METAL_KING_MULTIPLIER_REWARD,           passiveReward: Raid.METAL_KING_PASSIVE_REWARD,           capacityReward: Raid.METAL_KING_CAPACITY_REWARD },           // 45% of Raid.METAL_KING_* difficulty/reward
-        II:  { difficulty: 883,  reward: 29752989, multiplierReward: Raid.ELITE_METAL_KING_MULTIPLIER_REWARD,     passiveReward: Raid.ELITE_METAL_KING_PASSIVE_REWARD,     capacityReward: Raid.ELITE_METAL_KING_CAPACITY_REWARD },     // 45% of Raid.ELITE_METAL_KING_* difficulty/reward (reward re-derived 2026-10-24: 45% of 66,117,753)
-        III: { difficulty: 3245, reward: 171936893, multiplierReward: Raid.LEGENDARY_METAL_KING_MULTIPLIER_REWARD, passiveReward: Raid.LEGENDARY_METAL_KING_PASSIVE_REWARD, capacityReward: Raid.LEGENDARY_METAL_KING_CAPACITY_REWARD }, // 45% of Raid.LEGENDARY_METAL_KING_* difficulty/reward (reward re-derived 2026-10-24: 45% of 382,081,985)
+        II:  { difficulty: 883,  reward: 37191236, multiplierReward: Raid.ELITE_METAL_KING_MULTIPLIER_REWARD,     passiveReward: Raid.ELITE_METAL_KING_PASSIVE_REWARD,     capacityReward: Raid.ELITE_METAL_KING_CAPACITY_REWARD },     // difficulty 45% of Raid.ELITE_METAL_KING_*; reward = 45% of 66,117,753 (re-derived 2026-10-24) x1.25 (2026-10-27 bounty bump)
+        III: { difficulty: 3245, reward: 214921117, multiplierReward: Raid.LEGENDARY_METAL_KING_MULTIPLIER_REWARD, passiveReward: Raid.LEGENDARY_METAL_KING_PASSIVE_REWARD, capacityReward: Raid.LEGENDARY_METAL_KING_CAPACITY_REWARD }, // difficulty 45% of Raid.LEGENDARY_METAL_KING_*; reward = 45% of 382,081,985 (re-derived 2026-10-24) x1.25 (2026-10-27 bounty bump)
     }
 }
 
@@ -4677,10 +4688,14 @@ const GuildBuffDescriptions = {
 // coincidence of being two separate keys with the same array (kept as two keys, not one
 // shared array, so a future divergence needs no restructuring).
 const MercenaryBuffScaling = {
-    workMulti:   [0.06, 0.08, 0.10, 0.11, 0.13, 0.15],
-    workTimer:   [0.06, 0.08, 0.11, 0.13, 0.18, 0.25],
-    bountyTimer: [0.06, 0.08, 0.11, 0.13, 0.18, 0.25],
-    robChance:   [0.06, 0.08, 0.10, 0.12, 0.16, 0.20],
+    // Ranks 7-10 (2026-10-27) repeat Rank 6's value: the buff ladder already tops out where the
+    // 40% shared skip cap and the Guild Level 10 parity (see above) say it should; only the
+    // Bounty reward multiplier keeps climbing past Rank 6. One entry per rank so the arrays stay
+    // index-aligned with MercenaryRank.THRESHOLDS.
+    workMulti:   [0.06, 0.08, 0.10, 0.11, 0.13, 0.15, 0.15, 0.15, 0.15, 0.15],
+    workTimer:   [0.06, 0.08, 0.11, 0.13, 0.18, 0.25, 0.25, 0.25, 0.25, 0.25],
+    bountyTimer: [0.06, 0.08, 0.11, 0.13, 0.18, 0.25, 0.25, 0.25, 0.25, 0.25],
+    robChance:   [0.06, 0.08, 0.10, 0.12, 0.16, 0.20, 0.20, 0.20, 0.20, 0.20],
 }
 
 // The descriptive half of each Mercenary Buff category — paired with MercenaryBuffScaling's

@@ -2,11 +2,11 @@ const { getMercenaryBuffValue, getMercenaryBuffLabel } = require('../mercenaryBu
 const { MercenaryBuffScaling, GuildBuffScaling, MercenaryRank } = require('../constants');
 
 describe('MercenaryBuffScaling shape (roadmap.md test-surface note)', () => {
-    test('every array is exactly length 6 (one per Mercenary Rank)', () => {
+    test('every array is exactly length 10 (one per Mercenary Rank)', () => {
         for (const key of Object.keys(MercenaryBuffScaling)) {
-            expect(MercenaryBuffScaling[key]).toHaveLength(6);
+            expect(MercenaryBuffScaling[key]).toHaveLength(10);
         }
-        expect(MercenaryRank.THRESHOLDS).toHaveLength(6);
+        expect(MercenaryRank.THRESHOLDS).toHaveLength(10);
     });
 
     test('every array is monotonically non-decreasing rank over rank', () => {
@@ -37,13 +37,13 @@ describe('MercenaryBuffScaling shape (roadmap.md test-surface note)', () => {
         }
     });
 
-    test('every Mercenary Rank value is copied verbatim from GuildBuffScaling at the 6 sampled indices [0,2,4,5,7,9]', () => {
+    test('Ranks 1-6 are copied verbatim from GuildBuffScaling at the 6 sampled indices [0,2,4,5,7,9], and Ranks 7-10 repeat Rank 6 (2026-10-27)', () => {
         const guildEquivalent = { workMulti: 'workMulti', workTimer: 'workTimer', bountyTimer: 'workTimer', robChance: 'robChance' };
         const sampledIndices = [0, 2, 4, 5, 7, 9];
         for (const key of Object.keys(MercenaryBuffScaling)) {
             const guildScale = GuildBuffScaling[guildEquivalent[key]];
             const expected = sampledIndices.map(i => guildScale[i]);
-            expect(MercenaryBuffScaling[key]).toEqual(expected);
+            expect(MercenaryBuffScaling[key]).toEqual([...expected, expected[5], expected[5], expected[5], expected[5]]);
         }
     });
 });

@@ -21674,3 +21674,30 @@ capacity stays a flat x1/x3/x6 ladder rather than following the tier 4 ratio (it
 **Tests**: `raidFactory.test.js` (grants climb every mode, capacity follows passive's ladder, potato reward is the same multiple of each mode's own tier 4),
 `mercenaryFactory.test.js` (Medley mirrors the Raid constants, rewards 45%, capacity 10M / 30M / 60M). Updated `.claude/systems/raids-and-world-events.md`.
 
+## Mercenary Ranks 7-10 and a +25% Bounty reward bump (2026-10-27, direct instruction)
+
+**Asked**: after an EV comparison showed a maxed Rank 6 mercenary at 350 power earning roughly 13.5M (Elite) / 13.7M (Legendary) per hour against about 38M for
+a Level 8 guild member, the request was to "make the ladder similar to the guild multiplier ladder by bounty level" (extend Mercenary Rank to 10 with the
+reward multiplier reaching 10x like Guild Level 10) and to kick off the small near-term reward bump in the same change.
+
+**Found**: nothing was broken; this is a retune. The rank multiplier is the only lever on Bounty income that still had headroom (the cooldown skip is already
+at the shared 40% cap and Heist odds cap at Rank 6), so ranks past 6 move only `rewardMultiplier`. `MercenaryBuffScaling` is clamped by array length in
+`getMercenaryBuffValue`, so higher ranks could not have crashed it, but its four arrays are now explicitly 10 long (Ranks 7-10 repeat Rank 6) so they stay
+index-aligned with the rank table. Safehouse and Heist gating compare `rank >= n`, so they needed nothing.
+
+**Changed**: `MercenaryRank.THRESHOLDS` gained Rank 7 (800 wins, 5.2x), 8 (1,200, 6.7x), 9 (1,800, 8.3x), 10 (2,700, 10x), the last four being
+`RaidLevel.THRESHOLDS` Level 7-10's multipliers; rival bonus and skip chance copy Rank 6. `MERCENARY_RANK_TITLES` gained Furrow Warden, Spud Warlord,
+Tater Baron of the Barrows and The Crowned Tuber. `Bounty.TIERS` B5-B12 rewards are x1.25 rounded to 1,000 (503k / 869k / 1.506M / 2.59M / 4.441M / 7.608M /
+13.17M / 30.814M, `starchReward` re-derived at the 13,000 reference price), penalties unchanged; Medley Bands II/III are 37,191,236 and 214,921,117.
+`/help` mercenary text had stale rank numbers (1.55x/1.90x/2.35x, +2%..+7% buffs) and was corrected along the way; the `mercenary_legend` achievement keeps its
+525-win threshold with the description changed from "max rank" to "Rank 6".
+
+**Judgment calls and side effects**: (1) Rank 6 (5.00x) was not mirrored to guild L6 (4.00x), so 6 to 7 is a +0.2x step and the "deltas strictly
+accelerate" test now covers Ranks 1-6 only. (2) Rank is computed live, so anyone already holding 800+ wins is promoted the moment this ships. (3) Leaving
+penalties alone makes the penalty:reward ratio dip at B5 (1.09x, from 1.29x at B4) and top out at 1.60x instead of 2.0x; the monotonic-ratio test is split
+into B1-B4 and B5-B12. (4) The Medley II/III reward no longer equals 45% of the Metal King values (it is 45% x 1.25); the mirror test says so.
+
+**Tests**: `mercenaryFactory.test.js` (ladder values, lookup past Rank 6, guild-multiplier mirror, buff clamp, bump values), `mercenaryBuffFactory.test.js`
+(arrays length 10, Ranks 7-10 repeat Rank 6). Updated `.claude/systems/mercenary-bounties.md`, `raids-and-world-events.md`, `safehouses.md`. Web port:
+`financial-project` notes.
+

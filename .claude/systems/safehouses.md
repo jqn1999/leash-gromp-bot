@@ -115,7 +115,7 @@ personal/guild `bankCapacity` shop ladders already use:
 | 3 | 3 (50 wins) | 25,000,000 | 25,000,000 |
 | 4 | 4 (125 wins) | 75,000,000 | 60,000,000 |
 | 5 | 5 (275 wins) | 200,000,000 | 150,000,000 |
-| 6 | 6 (525 wins, max rank) | 400,000,000 | 250,000,000 |
+| 6 | 6 (525 wins; last slot, Ranks 7-10 add none) | 400,000,000 | 250,000,000 |
 
 A fully-ranked mercenary who's bought all 6 holds 500,000,000 potatoes of compartmentalized
 capacity — enough to meaningfully soften the shop ladder's 500M/1B/2B-cost tiers without eliminating

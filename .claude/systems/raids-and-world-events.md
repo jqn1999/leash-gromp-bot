@@ -1473,7 +1473,7 @@ permanent stat grants". Bank capacity is also a permanent stat grant, so it was 
   multiplier/passive/capacity straight off the `Raid.*METAL_KING_*` constants (one source) instead of retyping them.
 - **Potato reward** re-scaled, by direct instruction, to the same multiple of each mode's own tier 4 reward that Regular uses
   (10,000,000 / 3,240,000 ~ 3.086x): Elite **66,117,753** (21,422,152 x 3.086), Legendary **382,081,985** (123,794,563 x 3.086). Medley rewards stay 45%
-  of those: Band II 29,752,989, Band III 171,936,893. A test fails if the three modes drift off the same multiple again.
+  of those: Band II 29,752,989, Band III 171,936,893 (bumped x1.25 on the bounty side 2026-10-27 to 37,191,236 / 214,921,117; the Guild Raid Metal King values are unchanged). A test fails if the three modes drift off the same multiple again.
 - `/help topic:raid`'s Metal King line quoted the pre-retune 30M / 60M potatoes; it now states the real numbers.
 - The web copies (`gromp-guilds` Metal King constants, `gromp-mercenary` Medley) need the same values — see `financial-project` notes.
 
