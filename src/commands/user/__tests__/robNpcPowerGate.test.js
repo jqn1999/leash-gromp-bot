@@ -112,6 +112,21 @@ describe('/rob-npc power gate', () => {
         expect(dynamoHandler.updateUserFields).not.toHaveBeenCalled();
     });
 
+    test("rejects The King's Hoard below Rank 8 even with plenty of power, and below its power minimum even at Rank 8", async () => {
+        const { MercenaryRank } = require('../../../utils/constants');
+        const hoard = RobNpc.TIERS.find(t => t.key === 'kings_hoard');
+        dynamoHandler.findUser.mockResolvedValue(baseUser({ mercenaryBountyWinCount: MercenaryRank.THRESHOLDS[6].winsRequired, workMultiplierAmount: 999 }));
+        const rankInteraction = fakeInteraction({ 'heist-type': 'kings_hoard' });
+        await callback({}, rankInteraction);
+        expect(rankInteraction.editReply).toHaveBeenCalledWith(expect.stringContaining('unlocks at Mercenary Rank 8'));
+
+        dynamoHandler.findUser.mockResolvedValue(baseUser({ mercenaryBountyWinCount: MercenaryRank.THRESHOLDS[7].winsRequired, workMultiplierAmount: hoard.minPowerRequired - 1 }));
+        const powerInteraction = fakeInteraction({ 'heist-type': 'kings_hoard' });
+        await callback({}, powerInteraction);
+        expect(powerInteraction.editReply).toHaveBeenCalledWith(expect.stringContaining(`needs at least a ${hoard.minPowerRequired}x work multiplier`));
+        expect(dynamoHandler.updateUserFields).not.toHaveBeenCalled();
+    });
+
     test('the rank gate is still checked first — a low-rank, high-power mercenary is rejected for rank, not power', async () => {
         dynamoHandler.findUser.mockResolvedValue(baseUser({ mercenaryBountyWinCount: 0, workMultiplierAmount: 999 }));
         const interaction = fakeInteraction({ 'heist-type': 'royal_treasury' });

@@ -1464,6 +1464,87 @@ describe('resolveNpcRob', () => {
     });
 });
 
+// The King's Hoard (2026-10-30, direct instruction: "add a new heist after R6 at R8") — the
+// first Heist tier past Rank 6, the rank at which every other tier's odds already cap, so it
+// is the only Heist-side reason for Ranks 8-10 to exist. These pin the design constraints
+// its constants.js comment derives (rising odds across R8-R10, hardest tier, EV ahead of
+// Royal Treasury at every rank it is open to), not just its literal numbers, so a future
+// retune of either tier that silently breaks the relationship fails here.
+describe("The King's Hoard heist tier", () => {
+    const HOARD = RobNpc.TIERS.find(t => t.key === 'kings_hoard');
+    const ROYAL = RobNpc.TIERS.find(t => t.key === 'royal_treasury');
+    const chanceAtRank = (tier, rank) => Math.min(tier.baseChance + tier.chancePerRank * (rank - 1), tier.maxChance);
+    function ev(tier, power, rank) {
+        const chance = chanceAtRank(tier, rank);
+        const lossScale = 1 + RobNpc.LOSS_MULTIPLIER_SCALING * (power - 1);
+        return chance * tier.payoutCap * power * 0.95 - (1 - chance) * tier.payoutCap * tier.penaltyPercentOfCap * lossScale;
+    }
+
+    test('is the last tier, unlocks at Rank 8, and is not offered earlier', () => {
+        expect(RobNpc.TIERS[RobNpc.TIERS.length - 1]).toBe(HOARD);
+        expect(HOARD.rankRequired).toBe(8);
+        expect(MercenaryRank.THRESHOLDS[7].winsRequired).toBe(1200);
+    });
+
+    test('odds genuinely rise across Ranks 8-10 and reach maxChance exactly at Rank 10', () => {
+        const [r8, r9, r10] = [8, 9, 10].map(r => chanceAtRank(HOARD, r));
+        expect(r8).toBeCloseTo(0.42, 10);
+        expect(r9).toBeGreaterThan(r8);
+        expect(r10).toBeGreaterThan(r9);
+        expect(r10).toBeCloseTo(HOARD.maxChance, 10);
+        expect(chanceAtRank(HOARD, 11)).toBe(HOARD.maxChance);
+    });
+
+    test('stays the hardest tier and the biggest-stakes one', () => {
+        expect(HOARD.maxChance).toBeLessThan(ROYAL.maxChance);
+        expect(HOARD.payoutCap).toBeGreaterThan(ROYAL.payoutCap);
+        expect(HOARD.penaltyPercentOfCap).toBeGreaterThan(ROYAL.penaltyPercentOfCap);
+        expect(HOARD.hasPenalty).toBe(true);
+    });
+
+    test('EV is positive and ahead of Royal Treasury at every rank it is open to, from its own gate up to the reward-multiplier cap', () => {
+        for (const rank of [8, 9, 10]) {
+            for (const power of [HOARD.minPowerRequired, 100, 350, RobNpc.MAX_REWARD_MULTIPLIER]) {
+                expect(ev(HOARD, power, rank)).toBeGreaterThan(0);
+                expect(ev(HOARD, power, rank)).toBeGreaterThan(ev(ROYAL, power, rank));
+            }
+        }
+    });
+
+    test('each extra rank adds real EV at power 350 (that is the whole point of the tier)', () => {
+        expect(ev(HOARD, 350, 9)).toBeGreaterThan(ev(HOARD, 350, 8) * 1.2);
+        expect(ev(HOARD, 350, 10)).toBeGreaterThan(ev(HOARD, 350, 9) * 1.2);
+    });
+
+    test('carries the same per-attempt stat-grant rate as Royal Treasury at Rank 10 (to within rounding) and notoriety 3', () => {
+        expect(HOARD.statGrantChanceOnWin * HOARD.maxChance).toBeCloseTo(ROYAL.statGrantChanceOnWin * ROYAL.maxChance, 3);
+        expect(HOARD.notorietyPerWin).toBe(3);
+    });
+
+    test('a win pays more than Royal Treasury at the same inputs, and rolls the rare stat grant', async () => {
+        const rank8User = baseUser({ mercenaryBountyWinCount: MercenaryRank.THRESHOLDS[7].winsRequired, workMultiplierAmount: 100 });
+        const midSpy = jest.spyOn(Math, 'random').mockReturnValue(0);
+        let hoard, royal;
+        try {
+            royal = await mercenaryFactory.resolveNpcRob(rank8User, 50000, 0, 'royal_treasury');
+            hoard = await mercenaryFactory.resolveNpcRob(rank8User, 50000, 0, 'kings_hoard');
+        } finally {
+            midSpy.mockRestore();
+        }
+        expect(hoard.won).toBe(true);
+        expect(hoard.amount).toBeGreaterThan(royal.amount);
+        expect(hoard.statReward).not.toBeNull();
+    });
+});
+
+describe('Rival notoriety economy (2026-10-30)', () => {
+    test('confrontation unlocks at 15 and a Legendary-band bounty win gives 4', () => {
+        expect(Rival.CONFRONTATION_THRESHOLD).toBe(15);
+        expect(Rival.NOTORIETY_PER_BOUNTY_TIER).toEqual({ I: 1, II: 2, III: 4 });
+        expect(Rival.NOTORIETY_GAIN_HALVING_THRESHOLD).toBeGreaterThan(Rival.CONFRONTATION_THRESHOLD);
+    });
+});
+
 describe('resolveYukonAward', () => {
     test('a new pull just builds the companions object, no potato consolation', () => {
         const user = baseUser();
@@ -1524,7 +1605,7 @@ describe('resolveYukonAward', () => {
 // from bounties and rob-npc is decreased by half, rounding down, minimum of 1." Threshold
 // raised 20 -> 50 on 2026-09-13, direct instruction ("make the notoriety halving start at
 // 50 instead of 20"). Keyed off Rival.NOTORIETY_GAIN_HALVING_THRESHOLD, a SEPARATE constant
-// from Rival.CONFRONTATION_THRESHOLD (still 20, the /confront-rival unlock gate).
+// from Rival.CONFRONTATION_THRESHOLD (20 then, 15 since 2026-10-30; the /confront-rival unlock gate).
 describe('getNotorietyGain', () => {
     test('at or below the threshold, gain is untouched', () => {
         expect(mercenaryFactory.getNotorietyGain(0, 4)).toBe(4);

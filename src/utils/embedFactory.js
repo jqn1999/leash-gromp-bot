@@ -3157,7 +3157,7 @@ class EmbedFactory {
             if (statReward) {
                 const statLabels = { workMultiplierAmount: 'Work Multiplier', passiveAmount: 'Passive Income', bankCapacity: 'Bank Capacity' };
                 const statText = statReward.map(s => `+${s.amount.toLocaleString()} ${statLabels[s.type]}`).join('\n');
-                fields.push({ name: '🏅 The Royal Treasury — Permanent Stat Reward!', value: statText, inline: false });
+                fields.push({ name: `🏅 ${tier.label} — Permanent Stat Reward!`, value: statText, inline: false });
             }
             // cooldownReductionPercent (constants.js's MercenaryRank.THRESHOLDS comment) is
             // now a chance to skip the cooldown entirely (2026-09-05 cooldown-skip overhaul)
@@ -3185,13 +3185,15 @@ class EmbedFactory {
             market_stall: `You lift a sack clean off a roadside stall and vanish into the market crowd before the vendor even turns around.`,
             merchant_wagon: `You crack the merchant's strongbox mid-journey and slip away with a real haul before the caravan guards notice.`,
             noble_vault: `The vault door gives way — you're in and out with a fortune before the manor's alarm bell even finishes ringing.`,
-            royal_treasury: `Every detail lands perfectly. The Royal Treasury is yours, and it'll be sung about in taverns for years.`
+            royal_treasury: `Every detail lands perfectly. The Royal Treasury is yours, and it'll be sung about in taverns for years.`,
+            kings_hoard: `The King's own hoard, past the sleeping guard and three locked doors — you walk out with a sovereign's ransom and a story no tavern will believe.`
         };
         const loseFlavor = {
             market_stall: `You case the road for an easy mark, but nothing turns up this time — no harm done, no cooldown penalty beyond the usual wait.`,
             merchant_wagon: `The caravan's guards spot you first — you barely escape, and it costs you.`,
             noble_vault: `The vault's wards catch you mid-break-in — a costly, narrow escape.`,
-            royal_treasury: `The Royal Treasury heist falls apart at the worst possible moment — an expensive, humbling failure.`
+            royal_treasury: `The Royal Treasury heist falls apart at the worst possible moment — an expensive, humbling failure.`,
+            kings_hoard: `The King's Hoard keeps its secrets, and the Crown's wardens keep your coin — a ruinous, once-in-a-reign sort of failure.`
         };
 
         const embed = new EmbedBuilder()

@@ -72,7 +72,7 @@ module.exports = {
             description: 'Which heist to attempt',
             required: true,
             type: ApplicationCommandOptionType.String,
-            // All 4 tiers always listed (same "show every option, reject a locked pick with
+            // All 5 tiers always listed (same "show every option, reject a locked pick with
             // the reason" pattern /start-raid's own raid-select uses for Elite/Legendary)
             // rather than hiding tiers the invoking user hasn't unlocked yet.
             choices: RobNpc.TIERS.map(tier => ({ name: tier.label, value: tier.key }))
@@ -259,7 +259,7 @@ async function resolveNpcRobChain(interaction, userId, username, userDisplayName
             userDetails.companions = leveledCompanions;
             aggregatedSetFields.companions = leveledCompanions;
 
-            // The Royal Treasury's rare stat-grant branch — folded straight into this
+            // The Royal Treasury's and King's Hoard's rare stat-grant branch — folded straight into this
             // chain's own accumulator (applyStatRewardGrant) instead of
             // raidFactory.handleStatSplit's own separate find+write.
             if (result.won && result.statReward) {

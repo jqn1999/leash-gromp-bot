@@ -498,7 +498,7 @@ async function resolveNpcRob(userDetails, workGainAmount, catchUpBonus = 0, heis
     result.amount = gainAmount;
     result.houseTax = houseTax;
 
-    // The Royal Treasury's one distinguishing extra — see RobNpc.TIERS' own comment in
+    // The Royal Treasury's (and, since 2026-10-30, The King's Hoard's) one distinguishing extra — see RobNpc.TIERS' own comment in
     // constants.js. 0 for every other tier, so this is a no-op everywhere else.
     if (tier.statGrantChanceOnWin > 0 && Math.random() < tier.statGrantChanceOnWin) {
         result.statReward = pickStatGrant('I', userDetails);
@@ -554,8 +554,8 @@ function resolveGuaranteedStatBump(userDetails, scenario) {
 // Rival.NOTORIETY_PER_BOUNTY_TIER / RobNpc.TIERS' own notorietyPerWin), so the two call
 // sites can't drift out of sync on the threshold or the rounding rule. Keyed off
 // Rival.NOTORIETY_GAIN_HALVING_THRESHOLD — a SEPARATE constant from
-// Rival.CONFRONTATION_THRESHOLD (still 20, the actual /confront-rival unlock gate) since
-// the 2026-09-13 change — a player between 20 and 50 Notoriety is confront-eligible but
+// Rival.CONFRONTATION_THRESHOLD (20 when written, 15 since 2026-10-30; the actual /confront-rival unlock gate) since
+// the 2026-09-13 change — a player between the gate and 50 Notoriety is confront-eligible but
 // still earns at full rate; the taper only bites once they've kept farming well past being
 // able to cash in. currentNotoriety is the value BEFORE this win's own gain is added
 // (mercenaryNotoriety resets on confrontation, so this only tapers while a player is

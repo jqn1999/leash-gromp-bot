@@ -1211,15 +1211,15 @@ numbers (`rob.js`'s `calculateRobChance`, `Rob.BASE_ROB_PENALTY`).
 more than just an extra work that feeds notoriety every 30 minutes? maybe based on merc lvl
 3 and 6 or 2 4 6 and unlocking certain heist events/scenarios that do a bit more." Resolved
 via `AskUserQuestion`: the player picks a heist type each attempt via a required
-`heist-type` option (same shape as `/start-raid`'s own `raid-select` — all 4 choices always
+`heist-type` option (same shape as `/start-raid`'s own `raid-select` — all 5 choices always
 listed, a locked pick rejected with the reason, same pattern `startRaid.js`'s
 Elite/Legendary gate already uses) rather than an auto-escalating rare roll, gated at Ranks
-1/2/4/6 as a 4-tier ladder.
+1/2/4/6 as a 4-tier ladder (a 5th tier, The King's Hoard, joined at Rank 8 on 2026-10-30 — see below).
 
 - **Cooldown**: still its own field, `npcRobTimer`, **1800s (30 min)** — separate from both
   real `/rob`'s `robTimer` (`Rob.ROB_TIMER_SECONDS`, 3600s) and Bounty's own `bountyTimer`
   (also 3600s), so spamming one action never locks out either of the other two. **Shared
-  across all 4 tiers** — picking a bigger score doesn't buy a longer wait, just bigger
+  across all 5 tiers** — picking a bigger score doesn't buy a longer wait, just bigger
   stakes on the same clock.
 - **Odds**: flat base chance per tier (no target to compare relative wealth against),
   scaling with rank, THEN nudged per-attempt by the reward roll (2026-09-09, see below):
@@ -1276,14 +1276,39 @@ the reward you actually got is exactly the one your odds were weighed against. O
 the penalty amount is a completely separate, uncoupled roll (see below) — there's no reward
 roll to size a matching penalty off of.
 
-**The 4 tiers** (`RobNpc.TIERS`):
+**The 5 tiers** (`RobNpc.TIERS`; the first four from roadmap #50, the fifth added 2026-10-30):
 
 | Tier | Rank | Power gate | Base / +per-rank / cap | Payout cap | `penaltyPercentOfCap` | On a whiff (at 1x multiplier) | Notoriety/win | Extra |
 |---|---|---|---|---|---|---|---|---|
 | Market Stall | 1+ | — (none) | 30% / +10% / 80% | 2,500 | — (whiff-only) | Nothing lost (whiff-only, unchanged from pre-ladder `/rob-npc`) | +1 | — |
 | Merchant's Wagon | 2+ | 3x | 36% / +8% / 76% | 4,500 | 0.5 (x1.0) | `round(payoutCap * 0.5 * [.8-1.2] * lossScale)` = 1,800-2,700 baseline | +1 | — |
 | Noble's Vault | 4+ | 15x | 32% / +6% / 62% | 9,000 | 0.75 (x1.5) | 5,400-8,100 baseline | +2 | — |
-| The Royal Treasury | 6 only | 25x | 10% / +8% / 50% | 20,500 | 1.0 (x2.0) | 16,400-24,600 baseline | +2 | 5% roll on a win: `mercenaryFactory.pickStatGrant('I', userDetails)` |
+| The Royal Treasury | 6+ | 25x | 10% / +8% / 50% | 20,500 | 1.0 (x2.0) | 16,400-24,600 baseline | +2 | 5% roll on a win: `mercenaryFactory.pickStatGrant('I', userDetails)` |
+| The King's Hoard | 8+ | 60x | 31.5% / +1.5% / 45% (42% / 43.5% / 45% at Ranks 8 / 9 / 10) | 70,000 | 1.1 | 61,600-92,400 baseline | +3 | 5.5% roll on a win, same `pickStatGrant('I', ...)` pool |
+
+#### The King's Hoard (2026-10-30, direct instruction: "add a new heist after R6 at R8")
+
+Ranks 7-10 shipped 2026-10-29 and only raised Bounty's reward multiplier — Heist odds already
+cap at Rank 6 on every tier and Heist never reads the rank multiplier, so a Rank 8-10 mercenary's
+Heist income was byte-identical to Rank 6's. This tier is the Heist-side reason for those ranks
+to exist. Designed with the same per-attempt EV sweep every other tier used (integrating the
++/-12% reward-roll success coupling over the whole 0.8-1.2x range, `payoutCap` as the effective
+base because real server wealth saturates `workGainAmount * PAYOUT_MULTIPLIER` past every cap, loss
+scaled by `1 + 0.5 * (M - 1)`, `M` capped at 600). Constraints: it must *rise* across its three
+open ranks (the unmodified chance formula, with a small 1.5-point slope), stay the hardest tier
+(max 45% < Royal Treasury's flat 50%), and beat Royal Treasury's EV at every rank/power it is open
+at. EV per attempt (power 350 / 600): Rank 8 1.84M / 3.18M (1.17x Royal Treasury's 1.58M / 2.72M),
+Rank 9 2.40M / 4.12M (1.51x), Rank 10 2.95M / 5.07M (1.86x) — about 4.4M / 5.7M / 7.1M per hour at
+power 350 against Royal Treasury's 3.9M, so +2% / +6% / +10% of a Rank 8/9/10 mercenary's hourly EV.
+`penaltyPercentOfCap` is 1.1 rather than the 1.25 the 0.5/0.75/1.0 ladder suggested: at 1.25
+break-even odds are ~0.40, so a Rank 8 attempt at 42% would hover at zero EV unless the cap were
+~150,000 (a ~33M whiff at power 350); at 1.1 break-even is ~0.37 and 70,000 suffices. The price of
+the cap is variance — a power-350 whiff costs ~13.5M against a ~23M win. Power gate 60: EV turns
+positive at power 5 (Rank 8) and first beats Royal Treasury at 22 / 8 / 5 (Ranks 8 / 9 / 10), so
+60 leaves a >2.5x margin over the first power where it is the better pick. Stat grant 5.5% (not
+Royal Treasury's 5%) so the per-attempt grant rate matches (2.5% at Rank 10). Notoriety +3 continues
+the 1/1/2/2 ladder, and with the Legendary-band 4 below, a Legendary-bounty + King's Hoard farmer
+cycles `/confront-rival` in roughly 1.8h at the new 15-Notoriety gate.
 
 **Payout caps above reflect the 2026-09-12 fifth-retune cut (×0.4580 across all 4 tiers — see the
 "Fifth pass" section below) — the fourth-pass values (Market Stall 5,000 → Royal Treasury 45,000)
@@ -1685,7 +1710,7 @@ no `misc/`/`guilds/` category fits a Mercenary-track command):
 | `/retire-mercenary` | No args. Rejects if not currently a mercenary. Confirm/cancel step (2026-09-07 — see "Guild ↔ Mercenary switch cooldown" above), 30s timeout. Progress persists. |
 | `/bounty-board` | No args, read-only (mirrors `/current-raid`/`/quests` — never snapshots/claims by viewing). Rejects if not a mercenary. Shows Mercenary Rank + reward multiplier + cooldown-reduction-on-a-win + wins-to-next-rank, one section per mode — Regular (tiers 1-4), Elite (5-8), Legendary (9-12) (2026-10-12) — each listing its own 4 tiers with a live roll-odds (WITHIN that mode's 4) + success-chance line (no tier is locked — see the 12-Tier Bounty Ladder above), the Baby and Stat sections, a 3-band Metal Potato Medley breakdown (2026-10-03; titled as Band I on Regular / II on Elite / III on Legendary), and `bountyTimer` remaining. |
 | `/take-bounty mode:<Regular Bounty\|Elite Bounty\|Legendary Bounty\|Baby Bounty\|Stat Bounty>` (Regular listed first, 2026-08-30, direct instruction — "easier"; Elite/Legendary added 2026-10-12) | Rejects if not a mercenary or if `bountyTimer` hasn't elapsed — no more per-tier rank gate. Resolves immediately, no confirm step, same precedent `/start-raid` sets. Baby Bounty always resolves Tier 1; Regular/Elite/Legendary Bounty dynamically roll one tier within their own band (1-4 / 5-8 / 9-12) by current power, each with an independent flat 1% chance (2026-10-03; every non-Baby ladder mode since 2026-10-12) to instead become a Metal Potato Medley (see its own section above) — Baby Bounty is never eligible. Elite/Legendary results are titled "(Elite Bounty)"/"(Legendary Bounty)"; Regular stays unmarked. Win/loss + scenario flavor (or Medley's own flavor) + amount/currency + stat-reward callout + Yukon callout + (on a win, Rank 2+) a cooldown-reduction callout, all in one result embed. |
-| `/rob-npc heist-type:<Market Stall\|Merchant's Wagon\|Noble's Vault\|The Royal Treasury>` | Rejects if not a mercenary, if the picked tier isn't unlocked at your Mercenary Rank, or if `npcRobTimer` hasn't elapsed. No confirm step. Dedicated result embed (win/loss + tier + amount or penalty + rare stat-grant callout on The Royal Treasury + (on a win, Rank 2+) a cooldown-reduction callout). |
+| `/rob-npc heist-type:<Market Stall\|Merchant's Wagon\|Noble's Vault\|The Royal Treasury\|The King's Hoard>` | Rejects if not a mercenary, if the picked tier isn't unlocked at your Mercenary Rank, or if `npcRobTimer` hasn't elapsed. No confirm step. Dedicated result embed (win/loss + tier + amount or penalty + rare stat-grant callout on The Royal Treasury / The King's Hoard + (on a win, Rank 2+) a cooldown-reduction callout). |
 | `/set-mercenary-buff buff:<rob-chance\|work-timer\|work-multi\|bounty-timer>` | See [Mercenary Buff](#mercenary-buff-set-mercenary-buff-2026-09-09-direct-instruction) above. Rejects if not a mercenary, rejects a same-category re-pick as a no-op, else rejects if the switch cooldown (15min) hasn't elapsed. On success, sets `mercenaryBuff`/`mercenaryBuffSwitchTimer`. |
 
 **`/bounty-board`'s per-tier reward is Rank-scaled and rounded (2026-09-27, direct instruction:
@@ -1775,9 +1800,9 @@ framing from "you hunt a target" (Bounty) to "you've built a reputation and now 
 hunting *you*." Gated by Mercenary Rank 2+ (Tier II's own unlock rank) plus a **resettable
 resource-threshold gate**, not a cooldown timer — the first accumulated-counter-as-gate
 pattern in this codebase. `/confront-rival` has no cooldown field at all; every resolution
-subtracts a flat `Rival.CONFRONTATION_THRESHOLD` (20) from `mercenaryNotoriety` — changed
+subtracts a flat `Rival.CONFRONTATION_THRESHOLD` (15 since 2026-10-30, was 20) from `mercenaryNotoriety` — changed
 2026-08-30 from an outright reset to 0, direct instruction ("subtract 20 ... so that
-notoriety can also just be stored up") — which *is* the re-gating mechanism for the next
+notoriety can also just be stored up" — 20 at the time, 15 now) — which *is* the re-gating mechanism for the next
 cycle, while letting any notoriety banked past the threshold before a player chose to fight
 carry straight into the next cycle's progress instead of being discarded.
 
@@ -1789,9 +1814,9 @@ carry straight into the next cycle's progress instead of being discarded.
 (`takeBounty.js`, `robNpc.js`), run through the shared `mercenaryFactory.getNotorietyGain`
 taper (see below) so both call sites can't drift on the threshold/rounding rule:
 
-- `/take-bounty` win: `+Rival.NOTORIETY_PER_BOUNTY_TIER[tier]` (1/2/3 for Tier I/II/III).
+- `/take-bounty` win: `+Rival.NOTORIETY_PER_BOUNTY_TIER[tier]` (1/2/4 for Band I/II/III since 2026-10-30, direct instruction — was 1/2/3).
 - `/rob-npc` win: `+` the picked heist tier's own `notorietyPerWin` (1/1/2/2 for Market
-  Stall/Merchant's Wagon/Noble's Vault/The Royal Treasury, since 2026-09-29, direct instruction:
+  Stall/Merchant's Wagon/Noble's Vault/The Royal Treasury, plus 3 for The King's Hoard since 2026-10-30; the first four since 2026-09-29, direct instruction:
   "Lower merchant wagon to 1, power noble vault and royal treasury to 2" — was 1/2/3/4 — see
   `/rob-npc (RobNpc)` below). Used to be a single flat `Rival.NOTORIETY_PER_NPC_ROB_WIN` (1)
   before the Heist Ladder rework (roadmap #50) gave `/rob-npc` multiple tiers — removed in favor
@@ -1806,8 +1831,8 @@ the notoriety halving start at 50 instead of 20."
 `userDetails.mercenaryNotoriety` as it stood BEFORE this win's own gain — returns `baseGain`
 unchanged at or below `Rival.NOTORIETY_GAIN_HALVING_THRESHOLD` (50), and
 `Math.max(1, Math.floor(baseGain / 2))` once strictly above it. This is a **separate constant**
-from `Rival.CONFRONTATION_THRESHOLD` (still 20, the `/confront-rival` unlock gate, unchanged) —
-a player between 20 and 50 Notoriety is confront-eligible but still earns at full rate; the taper
+from `Rival.CONFRONTATION_THRESHOLD` (the `/confront-rival` unlock gate: 20 when this taper was written, 15 since 2026-10-30 — the halving point deliberately did not follow it down) —
+a player between 15 and 50 Notoriety is confront-eligible but still earns at full rate; the taper
 only bites once they've kept farming well past being able to cash in. Since `/confront-rival`
 subtracts `CONFRONTATION_THRESHOLD` rather than resetting to 0 (see above), a player who qualifies
 to confront but keeps farming instead (past 50, not just past 20) sees their FURTHER Notoriety
@@ -1817,6 +1842,17 @@ under either threshold again) never feels the taper at all. Both call sites rout
 one shared helper (`mercenaryFactory.getNotorietyGain`) rather than duplicating the
 threshold/rounding logic inline.
 
+**Threshold lowered 20 -> 15 and Band III gain 3 -> 4 (2026-10-30, direct instruction: "lets move bounties
+to 15 notoriety needed with legendary bounties giving 4")**: re-measured per-hour accrual against the
+guild equivalent (`GuildRival`) — a guild member cycles `/repel-warband` roughly 1.7-2x faster than a
+mercenary cycles `/confront-rival` (about 2.0h vs 3.4h per cycle at power 350: Legendary raids give ~5
+infamy/hr against a gate of 10, while best-mode Bounty plus the best Heist gave ~6 Notoriety/hr
+against 20). At 15/4 a Legendary-bounty + King's Hoard farmer lands near 1.8h, i.e. parity. Bands I and
+II are unchanged on purpose. The reward is potatoes-trivial (capped base 200,000); the real prize is the
+guaranteed permanent stat bump, so this is a progression buff, not a potato one. Players already holding
+15-19 Notoriety became confront-eligible the moment it shipped. The guild numbers (infamy gate 10, gains
+2/2/4/6) were deliberately left alone; their "half of Rival's 20" rationale is now historical.
+
 **"Ready now" note on the result embed itself (2026-09-13, direct instruction: "have guild
 raids and bounties/rob-npc give an extra note section on the embed when the rival event is
 ready so players know they should do it")** — `takeBounty.js`/`robNpc.js` each compute a
@@ -1824,7 +1860,7 @@ ready so players know they should do it")** — `takeBounty.js`/`robNpc.js` each
 or `null` on a loss/whiff) right after the accrual write above, and pass it as a new trailing
 param into `createBountyResultEmbed`/`createRobNpcResultEmbed`. Those functions add a
 `⚔️ Rival Bounty Hunter:` field — "Ready now! Run /confront-rival — which scenario you get is
-a surprise." plus the live `X/20 Notoriety` count — whenever `updatedNotoriety >=
+a surprise." plus the live `X/15 Notoriety` count — whenever `updatedNotoriety >=
 Rival.CONFRONTATION_THRESHOLD` AND `rankInfo.rank >= 2` (the exact same two-gate check
 `notoriety.js`'s own `confrontable` computes, so a player never sees "ready now" on the result
 embed while `/confront-rival` would still reject them for being under Rank 2). A player who's
@@ -1836,7 +1872,7 @@ layered-rejection style):
 1. `!userDetails.isMercenary` → reject.
 2. `mercenaryFactory.getMercenaryRankInfo(userDetails.mercenaryBountyWinCount).rank < 2` →
    reject ("you need to be Mercenary Rank 2+...").
-3. `userDetails.mercenaryNotoriety < Rival.CONFRONTATION_THRESHOLD` (20) → reject, stating
+3. `userDetails.mercenaryNotoriety < Rival.CONFRONTATION_THRESHOLD` (15) → reject, stating
    current/needed Notoriety.
 
 No confirm step (same immediacy precedent `/take-bounty` sets), and no interaction at all

@@ -258,7 +258,12 @@ describe('/rob-npc accrues that heist tier\'s own notorietyPerWin on a win only'
             .mockReturnValueOnce(0)
             .mockReturnValueOnce(0)
             .mockReturnValueOnce(0)
-            .mockReturnValueOnce(0.999999);
+            .mockReturnValue(0.999999);
+        // mockReturnValue (not Once) for the tail: a stat-grant HIT also consumes Math.random
+        // for pickStatGrant's own track pick/amount roll, which used to eat the single pinned
+        // 0.999999 and leave the cooldown-skip roll on a real random — a ~15% flake (skip hit
+        // -> second chain link -> notoriety summed twice). Every call after the 3 pinned hits
+        // is now a miss, however many the stat-grant path takes.
         try {
             await callback({}, interaction);
         } finally {

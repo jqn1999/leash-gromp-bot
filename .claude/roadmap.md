@@ -21701,3 +21701,34 @@ into B1-B4 and B5-B12. (4) The Medley II/III reward no longer equals 45% of the 
 (arrays length 10, Ranks 7-10 repeat Rank 6). Updated `.claude/systems/mercenary-bounties.md`, `raids-and-world-events.md`, `safehouses.md`. Web port:
 `financial-project` notes.
 
+## Mercenary Notoriety 15 / Band III 4, and a Rank 8 heist, The King's Hoard (2026-10-30, direct instruction)
+
+**Asked**: after the merc-vs-guild comparison showed mercenaries behind on Rival access, "lets move bounties to 15 notoriety needed with legendary bounties giving
+4, add a new heist after R6 at R8."
+
+**Found**: nothing was broken; two retunes. (1) Measured per hour at power 350, a guild member cycles `/repel-warband` about every 2.0h (Legendary raids ~5
+infamy/hr against a gate of 10) while a mercenary cycled `/confront-rival` about every 3.4h (best-mode Bounty plus the best Heist ~6 Notoriety/hr against a gate of
+20); at 800 power the gap widens to 1.4h vs 2.8h. (2) Ranks 7-10 shipped yesterday only raise the Bounty reward multiplier. Heist odds already cap at Rank 6 on every tier
+and Heist never reads the rank multiplier, so Ranks 8-10 added nothing to Heist income. Also found while sizing it: `/rob-npc` payouts are cap-limited, not
+`workGain`-limited, because `getCachedServerTotal * 0.002 * 4.5` exceeds every `payoutCap` at real server wealth; the earlier merc EV figures that assumed a 1,000 `workGain`
+(including the Raid EV Curves artifact) understate Heist by about a third at power 350 (they used Merchant's Wagon at ~1.05M per attempt, ~2.9M/hr; Royal Treasury is
+~1.58M per attempt, ~3.9M/hr), which lifts the merc lines in that chart by roughly 1M/hr.
+
+**Changed**: `Rival.CONFRONTATION_THRESHOLD` 20 to 15 and `NOTORIETY_PER_BOUNTY_TIER.III` 3 to 4 (bands I/II and the 50 halving point untouched; a
+Legendary-bounty + King's Hoard farmer now cycles in about 1.8h, parity with guilds; the `GuildRival` numbers were left alone and their "half of Rival's 20" comment was
+rewritten as history). New `RobNpc.TIERS` entry `kings_hoard` ("The King's Hoard"): Rank 8, power gate 60, chance 0.315 + 0.015 per rank (42% / 43.5% / 45% at Ranks 8/9/10,
+max 45% so it stays harder than Royal Treasury's 50%), `payoutCap` 70,000, `penaltyPercentOfCap` 1.1, +3 Notoriety per win, 5.5% permanent stat grant on a win. EV per
+attempt at power 350 / 600: Rank 8 1.84M / 3.18M, Rank 9 2.40M / 4.12M, Rank 10 2.95M / 5.07M versus Royal Treasury's 1.58M / 2.72M, so every extra rank is worth +23-30% on this
+tier (about +2% / +6% / +10% of total hourly EV at Ranks 8/9/10). The embed's stat-reward field now names the tier it came from instead of hard-coding Royal Treasury, the
+`/help` heist text lists the fifth tier, and `/rob-npc`'s choices pick it up automatically from `RobNpc.TIERS`.
+
+**Judgment calls and side effects**: (1) The penalty percent is 1.1, not the 1.25 the 0.5/0.75/1.0 ladder suggested: at 1.25 the tier's break-even odds sit at ~40%, so a 42%
+Rank 8 attempt is near zero EV unless the cap is ~150,000 (a ~33M whiff at power 350); 1.1 with a 70,000 cap keeps Rank 8 profitable. The cost is variance: a power-350 whiff
+is ~13.5M against a ~23M win. (2) The stat-grant chance is 0.055 so the per-attempt rate equals Royal Treasury's (2.5% at Rank 10), consistent with the 2026-10-27 stat-chance
+equalization. (3) Anyone holding 15-19 Notoriety is confront-eligible immediately. (4) The Legendary band change makes Legendary the fastest notoriety source for pure Bounty
+farmers; Regular and Elite farming is no faster than before. (5) The `rivalNotorietyAccrual` Royal Treasury halving test was a ~15% flake: a stat-grant hit consumes extra
+`Math.random` calls inside `pickStatGrant`, which ate the single pinned miss meant for the cooldown-skip roll; the tail is now `mockReturnValue(0.999999)` (30/30 clean runs).
+
+**Tests**: `mercenaryFactory.test.js` (King's Hoard shape, rising odds, hardest tier, EV ahead of Royal Treasury at Ranks 8-10 from its gate to the multiplier cap, per-rank EV step,
+stat-grant parity, notoriety constants), `robNpcPowerGate.test.js` (Rank 8 and power gates), `rivalNotorietyAccrual.test.js` fixture fix. Updated `.claude/systems/mercenary-bounties.md`
+(tier table, King's Hoard section, Rival notoriety numbers). Web port: `financial-project` notes.

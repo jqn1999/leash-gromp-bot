@@ -2156,7 +2156,7 @@ const HelpTopics = [
         id: "heist",
         label: "Heist (/rob-npc)",
         description: "The 4-tier solo Heist Ladder and its odds/payouts",
-        content: "`/rob-npc heist-type:<market_stall|merchant_wagon|noble_vault|royal_treasury>` — a solo heist against a fictional target on its own 30-minute cooldown (separate from Bounty's 1-hour one). Each tier needs a Mercenary Rank AND a minimum work multiplier to attempt — rank / power gate / base success chance +per-rank (cap) / payout cap / whiff cost:\n\n**Market Stall** — Rank 1, no power gate — 30% +10%/rank (cap 80%) — payout cap 2,500 — a whiff costs nothing, just the timer.\n**Merchant's Wagon** — Rank 2, 3x multi — 36% +8%/rank (cap 76%) — payout cap 4,500 — a whiff costs 50% of the cap.\n**Noble's Vault** — Rank 4, 15x multi — 32% +6%/rank (cap 62%) — payout cap 9,000 — a whiff costs 75% of the cap.\n**The Royal Treasury** — Rank 6 only, 25x multi — 10% +8%/rank (flat 50% once unlocked) — payout cap 20,500 — a whiff costs 100% of the cap, plus a 5% chance on a WIN at a bonus permanent stat grant.\n\nEvery attempt secretly rolls its own reward size first (0.8x-1.2x), then nudges THAT attempt's own success chance around the tier's baseline by up to ±6 points — go for the biggest possible payout and you're rolling the hardest version of that tier; asking for less is a bit safer, mirroring how you got there. A whiff's loss also scales up the more developed your work multiplier is (about half as fast as a win would), so losses stay a real, felt risk rather than a flat, easily-ignored tax at high power. Your Mercenary Buff's `robChance` pick applies here too, on top of Rank."
+        content: "`/rob-npc heist-type:<market_stall|merchant_wagon|noble_vault|royal_treasury|kings_hoard>` — a solo heist against a fictional target on its own 30-minute cooldown (separate from Bounty's 1-hour one). Each tier needs a Mercenary Rank AND a minimum work multiplier to attempt — rank / power gate / base success chance +per-rank (cap) / payout cap / whiff cost:\n\n**Market Stall** — Rank 1, no power gate — 30% +10%/rank (cap 80%) — payout cap 2,500 — a whiff costs nothing, just the timer.\n**Merchant's Wagon** — Rank 2, 3x multi — 36% +8%/rank (cap 76%) — payout cap 4,500 — a whiff costs 50% of the cap.\n**Noble's Vault** — Rank 4, 15x multi — 32% +6%/rank (cap 62%) — payout cap 9,000 — a whiff costs 75% of the cap.\n**The Royal Treasury** — Rank 6+, 25x multi — 10% +8%/rank (flat 50% once unlocked) — payout cap 20,500 — a whiff costs 100% of the cap, plus a 5% chance on a WIN at a bonus permanent stat grant.\n**The King's Hoard** — Rank 8+, 60x multi — 31.5% +1.5%/rank (42% at Rank 8, 45% at Rank 10) — payout cap 70,000 — a whiff costs 110% of the cap, plus a 5.5% chance on a WIN at a bonus permanent stat grant. The apex gamble: every rank past 8 genuinely improves it.\n\nEvery attempt secretly rolls its own reward size first (0.8x-1.2x), then nudges THAT attempt's own success chance around the tier's baseline by up to ±6 points — go for the biggest possible payout and you're rolling the hardest version of that tier; asking for less is a bit safer, mirroring how you got there. A whiff's loss also scales up the more developed your work multiplier is (about half as fast as a win would), so losses stay a real, felt risk rather than a flat, easily-ignored tax at high power. Your Mercenary Buff's `robChance` pick applies here too, on top of Rank."
     },
     {
         id: "poison-mimic",
@@ -4171,7 +4171,7 @@ const RobNpc = {
         {
             key: 'royal_treasury',
             label: 'The Royal Treasury',
-            rankRequired: 6,          // Rank 6 = MercenaryRank.THRESHOLDS' own max (525 wins) — no higher rank exists
+            rankRequired: 6,          // Rank 6 = 525 wins — was MercenaryRank's max until Ranks 7-10 shipped (2026-10-29); this tier's odds are flat 0.50 from here on, see kings_hoard below for what Ranks 8-10 add
             // Retuned THREE times the same day (2026-09-09, all direct instruction: "fix it" /
             // "tweak the success rate %s higher if needed").
             // First pass: was baseChance 0.06/chancePerRank 0.04/maxChance 0.26, payoutCap
@@ -4251,6 +4251,71 @@ const RobNpc = {
             // existing TIER_I_GRANT pool rather than a new grant table — gives Rank 6 a
             // reason to keep pulling this tier past "same payout as every other Rank 6 win."
             statGrantChanceOnWin: 0.05
+        },
+        {
+            key: 'kings_hoard',
+            label: 'The King\'s Hoard',
+            // Added 2026-10-30, direct instruction ("add a new heist after R6 at R8") — the
+            // first tier past Rank 6. Ranks 7-10 (shipped 2026-10-29) only raised Bounty's
+            // reward multiplier; heist odds were already capped by Rank 6 on every tier and
+            // Heist deliberately never reads the rank multiplier (see mercenaryFactory.
+            // resolveNpcRob), so a Rank 8-10 mercenary's Heist income was identical to Rank
+            // 6's. This is the tier that gives those ranks something on the Heist side.
+            rankRequired: 8,          // Rank 8 = 1,200 wins = MercenaryRank's x6.7 step (guild L8's multiplier)
+            // DESIGN (same EV-sweep method every tier above used: per attempt, integrating the
+            // +/-REWARD_ROLL_SUCCESS_SPREAD coupling over the whole 0.8-1.2x roll, at the
+            // saturated base — real server wealth always pushes workGainAmount * PAYOUT_MULTIPLIER
+            // far past every payoutCap, so payoutCap IS the effective base — with the capped
+            // RobNpc.MAX_REWARD_MULTIPLIER at P>=600 and loss = cap * pct * (1 + LOSS_MULTIPLIER_
+            // SCALING*(M-1))). Four constraints fixed the numbers:
+            //  1. It must RISE across the three ranks it is open to, or Ranks 9 and 10 mean
+            //     nothing here: chance = 0.315 + 0.015*(rank-1) -> 0.42 / 0.435 / 0.45, reaching
+            //     maxChance exactly at Rank 10 (the formula is the unmodified one every other
+            //     tier uses, only the slope is small — a 3-point climb is worth +23-30% EV per
+            //     step, see table below, because this tier sits close to its own break-even odds).
+            //  2. It stays the HARDEST tier: maxChance 0.45 < Royal Treasury's flat 0.50.
+            //  3. Break-even odds are ~0.37 at penaltyPercentOfCap 1.1 once the loss-side scaling
+            //     saturates, so the 0.42-0.45 window is thin by design. penaltyPercentOfCap 1.1
+            //     (0.5/0.75/1.0/1.1 — still escalating, but only a small step) was chosen over
+            //     1.25: at 1.25 the tier's break-even odds are ~0.40, so a Rank 8 attempt at 0.42
+            //     is a coin flip around zero EV unless the cap is ~150,000, which would make a
+            //     single whiff cost ~33M at power 350. At 1.1 a cap of 70,000 does the job.
+            //  4. payoutCap 70,000 (3.4x Royal Treasury's 20,500): EV per attempt vs The Royal
+            //     Treasury at the same power (Rank 6 baseline 1.58M at power 350, 2.72M at 600):
+            //        Rank 8:  1.84M (1.17x)  /  3.18M      Rank 9:  2.40M (1.51x)  /  4.12M
+            //        Rank 10: 2.95M (1.86x)  /  5.07M      (power 350 / power 600)
+            //     — positive and ahead of Royal Treasury at every rank it is open to. Per hour
+            //     (30-min cooldown + 38% skip chains) that is 4.4M / 5.7M / 7.1M at power 350
+            //     versus Royal Treasury's 3.9M, i.e. +0.5M/+1.8M/+3.2M per hour — about +2% /
+            //     +6% / +10% of a Rank 8/9/10 mercenary's total hourly EV (Bounty included),
+            //     so Heist stays the minor stream it was designed as.
+            // The honest cost of that cap: a whiff at power 350 costs 70,000*1.1*175.5 ~= 13.5M
+            // (the win is ~23M), a much swingier tier than anything below it. Intended — it is
+            // the apex gamble, and the Rank-10 odds are what make its EV worth taking.
+            // minPowerRequired 60: break-even is power 5 at Rank 8, and it overtakes Royal
+            // Treasury's own EV from power 22 at Rank 8 (8 at Rank 9, 5 at Rank 10), so 60 keeps
+            // a >2.5x margin over the point it first beats the tier below it — no window where
+            // it is open but strictly worse than Royal Treasury (same dominance-at-the-gate rule
+            // Royal Treasury's own five retunes enforce against Noble's Vault).
+            minPowerRequired: 60,
+            baseChance: 0.315,
+            chancePerRank: 0.015,
+            maxChance: 0.45,
+            payoutCap: 70000,
+            hasPenalty: true,
+            penaltyPercentOfCap: 1.1,
+            // 3: continues the 1/1/2/2 ladder one step up (hardest tier, biggest stakes) and is
+            // the number that lets a Legendary-bounty + this-heist farmer cycle /confront-rival
+            // in ~1.8h at the new 15-Notoriety gate (see Rival.NOTORIETY_PER_BOUNTY_TIER).
+            // Notoriety taper (NOTORIETY_GAIN_HALVING_THRESHOLD 50) applies as for every tier.
+            notorietyPerWin: 3,
+            // Same Tier-I-pool permanent stat grant Royal Treasury carries, at 0.055 rather than
+            // its 0.05 so the PER-ATTEMPT odds match: Royal Treasury grants on 0.05*0.50 = 2.5%
+            // of attempts, this tier on 0.055*0.45 = 2.5% at Rank 10 (2.3% at Rank 8). Held at
+            // parity on purpose — the stat-grant odds across Bounty/Raid/Heist were just
+            // equalized (2026-10-27), and a harder tier should pay in potatoes, not out-grant
+            // the tier below it in permanent stats.
+            statGrantChanceOnWin: 0.055
         }
     ]
 }
@@ -4293,19 +4358,36 @@ const Rival = {
     // 12-Tier Bounty Ladder rework, takeBounty.js looks this up via
     // mercenaryFactory.getBandLetter(result.tier) (B1-4->I, B5-8->II, B9-12->III) rather
     // than a tier letter the resolver itself no longer produces.
-    NOTORIETY_PER_BOUNTY_TIER: { I: 1, II: 2, III: 3 },
+    // III raised 3 -> 4 and CONFRONTATION_THRESHOLD lowered 20 -> 15 on 2026-10-30, direct
+    // instruction ("lets move bounties to 15 notoriety needed with legendary bounties giving
+    // 4") — a guild member cycles /repel-warband roughly 1.7-2x faster than a mercenary
+    // cycles /confront-rival (≈2.0h vs ≈3.4h per cycle at power 350 by the same EV-sweep
+    // method heist/bounty income uses: Legendary raids give ≈5 infamy/hr against a 10 gate,
+    // while best-mode Bounty + the best heist tier gave ≈6 notoriety/hr against a 20 gate),
+    // and Mercenaries are otherwise behind Guilds on everything but Rival access. At 15/4 the
+    // same sweep lands a Legendary-bounty + King's Hoard heist farmer at ≈1.8h per cycle,
+    // i.e. parity with a guild member rather than a lead. Bands I/II unchanged on purpose —
+    // only the top band moved, so Regular/Elite farming isn't a faster notoriety route than
+    // before. NOT a potato buff: Rival's potato payout is tiny (capped base 200,000 x the
+    // scenario factor) — what a faster cycle really buys is the guaranteed PERMANENT stat bump
+    // (see TIER_I/II/III_GRANT), which compounds into Bounty/Heist power, so this is a
+    // progression buff. Players already holding 15-19 Notoriety became confront-eligible the
+    // instant this shipped.
+    NOTORIETY_PER_BOUNTY_TIER: { I: 1, II: 2, III: 4 },
     // Per-tier notoriety on a /rob-npc win now lives on each RobNpc.TIERS entry's own
     // notorietyPerWin (1/1/2/2 for Market Stall/Merchant's Wagon/Noble's Vault/The Royal
     // Treasury — was 1/2/3/4 until 2026-09-29, direct instruction: "Lower merchant wagon to
     // 1, power noble vault and royal treasury to 2") instead of a single flat constant here
     // — originally removed alongside roadmap #50's Heist Ladder rework, mirroring
     // NOTORIETY_PER_BOUNTY_TIER's own per-tier shape just above.
-    CONFRONTATION_THRESHOLD: 20,
+    CONFRONTATION_THRESHOLD: 15,
     // Gain-taper threshold for mercenaryFactory.getNotorietyGain (2026-09-12, direct
     // instruction, raised 20 -> 50 on 2026-09-13: "make the notoriety halving start at 50
     // instead of 20"). Deliberately a SEPARATE constant from CONFRONTATION_THRESHOLD above
-    // rather than reusing it — the /confront-rival unlock gate stays at 20 (unchanged), only
-    // the point past which further gains start halving moved. A player between 20 and 50
+    // rather than reusing it — the /confront-rival unlock gate stayed at 20 (unchanged) when
+    // this moved, only the point past which further gains start halving moved (the gate itself
+    // was later lowered 20 -> 15 on 2026-10-30, see NOTORIETY_PER_BOUNTY_TIER above — this
+    // halving point deliberately did NOT follow it down). A player between 15 and 50
     // Notoriety is confront-eligible but still earns at full rate; the taper only bites once
     // they've kept farming well past being able to cash in.
     NOTORIETY_GAIN_HALVING_THRESHOLD: 50,
@@ -4429,18 +4511,24 @@ const GuildRival = {
     // so leaving it at 1 while regular moved to 2 would have broken that invariant rather
     // than just not touching an unrelated value.
     INFAMY_PER_RAID_MODE: { baby: 2, regular: 2, elite: 4, legendary: 6 },
-    // 10, not Rival's 20 — a guild has exactly ONE accrual stream (raid wins, on
+    // 10, not Rival's (then) 20 — a guild has exactly ONE accrual stream (raid wins, on
     // Raid.RAID_TIMER_SECONDS, identical to Bounty's own cooldown) versus a mercenary's TWO
     // independent streams (Bounty + the twice-as-fast Heist), so real-time pacing to unlock
     // is kept comparable by halving the threshold to compensate for the missing second
-    // stream — see roadmap.md's worked derivation.
+    // stream — see roadmap.md's worked derivation. Rival's gate has since moved to 15 (and
+    // its Legendary band gain to 4, 2026-10-30) because a re-measurement found mercenaries
+    // cycling ~1.7-2x slower than a guild member at the old 20/3; this guild number was
+    // deliberately NOT changed alongside it — the "half of Rival's gate" framing above is
+    // now historical, not a live invariant (15 would imply 7.5), and a guild already earns
+    // 4-6 infamy per Elite/Legendary raid win against this 10 gate.
     INFAMY_THRESHOLD: 10,
     // Infamy-gain taper, mirroring Rival.NOTORIETY_GAIN_HALVING_THRESHOLD's own shape
     // (2026-09-13, direct instruction: "do the same change for guilds with their respective
     // count being 25 when it gets halved"). A SEPARATE constant from INFAMY_THRESHOLD above
     // — /repel-warband's own unlock gate stays at 10 (unchanged), only the point past which
     // further raid-win Infamy gains start halving is new. 25 keeps the same 2.5x-of-its-own-
-    // gate ratio Rival's own 20 -> 50 halving threshold uses (INFAMY_THRESHOLD * 2.5 = 25).
+    // gate ratio Rival's own 20 -> 50 halving threshold used when this was set (INFAMY_THRESHOLD
+    // * 2.5 = 25; Rival's gate is 15 now, so its own ratio is 3.3x — this one was left as-is).
     // A guild between 10 and 25 Infamy is repel-eligible but still earns at full rate; the
     // taper only bites once the guild has kept raiding well past being able to cash in.
     INFAMY_GAIN_HALVING_THRESHOLD: 25,
