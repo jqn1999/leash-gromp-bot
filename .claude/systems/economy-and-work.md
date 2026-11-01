@@ -413,8 +413,10 @@ every track is already maxed on both shop and regrade. The constant itself was d
 `constants.js` along with the roll.
 1. **Free regrade step** on a random track that's shop-maxed but not yet at `REGRADE_CAPS`. Grants
    that track's current tier's real `increase` **in full**, for free, written straight into
-   `regrades.X.regradeAmount` (and resets `regrades.X.failStack` to 0) — the exact same write shape
-   a successful `/regrade` purchase at that tier uses, just without the cost or the roll. A track
+   `regrades.X.regradeAmount` — the exact same write shape a successful `/regrade` purchase at that
+   tier uses, just without the cost or the roll, **except that `regrades.X.failStack` is kept**
+   (2026-11-02, see "Pity stack carried through the free step" below), where a paid success resets it
+   to 0. A track
    only qualifies here if its base (shop-purchased) value already equals that shop's max —
    matching `regrade.js`'s own `hasRequiredBaseAmount` gate exactly, since `/regrade` itself refuses
    to touch a track that isn't shop-maxed yet regardless of `REGRADE_CAPS`.
@@ -992,6 +994,21 @@ embeds:
   each row (`tier.currentRegradeAmount + tier.increase >= REGRADE_CAPS.bankCapacity`), so only the
   ladder's actual final rung shows "Unlimited (maxes Bank Capacity!)" instead of its own literal
   increase — every other row, and every row on the other two tracks, is unaffected.
+
+**Pity stack carried through Ancient's free step (2026-11-02, direct instruction: "build option 1").**
+`failStack` exists to deliver a success and resets to 0 when it does; an Ancient delivers the step
+without spending the stack, so the old reset threw away pity the player had paid for. It also made an
+Ancient worth *least* when the player was most invested, because a free step only saves the remaining
+expected cost: at the 1% / +0.5% per fail / 4.5B tier that is about 74B at a 0% stack, 16.5B at 25%, 8.8B
+at 50% and 6.0B at 75%. `statWriteFactory.ancientRegradeStepWrites` issues the same raw + `regradeAmount`
+ADDs as `regradeSuccessWrites` with no failStack SET, so the stack rides into the next tier's roll
+(`tier.chance * (1 + boost) + failStack`); worth is then about one full tier at any stack (8.8B for the step
+plus roughly 65B of next-tier attempts saved at a 50% stack). A track has a single stack that only changes
+on success, so all of it came from the tier being skipped and nothing needs reconciling. The Ancient embed
+adds a "Pity Kept:" field when the stack is above 0, and the regrade preview/result embeds clamp the shown
+chance at 100% because a carried stack can push the next tier's odds past it (the roll itself,
+`Math.random() < chance`, needs no clamp). Paid `/regrade` successes still reset the stack. The Work Chain
+track is not in Ancient's `REGRADE_TRACKS`, so it is unaffected.
 
 ### Work Chain regrade track (2026-10-13)
 

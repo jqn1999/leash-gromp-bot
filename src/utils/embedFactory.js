@@ -2696,7 +2696,7 @@ class EmbedFactory {
     // guildRaidReady, bountyReady } from workFactory.js's handleAncientPotato — exactly
     // one of regradedStatName/shopUpgradedStatName/potatoesGained>0 is set per roll.
     createAncientPotatoEmbed(userDisplayName, newWorkCount, result, ancientPotato, cooldownSkippedByCompanion = null, companionXpGained = 0, companionName = null, missedCooldownSkipChance = 0) {
-        const { potatoesGained, regradedStatName, regradeIncrease, shopUpgradedStatName, shopUpgradeIncrease, guildRaidReady, bountyReady } = result;
+        const { potatoesGained, regradedStatName, regradeIncrease, regradePityKept = 0, shopUpgradedStatName, shopUpgradeIncrease, guildRaidReady, bountyReady } = result;
         let fields = [{
             name: `Work Count:`,
             value: formatWorkCountValue(newWorkCount, companionXpGained, companionName),
@@ -2715,6 +2715,15 @@ class EmbedFactory {
                 value: `+${regradeIncrease.toLocaleString()} ${regradedStatName}`,
                 inline: true,
             });
+            // Pity carried through the free step (2026-11-02): only shown when there is
+            // actually a stack to keep, so a player with none sees the embed unchanged.
+            if (regradePityKept > 0) {
+                fields.push({
+                    name: `Pity Kept:`,
+                    value: `+${(regradePityKept * 100).toFixed(2)}% toward your next ${regradedStatName} regrade`,
+                    inline: true,
+                });
+            }
         } else if (shopUpgradedStatName) {
             fields.push({
                 name: `Free Shop Upgrade:`,
@@ -4886,7 +4895,7 @@ class EmbedFactory {
         }
         fields.push({
             name: `Success Chance:`,
-            value: `${(successChance*100).toFixed(2)}% (+${(failStack*100).toFixed(2)}%)`,
+            value: `${(Math.min(1, successChance)*100).toFixed(2)}% (+${(failStack*100).toFixed(2)}%)`,
             inline: false,
         })
         if (companionXpGained > 0) {
@@ -4926,7 +4935,7 @@ class EmbedFactory {
             // Bank Capacity's final tier's real +100,000,000,000 increase is the "never
             // worry about bank space again" milestone, not just a big number.
             { name: 'Increase On Success:', value: willMaxBankCapacity ? `Unlimited (fully maxes Bank Capacity!)` : `+${increaseAmount.toLocaleString()} ${typeText}`, inline: true },
-            { name: 'Success Chance:', value: `${(successChance * 100).toFixed(2)}% (+${(failStack * 100).toFixed(2)}%)`, inline: false },
+            { name: 'Success Chance:', value: `${(Math.min(1, successChance) * 100).toFixed(2)}% (+${(failStack * 100).toFixed(2)}%)`, inline: false },
         ];
         if (!canAfford) {
             fields.push({ name: '⚠️ Not enough potatoes:', value: `You need ${(cost - userPotatoes).toLocaleString()} more.`, inline: false });

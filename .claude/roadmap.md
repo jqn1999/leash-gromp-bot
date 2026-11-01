@@ -21750,3 +21750,25 @@ buff term (the web side still has no world-boss or potion terms; that older gap 
 
 **Tests**: `bountyBoardRankScaling.test.js` (buffed board success chance equals plain times 1 + buff), `mercenaryFactory.test.js` (heist loss scale with the buff), web
 `merc-buff-power.test.ts`. Updated `.claude/systems/mercenary-bounties.md` (Mercenary Buff table row).
+
+## Ancient Potato's free regrade step keeps the pity stack (2026-11-02, player-reported, direct instruction "build option 1")
+
+**Asked**: a player who had stacked a large failStack (tens of billions sunk, ~60% next-attempt odds) got the same step from an Ancient Potato and watched the stack reset to 0, "both a
+win and a loss at the same time". Asked to explore ideas, then to build option 1 (carry the stack).
+
+**Found**: not a bug in the arithmetic. A paid success also resets failStack, and since the tier only changes on a success the whole stack came from the tier being skipped, so the
+potatoes were spent on a step the Ancient then delivered. The real problem is that an Ancient only saves the *remaining expected cost* of the step, which collapses as the stack
+grows: at the 1% / +0.5% / 4.5B tier that is ~74B at a 0% stack, 16.5B at 25%, 8.8B at 50% and 6.0B at 75% (400 tier, 0.5% / +0.25% / 5B: 119B at 0%, 9.9B at 50%). So the Ancient was
+worth least exactly when the player was most invested. Other options weighed and not built: a potato refund of the sunk cost (needs a cap, overpays at deep stacks), steering
+Ancient away from stacked tracks (only helps multi-track players, can be added later), and a "regrade writ" token (needs an inventory item and command, and turns optimal play into
+homework).
+
+**Changed**: `statWriteFactory.ancientRegradeStepWrites` (same ADDs as `regradeSuccessWrites`, empty `sets`) replaces the success writes in `workFactory.handleAncientPotato`; the
+result carries `regradePityKept`, and `createAncientPotatoEmbed` shows a "Pity Kept:" field when it is above 0. A carried stack can push the next tier's odds above 100%, so the regrade
+preview and result embeds clamp the displayed chance with `Math.min(1, ...)` (the roll itself is unchanged). Effect: an Ancient is now worth about one full tier at any stack. Side
+effect to know about: players who already hold a big stack get strictly more from an Ancient than before, which is the intent. Web: same change in `gromp-economy` (`doWork` Ancient
+branch and the work activity note) and the chance clamp in the regrade result message.
+
+**Tests**: `workFactory.test.js` (Ancient keeps failStack on every track, same ADDs as a paid success, paid success still resets, embed field only when a stack exists, display clamp),
+web `stat-writes.test.ts` (Ancient branch keeps the stack and reports `regradePityKept`). Updated `.claude/systems/economy-and-work.md` (Ancient branch 1 text and a new
+"Pity stack carried" section).

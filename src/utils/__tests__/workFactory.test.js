@@ -1017,13 +1017,14 @@ function fullyMaxedUser(overrides = {}) {
 describe('handleAncientPotato', () => {
     // Nerfed 2026-08-22 (balance-audit.md), then restored 2026-09-22 (direct instruction:
     // "fix it to just simply give the regrade and actually go under the regrade stat at
-    // 100% value") — grants the FULL tier step directly into regrades.workMulti.regradeAmount
-    // (and resets failStack to 0), matching a real, paid /regrade success exactly, just free.
-    test('grants the full tier step directly into regrades on a shop-maxed, not-yet-regrade-capped track, and resets failStack', async () => {
+    // 100% value") — grants the FULL tier step directly into regrades.workMulti.regradeAmount,
+    // matching a real, paid /regrade success except that failStack is KEPT (2026-11-02, direct
+    // instruction "build option 1" — see statWriteFactory.ancientRegradeStepWrites).
+    test('grants the full tier step directly into regrades on a shop-maxed, not-yet-regrade-capped track, and keeps failStack', async () => {
         const userDetails = baseUser({
             workMultiplierAmount: SHOP_MAX.workMulti, // shop-maxed — eligible for regrade
             regrades: {
-                workMulti: { regradeAmount: 0, failStack: 0.15 }, // only regrade-eligible track — deterministic pick; nonzero failStack to prove it resets
+                workMulti: { regradeAmount: 0, failStack: 0.15 }, // only regrade-eligible track — deterministic pick; nonzero failStack to prove it is carried
                 passiveAmount: { regradeAmount: REGRADE_CAPS.passiveAmount, failStack: 0 },
                 bankCapacity: { regradeAmount: REGRADE_CAPS.bankCapacity, failStack: 0 },
             },
@@ -1048,13 +1049,15 @@ describe('handleAncientPotato', () => {
 
         // Atomic increments (2026-10-11, base-drift refactor — see statWriteFactory.js): real
         // regrade progress advances as an ADD of the same increase to the raw stat and
-        // regradeAmount (the whole point of the 2026-09-22 restore), failStack resets via its own
-        // leaf-path SET, and nothing is written as an absolute raw or a whole regrades/
+        // regradeAmount (the whole point of the 2026-09-22 restore), failStack is neither SET nor
+        // ADDed (carried untouched), and nothing is written as an absolute raw or a whole regrades/
         // sweetPotatoBuffs object — so untouched tracks and sweetPotatoBuffs can't be overwritten.
         const { setFields, addFields } = userDetails._workChainDelta;
         expect(addFields.workMultiplierAmount).toBe(10);
         expect(addFields['regrades.workMulti.regradeAmount']).toBe(10);
-        expect(setFields['regrades.workMulti.failStack']).toBe(0);
+        expect(setFields).not.toHaveProperty('regrades.workMulti.failStack');
+        expect(addFields).not.toHaveProperty('regrades.workMulti.failStack');
+        expect(result.regradePityKept).toBeCloseTo(0.15);
         expect(addFields).not.toHaveProperty('sweetPotatoBuffs.workMultiplierAmount');
         expect(setFields).not.toHaveProperty('workMultiplierAmount');
         expect(setFields).not.toHaveProperty('regrades');
@@ -1090,7 +1093,7 @@ describe('handleAncientPotato', () => {
 
         const { setFields, addFields } = userDetails._workChainDelta;
         expect(addFields['regrades.workMulti.regradeAmount']).toBe(10);
-        expect(setFields['regrades.workMulti.failStack']).toBe(0);
+        expect(setFields).not.toHaveProperty('regrades.workMulti.failStack');
     });
 
     // Regression: a track with regradeAmount < REGRADE_CAPS used to be treated as
@@ -1626,5 +1629,41 @@ describe('calculateGainAmount tax-exempt test user carve-out', () => {
 
         expect(gained).toBe(1000); // no .95 reduction at all
         expect(dynamoHandler.addUserDatabase).not.toHaveBeenCalled();
+    });
+});
+
+// 2026-11-02 — the carried stack is what makes an Ancient worth about one full tier at any stack,
+// so every track the Ancient can land on must keep it, and a paid /regrade success must still reset it.
+describe('Ancient Potato keeps the pity stack (2026-11-02)', () => {
+    const { ancientRegradeStepWrites, regradeSuccessWrites } = require('../statWriteFactory');
+    const { workRegradeTiers } = require('../constants');
+
+    test.each(['workMultiplierAmount', 'passiveAmount', 'bankCapacity'])('%s: same ADDs as a paid success, no failStack SET', statType => {
+        const ancient = ancientRegradeStepWrites(statType, 25);
+        const paid = regradeSuccessWrites(statType, 25);
+        expect(ancient.adds).toEqual(paid.adds);
+        expect(ancient.sets).toEqual({});
+        expect(Object.keys(paid.sets)).toEqual([expect.stringMatching(/\.failStack$/)]); // paid success still resets
+    });
+
+    test('the Ancient embed shows the kept stack only when there is one', () => {
+        const { EmbedFactory } = require('../embedFactory');
+        const embed = result => new EmbedFactory().createAncientPotatoEmbed('Tester', 5, {
+            potatoesGained: 0, regradedStatName: 'Work Multiplier', regradeIncrease: 10, shopUpgradedStatName: null,
+            shopUpgradeIncrease: 0, guildRaidReady: false, bountyReady: false, ...result,
+        }, { description: 'An ancient potato.', thumbnailUrl: 'https://example.com/a.png' }).toJSON().fields.map(f => f.name);
+        expect(embed({ regradePityKept: 0.2 })).toContain('Pity Kept:');
+        expect(embed({ regradePityKept: 0 })).not.toContain('Pity Kept:');
+    });
+
+    test('a carried stack can push the next tier past 100% and the regrade embeds clamp the displayed chance', () => {
+        const { EmbedFactory } = require('../embedFactory');
+        const f = new EmbedFactory();
+        const lastTier = workRegradeTiers[workRegradeTiers.length - 1];
+        const chanceOfSuccess = lastTier.chance + 1.2; // stack carried over from an earlier, much cheaper tier
+        const preview = f.createRegradePreviewEmbed('Tester', 'u1', null, 1e12, 'Work Multiplier', 100, lastTier.cost, lastTier.increase, chanceOfSuccess, 1.2).toJSON();
+        const shown = preview.fields.find(x => x.name === 'Success Chance:').value;
+        expect(shown.startsWith('100.00%')).toBe(true);
+        expect(Math.random() < chanceOfSuccess).toBe(true); // the roll itself needs no clamp: random() < 1 always holds
     });
 });

@@ -6,7 +6,7 @@ const rebirthFactory = require("../utils/rebirthFactory");
 const guildBuffFactory = require("../utils/guildBuffFactory");
 const mercenaryBuffFactory = require("../utils/mercenaryBuffFactory");
 const { WORK_SCENARIO_INDICES } = require("../utils/eventFactory");
-const { statGrantAdds, regradeSuccessWrites, mergeAdds } = require("../utils/statWriteFactory");
+const { statGrantAdds, ancientRegradeStepWrites, mergeAdds } = require("../utils/statWriteFactory");
 
 // Prospector's specialEncounterMultiplierBonus perk (see constants.js) widens SEVERAL
 // non-contiguous scenarios' own slice of work.js's cumulative roll table — Poison, Large,
@@ -594,6 +594,7 @@ class WorkFactory {
         let houseTax = 0;
         let regradedStatName = null;
         let regradeIncrease = 0;
+        let regradePityKept = 0;
         let shopUpgradedStatName = null;
         let shopUpgradeIncrease = 0;
         // Atomic increments (2026-10-11, base-drift refactor — see statWriteFactory.js): the
@@ -614,14 +615,21 @@ class WorkFactory {
             const currentTier = track.tiers.find(tier => tier.currentRegradeAmount === regrades[track.regradeKey].regradeAmount);
             // Restored 2026-09-22 (direct instruction) to a full tier step, written
             // straight into regrades[track].regradeAmount — the exact same write shape a
-            // real, paid /regrade success uses (regrade.js), just free. failStack also
-            // resets to 0, matching what a real success does — this IS a completed
-            // regrade step, not a separate bonus category alongside it. See this
+            // real, paid /regrade success uses (regrade.js), just free — this IS a completed
+            // regrade step, not a separate bonus category alongside it (except that, unlike a
+            // paid success, it no longer resets failStack, see below). See this
             // function's own top comment for the nerf/restore history.
+            //
+            // failStack is now KEPT (2026-11-02, direct instruction): this used to reset it
+            // like a paid success, which made an Ancient worth least when the player had
+            // sunk the most into pity (see statWriteFactory.ancientRegradeStepWrites). The
+            // carried stack applies to the NEXT tier's roll, surfaced on the embed as
+            // regradePityKept.
             regradeIncrease = currentTier.increase;
             regradedStatName = track.label;
+            regradePityKept = regrades[track.regradeKey].failStack || 0;
 
-            const writes = regradeSuccessWrites(track.statField, regradeIncrease);
+            const writes = ancientRegradeStepWrites(track.statField, regradeIncrease);
             statAdds = writes.adds;
             statSets = writes.sets;
         } else if (shopEligibleTracks.length > 0) {
@@ -693,6 +701,7 @@ class WorkFactory {
             potatoesGained,
             regradedStatName,
             regradeIncrease,
+            regradePityKept,
             shopUpgradedStatName,
             shopUpgradeIncrease,
             guildRaidReady: Boolean(userDetails.guildId),

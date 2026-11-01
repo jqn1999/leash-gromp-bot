@@ -52,6 +52,21 @@ function regradeSuccessWrites(statType, increase) {
     };
 }
 
+// Ancient Potato's free regrade step (2026-11-02, direct instruction, "build option 1"): the same
+// raw + regradeAmount ADDs as a paid success, but the failStack is deliberately NOT reset. A paid
+// success resets the stack because the stack's whole job is to deliver that success; an Ancient
+// delivers the step without spending it, so resetting would throw away pity the player paid for
+// and made the Ancient worth LEAST exactly when they were most invested (it only saves the
+// remaining expected cost: ~74B at a 0% stack vs ~9B at 50% on the 1%/4.5B tier). Carrying it
+// forward makes the Ancient worth about one full tier at any stack. A track only ever has one
+// stack and it only changes on success, so there is nothing to reconcile against the new tier.
+function ancientRegradeStepWrites(statType, increase) {
+    return {
+        adds: regradeSuccessWrites(statType, increase).adds,
+        sets: {}
+    };
+}
+
 // A failed regrade attempt only grows failStack.
 function regradeFailAdds(statType, failStackIncrease) {
     return { [`regrades.${REGRADE_KEY[statType]}.failStack`]: failStackIncrease };
@@ -117,6 +132,7 @@ module.exports = {
     TRACKED_STATS,
     statGrantAdds,
     regradeSuccessWrites,
+    ancientRegradeStepWrites,
     regradeFailAdds,
     chainRegradeSuccessWrites,
     chainRegradeFailAdds,
