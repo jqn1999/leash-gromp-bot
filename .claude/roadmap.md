@@ -21732,3 +21732,21 @@ farmers; Regular and Elite farming is no faster than before. (5) The `rivalNotor
 **Tests**: `mercenaryFactory.test.js` (King's Hoard shape, rising odds, hardest tier, EV ahead of Royal Treasury at Ranks 8-10 from its gate to the multiplier cap, per-rank EV step,
 stat-grant parity, notoriety constants), `robNpcPowerGate.test.js` (Rank 8 and power gates), `rivalNotorietyAccrual.test.js` fixture fix. Updated `.claude/systems/mercenary-bounties.md`
 (tier table, King's Hoard section, Rival notoriety numbers). Web port: `financial-project` notes.
+
+## Mercenary workMulti buff: /bounty-board preview and Heist were missing it (2026-11-01, direct instruction)
+
+**Asked**: "Does merc work multi buff not affect bounty success rate? It should if not", then "does bountyboard reflect that", then "fix it".
+
+**Found**: the buff already reached the real Bounty roll. `mercenaryFactory.computeEffectiveBountyPower` multiplies the team-power formula by `(1 + world buff) * (1 + workMulti buff)`,
+and that one number drives success chance, tier weighting, the Metal Potato Medley roll and Stat Bounty. Two places had not followed. `/bounty-board` called `getEffectiveRaidPower`
+directly, so for any merc with the buff (up to +15%) or the world-boss buff up it showed every success chance and tier weight too low. And `resolveNpcRob` built its
+`developedMultiplier` from work multi, companion, rebirth, world-buff and potion terms but not `getMercenaryWorkMulti`, so the buff never changed a Heist win's reward or a loss's
+`lossScale`, even though every `/work` handler adds it. Heist odds are not power-based, so success chance was unaffected.
+
+**Changed**: `computeEffectiveBountyPower` is exported and `bountyBoard.js` uses it (the board and the roll can no longer drift). `resolveNpcRob` adds `getMercenaryWorkMulti` to the
+developed multiplier, ahead of the 600 cap, so it lifts win reward and loss scale together (R6+ with the buff: +15% on both before the cap). Side effect to know about: heist
+losses scale up with the buff too, by design, so risk and reward flatten together as the existing cap comment intends. Web: the board and heist in `gromp-mercenary` got the same
+buff term (the web side still has no world-boss or potion terms; that older gap is unchanged).
+
+**Tests**: `bountyBoardRankScaling.test.js` (buffed board success chance equals plain times 1 + buff), `mercenaryFactory.test.js` (heist loss scale with the buff), web
+`merc-buff-power.test.ts`. Updated `.claude/systems/mercenary-bounties.md` (Mercenary Buff table row).

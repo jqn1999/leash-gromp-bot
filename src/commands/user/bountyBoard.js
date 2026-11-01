@@ -1,6 +1,6 @@
 const { getUserInteractionDetails, requireUserDetails } = require("../../utils/helperCommands")
 const { Bounty, Raid } = require("../../utils/constants");
-const { getEffectiveRaidPower, getDynamicTierWeights } = require("../../utils/raidFactory");
+const { getDynamicTierWeights } = require("../../utils/raidFactory");
 const mercenaryFactory = require("../../utils/mercenaryFactory");
 const { EmbedFactory } = require("../../utils/embedFactory");
 const embedFactory = new EmbedFactory();
@@ -34,9 +34,11 @@ module.exports = {
         }
 
         const rankInfo = mercenaryFactory.getMercenaryRankInfo(userDetails.mercenaryBountyWinCount);
-        // A 1-person "roster" run through the exact same power formula a guild raid
-        // uses — see mercenaryFactory.resolveBountyAttempt's own comment.
-        const effectiveBountyPower = getEffectiveRaidPower([userDetails]);
+        // The same power resolveBountyAttempt rolls against, including the world-boss buff
+        // and the Mercenary Buff's workMulti category (2026-11-01 — this preview used to call
+        // getEffectiveRaidPower directly and so showed every success chance / tier weight too
+        // low for any merc with either buff active).
+        const { effectiveBountyPower } = await mercenaryFactory.computeEffectiveBountyPower(userDetails);
 
         // reward scaled by the mercenary's own Rank multiplier (2026-09-27, direct
         // instruction: "make bountyboard command take into account their merc level") —

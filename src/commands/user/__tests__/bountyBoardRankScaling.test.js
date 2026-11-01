@@ -115,3 +115,26 @@ test('penalty stays unscaled by rewardMultiplier at every rank — losses are de
     });
     spy.mockRestore();
 });
+
+// 2026-11-01 — the board used to call getEffectiveRaidPower directly, so it left out the
+// Mercenary Buff's workMulti category that resolveBountyAttempt's own computeEffectiveBountyPower
+// multiplies in, showing every success chance too low for a buffed merc.
+test('a merc running the workMulti buff sees the same buffed power resolveBountyAttempt rolls against', async () => {
+    const { MercenaryBuffScaling } = require('../../../utils/constants');
+    const rank = MercenaryRank.THRESHOLDS.length;
+    const winsRequired = MercenaryRank.THRESHOLDS[rank - 1].winsRequired;
+    const base = { ...mercUser(winsRequired), workMultiplierAmount: 300 };
+    const spy = jest.spyOn(EmbedFactory.prototype, 'createBountyBoardEmbed').mockReturnValue({});
+
+    dynamoHandler.findUser.mockResolvedValue(base);
+    await callback({}, fakeInteraction());
+    const plainTier = spy.mock.calls[0][2].flatMap(m => m.weightedTiers).find(t => t.tier === 9);
+
+    dynamoHandler.findUser.mockResolvedValue({ ...base, mercenaryBuff: 'workMulti' });
+    await callback({}, fakeInteraction());
+    const buffedTier = spy.mock.calls[1][2].flatMap(m => m.weightedTiers).find(t => t.tier === 9);
+
+    const buffPercent = MercenaryBuffScaling.workMulti[rank - 1];
+    expect(buffedTier.successChance).toBeCloseTo(plainTier.successChance * (1 + buffPercent), 5);
+    spy.mockRestore();
+});

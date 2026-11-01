@@ -1,7 +1,7 @@
 const { MercenaryRank, Bounty, BountyScenarios, BountyStatReward, StatBountyFlavor, RobNpc, MercenaryCompanionDrop, Work, Raid, Rival, RivalMercenaries, SpudKeep } = require("../utils/constants");
 const { getRandomFromInterval } = require("../utils/helperCommands");
 const { getEffectiveRaidPower, rollWeightedTier } = require("../utils/raidFactory");
-const { calculateGainAmount, applyCatchUp, getGuildWorkMulti, getCompanionWorkMulti, getWorldBuffWorkMulti, getWorldBuffWorkMultiPercent, getPotionWorkMulti } = require("../utils/workFactory");
+const { calculateGainAmount, applyCatchUp, getGuildWorkMulti, getCompanionWorkMulti, getWorldBuffWorkMulti, getWorldBuffWorkMultiPercent, getPotionWorkMulti, getMercenaryWorkMulti } = require("../utils/workFactory");
 const companionFactory = require("../utils/companionFactory");
 const rebirthFactory = require("../utils/rebirthFactory");
 const dynamoHandler = require("../utils/dynamoHandler");
@@ -442,7 +442,14 @@ async function resolveNpcRob(userDetails, workGainAmount, catchUpBonus = 0, heis
     // Trading Post's Steadfast Draught (systems/trading-post.md) — same bucket as every
     // other term here.
     const potionMultiplier = getPotionWorkMulti(userDetails, userMultiplier);
-    const developedMultiplier = userMultiplier + guildMultiplier + companionMultiplier + rebirthMultiplier + worldBuffMultiplier + potionMultiplier;
+    // The Mercenary Buff's workMulti category (2026-11-01, direct instruction after a player
+    // asked whether it reaches Bounty — it did, via computeEffectiveBountyPower, but this
+    // term was missing, so a merc running the buff earned it on /work and Bounty power yet
+    // not on Heist's reward or loss-scale). Same absolute-amount shape every /work handler
+    // adds it with (userMultiplier * the rank's buff percent), and like the other terms it
+    // lands in both the win-side reward and the loss-side lossScale via the cap below.
+    const mercenaryBuffMultiplier = getMercenaryWorkMulti(userDetails, userMultiplier);
+    const developedMultiplier = userMultiplier + guildMultiplier + companionMultiplier + rebirthMultiplier + worldBuffMultiplier + potionMultiplier + mercenaryBuffMultiplier;
     // Capped 2026-09-12, direct instruction — see RobNpc.MAX_REWARD_MULTIPLIER's own comment
     // in constants.js. Applied to BOTH the loss-side lossScale below and the win-side reward
     // (via effectiveMultiplier further down), so risk and reward flatten together past this
@@ -671,6 +678,7 @@ async function getMercenaryCooldownSkipSources(userDetails) {
 }
 
 module.exports = {
+    computeEffectiveBountyPower,
     getBandLetter,
     BOUNTY_MODE_BAND,
     getBountyModeTiers,

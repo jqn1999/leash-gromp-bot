@@ -1085,6 +1085,32 @@ describe('resolveNpcRob', () => {
         }
     });
 
+    // 2026-11-01 — the Mercenary Buff's workMulti category used to reach /work and Bounty
+    // power but was missing from Heist's developed multiplier, so it changed neither a win's
+    // reward nor a loss's scale. A whiff is the deterministic way to observe it: the penalty
+    // is payoutCap * penaltyPercentOfCap * roll * (1 + LOSS_MULTIPLIER_SCALING * (M - 1)).
+    test('the Mercenary Buff workMulti category raises the Heist loss scale (it feeds the developed multiplier)', async () => {
+        const { MercenaryBuffScaling } = require('../constants');
+        const maxRankWins = MercenaryRank.THRESHOLDS[MercenaryRank.THRESHOLDS.length - 1].winsRequired;
+        const whiff = async user => {
+            const randomSpy = jest.spyOn(Math, 'random')
+                .mockReturnValueOnce(MIDPOINT_REWARD_ROLL)   // reward roll -> midpoint
+                .mockReturnValueOnce(0.999999)               // win check -> whiff
+                .mockReturnValue(MIDPOINT_REWARD_ROLL);      // loss variance roll -> 1.0x
+            try {
+                return await mercenaryFactory.resolveNpcRob(user, 1000, 0, 'royal_treasury');
+            } finally {
+                randomSpy.mockRestore();
+            }
+        };
+        const plain = await whiff(baseUser({ mercenaryBountyWinCount: maxRankWins, isMercenary: true, workMultiplierAmount: 100 }));
+        const buffed = await whiff(baseUser({ mercenaryBountyWinCount: maxRankWins, isMercenary: true, mercenaryBuff: 'workMulti', workMultiplierAmount: 100 }));
+        const buffPercent = MercenaryBuffScaling.workMulti[MercenaryBuffScaling.workMulti.length - 1];
+        const scaleFor = m => 1 + RobNpc.LOSS_MULTIPLIER_SCALING * (m - 1);
+        expect(buffed.penaltyAmount).toBeGreaterThan(plain.penaltyAmount);
+        expect(buffed.penaltyAmount / plain.penaltyAmount).toBeCloseTo(scaleFor(100 * (1 + buffPercent)) / scaleFor(100), 2);
+    });
+
     test('a mercenary who picked a DIFFERENT buff category (or isn\'t a mercenary at all) gets no Heist bonus', async () => {
         const maxRankWins = MercenaryRank.THRESHOLDS[MercenaryRank.THRESHOLDS.length - 1].winsRequired;
         const randomSpy = jest.spyOn(Math, 'random')
