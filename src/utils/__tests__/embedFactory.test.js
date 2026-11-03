@@ -262,6 +262,25 @@ describe('buildCooldownSkipField (via createWorkEmbed)', () => {
         expect(field).toBeDefined();
     });
 
+    // 2026-11-03: a Yamimic-equipped player's skip hit is attributed to 'yamimic' (it mirrors the best
+    // workCooldownSkipChance in the roster), which had no flavor entry, so /work threw on `flavor.emoji`.
+    // Covers every companion that can be the skip source, so a new one can't reopen the gap.
+    test('every companion that can carry or mirror a work cooldown skip builds its field without throwing', () => {
+        const { Companions, MimicryCompanion } = require('../constants');
+        const ids = Companions.filter(c => c.perks.some(p => p.type === 'workCooldownSkipChance')).map(c => c.id);
+        expect(ids).toContain(MimicryCompanion.ID);
+        for (const id of ids) {
+            const embed = embedFactory.createWorkEmbed('User', 10, 100, mob, id);
+            const name = Companions.find(c => c.id === id).name;
+            expect(embed.data.fields.find(f => f.name.includes(name))).toBeDefined();
+        }
+    });
+
+    test('an unknown skip-source companion id falls back to a plain line instead of crashing', () => {
+        const embed = embedFactory.createWorkEmbed('User', 10, 100, mob, 'not_a_real_companion');
+        expect(embed.data.fields.find(f => f.name.includes('Your companion'))).toBeDefined();
+    });
+
     test('a World Boss buff-triggered skip shows a distinct blessing line naming the boss, not a companion', () => {
         const embed = embedFactory.createWorkEmbed('User', 10, 100, mob, { worldBuffBossName: 'Griseous, the Dragon Fruit' });
         const field = embed.data.fields.find(f => f.name.includes('Blessing'));

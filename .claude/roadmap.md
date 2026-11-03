@@ -21772,3 +21772,13 @@ branch and the work activity note) and the chance clamp in the regrade result me
 **Tests**: `workFactory.test.js` (Ancient keeps failStack on every track, same ADDs as a paid success, paid success still resets, embed field only when a stack exists, display clamp),
 web `stat-writes.test.ts` (Ancient branch keeps the stack and reports `regradePityKept`). Updated `.claude/systems/economy-and-work.md` (Ancient branch 1 text and a new
 "Pity stack carried" section).
+
+## /work crashed with "hit an unexpected error" for Yamimic-equipped players on a cooldown-skip hit (2026-11-03, player-reported)
+
+**Reported**: a player (digbaron) saw "your /work attempt hit an unexpected error and had to stop" repeatedly; asked to "look into yamimic code".
+
+**Found**: the crash log gave the line: `TypeError: Cannot read properties of undefined (reading 'emoji')` at `embedFactory.buildCooldownSkipField`. When a cooldown-skip roll hits, `_cooldownSkippedByCompanion` holds the id of the companion that supplied the chance. Yamimic mirrors `workCooldownSkipChance` from the best owned Mochi/Spudsprite/Fieldmouse (`getMimicryPerkValue`), so with Yamimic equipped a hit is attributed to `'yamimic'`. `COOLDOWN_SKIP_FLAVOR` only had fieldmouse, spudsprite and mochi, so `flavor.emoji` threw. It had been missing since Yamimic shipped (2026-09-06) and only fires on a skip HIT, which is why a 30,000-run replay of the player's record missed it: the replay's mocked skip source was an object, not a companion id. The /work chain catch turned the throw into the generic recovery message; nothing was written, so the player lost nothing but the roll.
+
+**Changed**: added a Yamimic flavor entry, and `buildCooldownSkipField` now falls back to a plain "Your cooldown never started" line (and "Your companion" if the id is unknown) instead of throwing, so a future companion missing from the table can't take down a /work chain over flavor text. The web has no per-companion skip flavor table and needed no change.
+
+**Tests**: `embedFactory.test.js` builds the field for every companion that carries `workCooldownSkipChance` (which includes Yamimic via its manifest) and for an unknown id.

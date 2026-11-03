@@ -280,8 +280,16 @@ function formatCompanionPerks(companion, level = 1, ascensionStars = 0) {
 const COOLDOWN_SKIP_FLAVOR = {
     fieldmouse: { emoji: '🐭', text: 'Scouted ahead — your /work cooldown never started, go again right away!' },
     spudsprite: { emoji: '✨', text: 'Bent time around your cooldown — it never even started, go again right away!' },
-    mochi: { emoji: '🐈‍⬛', text: 'Kept pace with you the whole way — your cooldown never started, go again right away!' }
+    mochi: { emoji: '🐈‍⬛', text: 'Kept pace with you the whole way — your cooldown never started, go again right away!' },
+    // Yamimic mirrors workCooldownSkipChance from whichever owned companion carries the best value
+    // (getMimicryPerkValue), so a skip hit while Yamimic is equipped is attributed to Yamimic's own id.
+    // It had no entry here from its 2026-09-06 launch, so that hit threw on `flavor.emoji` and /work
+    // answered "hit an unexpected error" instead of the result (2026-11-03 fix).
+    yamimic: { emoji: '🎭', text: 'Wore a face that never waits in line — your cooldown never started, go again right away!' }
 };
+// Any companion that gains a workCooldownSkipChance perk and is missing from the table above still gets a
+// plain line rather than crashing the whole /work chain over flavor text.
+const FALLBACK_COOLDOWN_SKIP_FLAVOR = { emoji: '✨', text: 'Your cooldown never started — go again right away!' };
 
 // Chain Cap notice (2026-10-04, direct instruction: "Whenever a full 5 additional work,
 // raid, bounty, or rob-npc chain happens... make sure the skip text says something about
@@ -399,9 +407,9 @@ function buildCooldownSkipField(cooldownSkipSource, missedSkipChance = 0) {
         };
     }
     const companion = Companions.find(c => c.id === cooldownSkipSource);
-    const flavor = COOLDOWN_SKIP_FLAVOR[cooldownSkipSource];
+    const flavor = COOLDOWN_SKIP_FLAVOR[cooldownSkipSource] ?? FALLBACK_COOLDOWN_SKIP_FLAVOR;
     return {
-        name: `${flavor.emoji} ${companion.name}:`,
+        name: `${flavor.emoji} ${companion?.name ?? 'Your companion'}:`,
         value: flavor.text,
         inline: false,
     };
