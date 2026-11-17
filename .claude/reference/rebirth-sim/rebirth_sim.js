@@ -5,12 +5,15 @@ function expAttempts(p0,inc){let surv=1,e=0;for(let k=0;;k++){const p=Math.min(1
 const reg=(tiers)=>tiers.map(t=>({cost:t.cost*expAttempts(t.chance,t.failStackIncrease),inc:t.increase}));
 const R={work:reg(c.workRegradeTiers),passive:reg(c.passiveRegradeTiers),bank:reg(c.bankRegradeTiers)};
 const rebirthPct=n=>n<=0?0:Math.min(1,0.05+0.095*(n-1));
-const WORKS_PER_DAY=440; // active player: 5-min cooldown plus a ~35% skip chain
+const WORKS_PER_DAY=440; // an active player: 5-minute cooldown plus a ~35% skip chain
+// Expected potatoes per /work as a multiple of the multiplier, across every scenario (regular 87% x1000, large 4% x10k, golden .1% x500k,
+// metal, minus poison). The first version of this model used 1000 (regular only), which understated /work.
+const YIELD=1800;
 function sim({sweetWork,sweetPassive,rebirths,costMult=1,groupPerDay=0}){
   const rp=rebirthPct(rebirths);
   const st={work:{shop:0,reg:0},passive:{shop:0,reg:0},bank:{shop:0,reg:0},starch:0};
   let workBase=1,passiveBase=0,regW=0,regP=0,cash=0,days=0;
-  const income=()=>WORKS_PER_DAY*1000*(workBase+sweetWork+regW)*(1+rp)*.95+(passiveBase+sweetPassive+regP)*(1+rp)+groupPerDay;
+  const income=()=>WORKS_PER_DAY*YIELD*(workBase+sweetWork+regW)*(1+rp)*.95+(passiveBase+sweetPassive+regP)*(1+rp)+groupPerDay;
   const marks={};
   let shopsDoneDay=null;
   for(let guard=0;guard<500;guard++){
@@ -45,13 +48,13 @@ if(require.main===module){
 // Rebirth ROI: income forgone while re-climbing vs the extra income the next bonus step pays forever.
 function roi({sweetWork,sweetPassive,fromRebirths,costMult=1,groupPerDay=0,stepPct}){
   const rpOld=rebirthPct(fromRebirths), rpNew=stepPct!==undefined?stepPct:rebirthPct(fromRebirths+1);
-  const maxedStat=(rp)=>WORKS_PER_DAY*1000*(100+500+sweetWork)*(1+rp)*.95+(60e6+600e6+sweetPassive)*(1+rp);
+  const maxedStat=(rp)=>WORKS_PER_DAY*YIELD*(100+500+sweetWork)*(1+rp)*.95+(60e6+600e6+sweetPassive)*(1+rp);
   const full=maxedStat(rpOld), uplift=maxedStat(rpNew)-full;
   // Re-run the climb at the NEW rebirth pct, accumulating forgone stat income relative to the maxed account.
   const rp=rpNew;
   let workBase=1,passiveBase=0,regW=0,regP=0,cash=0,days=0,forgone=0;
   const st={w:0,p:0,b:0,s:0,rw:0,rp:0,rb:0};
-  const inc=()=>WORKS_PER_DAY*1000*(workBase+sweetWork+regW)*(1+rp)*.95+(passiveBase+sweetPassive+regP)*(1+rp);
+  const inc=()=>WORKS_PER_DAY*YIELD*(workBase+sweetWork+regW)*(1+rp)*.95+(passiveBase+sweetPassive+regP)*(1+rp);
   for(let g=0;g<500;g++){
     const sw=byId.workShop[st.w],sp=byId.passiveIncomeShop[st.p],sb=byId.bankShop[st.b],ss=byId.starchShop[st.s];
     const o=[];

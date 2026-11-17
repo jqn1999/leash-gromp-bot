@@ -10,7 +10,8 @@ item below, per the repo's sibling-repo rule; each shipped item gets a numbered 
 
 Players rebirth and keep `sweetPotatoBuffs` (Tower, World Boss, Sweet Potato encounters). Three things follow:
 
-1. **The re-climb is fast at the start.** Shop tiers fall quickly because multi and passive are already high.
+1. **The early re-climb is fast.** Shop tiers fall quickly because multi and passive are already high (a day or two). Note the
+   shops are only about 1% of the total cost; the real driver of climb speed is group income (section 5).
 2. **Other players can fund the re-climb.** `/give` (30% tax), the companion market (5% tax), `/rob` against a rich friend, and
    guild bank withdrawals all move wealth into a freshly reset account.
 3. **Mercenaries and guilds keep their rank/level multipliers.** A Rank 8 merc earns x6.7 on every low-tier bounty at tiny power,
@@ -86,53 +87,75 @@ recovery    = clamp(currentWorkMultiplierAmount / reference, FLOOR, 1)
 
 ## 5. Cost and reward balance (numbers)
 
-Model: `/work` about 440 calls/day (5-minute cooldown plus a ~35% skip chain), regular payout `1000 x multi x 0.95`, passive
-income per day, plus optional "group income". Purchases are greedy (cheapest next tier). Regrade costs use expected attempts
-including pity. Scripts: `.claude/reference/rebirth-sim/rebirth_sim.js` and `rebirth_solve.js` (read live values from `constants.js`).
+**Correction (2026-11-17).** The first version of this section modelled a solo player (work + passive only) and projected 856-2,339
+days to a full re-max. The user pointed out that real top players approach maxed regrades about 3 months in, so that model was
+off by an order of magnitude. It left out **group income** (guild raids, Tower, bounties, Spud Keep, World Boss), which is most
+of a top player's earnings. The numbers below replace it. Scripts: `.claude/reference/rebirth-sim/rebirth_sim.js` and
+`rebirth_solve.js` (read live values from `constants.js`).
 
-**Cost structure.** Shops total about 9.6B (work 2.3B, passive 1.0B, bank 5.1B, starch 1.2B). Expected regrade cost is about
-458B (work) + 458B (passive) + 83B (bank), roughly **1T**. The shop phase is about 1% of the total climb.
+**Calibration from a real record (digbaron).** `totalEarnings` 281B over at least 75 days, about 3.75B/day. His shop and
+regrade progress implies about **248B of expected spend, 25% of the ~1.0T re-max cost** (work regrades 199B, passive 29B, bank
+11B, shops 9.5B), so almost all his earnings went into progression. At his multiplier (~615) and passive (440M/day), `/work`
+plus passive is only about 0.7B/day, so **roughly 80% of his income is group income (~3B/day)**.
 
-**How fast sweet buffs make the climb** (solo, work + passive only):
+**Cost structure.** Shops total about 9.6B; expected regrade cost is about 458B (work) + 458B (passive) + 83B (bank), roughly
+**1.0T**. Shops are about 1% of the climb in cost and under 5% in time.
 
-| Sweet buffs kept | Days until shops done | Days to full re-max |
-|---|---|---|
-| none (first climb) | 213 | 2,339 |
-| 100 work / 50M passive | 74 | 1,798 |
-| 200 / 250M | 31 | 1,216 |
-| 400 / 500M | 18 | 856 |
+**Model.** 440 `/work` per day, about 1,800 x multiplier per work across all scenarios (regular 87% x1000, large, golden, metal,
+minus poison), passive per day, plus a constant group income per day that does **not** depend on the player's own power
+(raids pay an equal split, merc/guild multipliers persist). Greedy purchases, expected regrade cost with pity.
 
-So the shop phase is up to **12x faster** for a buffed player, while the whole climb is about 2.7x faster. The early game
-collapsing is real, but it is only a sliver of the total climb.
-
-**Reward vs cost (payback).** Payback = stat income forgone while re-climbing / extra stat income per day from the next bonus
-step. With the current steps (5%, then +9.5%):
-
-| Group income | Rebirth | Climb | Payback |
+| Group income/day | First climb (no sweet buffs) | Rebirther, sweet 200 / 250M passive | Rebirther, sweet 400 / 500M |
 |---|---|---|---|
-| none | #1 | 1,158 d | 6,938 d |
-| 1B/day | #1 | 531 d | 2,948 d |
-| 3B/day | #1 | 258 d | 1,386 d |
-| 3B/day | #2 | 253 d | 673 d |
+| 0 (solo) | 1,854 d | 943 d | 668 d |
+| 1B | 615 d | 480 d | 399 d |
+| 3B | 276 d | 245 d | 222 d |
+| 6B | 151 d | 142 d | 134 d |
+| 10B | 95 d | 91 d | 87 d |
+| 15B | 64 d | 63 d | 61 d |
 
-The model counts only work and passive income. Rebirth also raises bank capacity and raid power, so real payback is better, but
-the order of magnitude says the **bonus is too small**, not the cost too low. To pay back in about 180 days the first-rebirth
-bonus would need to be roughly **21-36%** (4-7x the current 5%), later steps about +6-37 points.
+**Findings**
+1. **"About 3 months" corresponds to roughly 10B/day of group income.** That is consistent with digbaron's trajectory (3.75B/day
+   average and rising as raids and power scale).
+2. **Sweet buffs are not the main accelerant; group income is.** At 3B/day a buffed rebirther re-climbs in 245 d vs 276 d for a
+   first climb; at 10B/day it is 91 d vs 95 d. The kept buffs mostly erase the shop phase (a day or two either way).
+3. **Group income survives a rebirth untouched** (equal raid split, level and rank multipliers). So a merc or guild rebirther
+   re-climbs at essentially the speed of their first climb, with no real cost for resetting their power. This makes the recovery
+   factor (section 4) the primary lever, not a side feature.
+4. **A rebirther without group income** (solo player) is the slow case: 668-943 d. Rebirth is nearly free for guild members and
+   very expensive for solo players, which is the reverse of what we want if anything.
 
-### Recommendations
-1. **Do not use one flat cost multiplier on everything.** It lengthens a climb that is already 250-1,200 days and makes the
-   payback worse. If a cost multiplier is wanted, apply it to the **shops** (cheap to do, about 1% of total cost) and the
-   **early regrade tiers**, where buffed players skip the gate. A shop multiplier of x5-x10 per rebirth would restore a first-climb
-   shop phase and barely move total climb length.
-2. **Raise the reward.** Larger first step and steps, with the cap moved past 100% (or an uncapped slow tail after the cap so
-   rebirth #12+ still means something).
-3. **Re-run the model with real raid income** before fixing numbers; it is the biggest term for guild players and the recovery
-   factor changes it.
+**Reward vs cost (payback).** Payback = stat income forgone during the re-climb / extra stat income per day from the new bonus
+step (work + passive only, so it understates the benefit; the bonus also lifts bank capacity and raid power).
+
+| Group income/day | Rebirth | Climb | Payback at today's steps | Bonus needed for a 180-day payback |
+|---|---|---|---|---|
+| 3B | #1 (0 -> 5%) | 245 d | 1,285 d | 20% |
+| 3B | #2 (5 -> 14.5%) | 239 d | 620 d | 26% |
+| 6B | #1 | 142 d | 731 d | 15% |
+| 10B | #1 | 91 d | 465 d | 11% |
+| 10B | #2 | 90 d | 226 d | 16% |
+| 10B | #5 (34 -> 43%) | 88 d | 298 d | 48% |
+
+### Revised recommendations
+1. **Recovery factor first** (section 4). Because group income is what drives the climb, throttling the rebirther's group payouts
+   is what actually makes the re-climb take as long as the cost implies. Without it, rebirth for guild members is a 3-month, no-risk
+   loop.
+2. **Raise the reward.** At 10B/day the first step only needs about +11% to pay back in 180 days, at 3B/day about +20%; today it is
+   5%. A first step of 10-15% and later steps of 8-12 points, with the cap moved past 100% (or a slow tail so rebirth #12+ still
+   means something), fits the top of the income range.
+3. **A cost multiplier is now reasonable, and should target regrades.** The climb is about 90-250 days, so scaling regrade
+   costs by roughly x1.25-x1.5 per rebirth makes later climbs 4-6 months. It scales time linearly, so pair it with the bigger
+   bonus. A shop-only multiplier does nothing for pace (shops are about 1% of the cost).
+4. **Get real data before fixing numbers.** The model's group-income term is one constant. Pull `totalEarnings` over time for
+   the top ~20 accounts (or log daily deltas for a week) to see the real income distribution and growth.
 
 ### Open questions
-- Target payback window (180 days is a placeholder).
-- Whether the bonus should also lift raid and bounty power (it already multiplies raid power through `getMemberRaidPower`).
-- Whether the cost multiplier should key off rebirth count or off the sweet-buff level the player carries.
+- Target payback window (180 days is a placeholder) and target climb length (3 months today; 4-6 months with a cost multiplier?).
+- Whether the cost multiplier keys off rebirth count or off carried sweet-buff level (finding 2 says sweet buffs barely change
+  pace, so rebirth count is simpler).
+- Whether the bonus should lift raid and bounty power (it already multiplies raid power through `getMemberRaidPower`).
+- Solo players (finding 4): consider a solo-friendly bonus or a lower cost multiplier for accounts with little group income.
 
 ## 6. Forfeits and carry-over
 
