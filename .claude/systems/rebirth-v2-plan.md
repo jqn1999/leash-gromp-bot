@@ -1,6 +1,6 @@
 # Rebirth v2 — design plan (planning phase, nothing here is built)
 
-Status: **planning**, opened 2026-11-17 by direct instruction ("rebirth is coming up, any ideas on things to finish ironing
+Status: **planning**; `/rebirth` is **closed** (`REBIRTH_DISABLED` in `rebirth.js`) until this ships. Opened 2026-11-17 by direct instruction ("rebirth is coming up, any ideas on things to finish ironing
 out the system?"). No code has changed. Current shipped behavior is documented in
 [economy-and-work.md](economy-and-work.md#rebirth-prestige-reset). Web parity (`financial-project`'s `/gromp`) is part of every
 item below, per the repo's sibling-repo rule; each shipped item gets a numbered entry in that repo's

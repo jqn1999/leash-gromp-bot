@@ -21802,3 +21802,11 @@ web `stat-writes.test.ts` (Ancient branch keeps the stack and reports `regradePi
 **Changed**: new `Rob.MAXIMUM_SUCCESS_RATE = 0.95`, applied as the final `Math.min` in `computeRobChance`, after the Ward. That function feeds the preview embed and both roll paths (confirm and `skip-confirm`), so the displayed percentage and the roll cannot disagree. Heist already clamped and needed nothing. Web: same constant and clamp in `doRob`; the web has no anti-rob Ward, so the clamp is its last term. Players already under 95% see no change.
 
 **Tests**: new `robSuccessCap.test.js` (a bonus stack far past 100% fails a roll at 0.96 and wins at 0.94, the preview shows `95.00`, an under-cap chance is untouched; two of these fail against the old code, verified). Web: `rob-chance-cap.test.ts`. Updated `.claude/systems/economy-and-work.md` (Rob section).
+
+## /rebirth disabled until the rework ships (2026-11-17, direct instruction)
+
+**Asked**: "disable rebirth command for now, I'll push that later tonight. We can enable after we iron out the system" (the Rebirth v2 plan in `.claude/systems/rebirth-v2-plan.md` is still being designed).
+
+**Changed**: `rebirth.js` now has `REBIRTH_DISABLED = true`. A non-developer who runs `/rebirth` gets a short refusal ("the rebirth rite is sealed for now... nothing was spent or reset") before any database read. The same check runs again right after the Confirm click, so a preview opened before the closure (or before a redeploy) cannot still commit a reset. Developers (`awsConfigurations.devs`) bypass it so the flow stays testable. It is a code constant on purpose rather than a DB toggle like `/enter-tower`'s: re-enabling should be a deliberate commit alongside the reworked rules, and a stale flag can't reopen it. The command stays registered (not `deleted: true`), for the same Discord command-count reasoning the Tower kill switch records. The web has no rebirth action (only a read-only display of `rebirthCount` and the live bonus), so nothing there needed closing. The `/help` text still mentions rebirth; left as is since it describes the feature that returns.
+
+**Tests**: new `rebirthDisabled.test.js` (non-developer refused with no DB read or write; developer reaches the normal eligibility check, never a reset).

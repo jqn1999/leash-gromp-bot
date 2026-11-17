@@ -1022,6 +1022,12 @@ whose last tier would otherwise keep being charged. Survives rebirth (`computeRe
 
 ## Rebirth (prestige reset)
 
+> **Closed 2026-11-17 (direct instruction) while the Rebirth v2 rework is planned** (see
+> [rebirth-v2-plan.md](rebirth-v2-plan.md)). `rebirth.js` carries a `REBIRTH_DISABLED = true` constant: non-developers get a
+> friendly refusal before any DB read, checked again at the Confirm click so a preview opened earlier cannot commit.
+> Developers (`awsConfigurations.devs`) bypass it. The command stays registered (not `deleted: true`). Re-enable by flipping the
+> constant in the same commit that ships the reworked rules. The rest of this section describes the shipped rules as they stand.
+
 [rebirth.js](../../src/commands/buying/rebirth.js) +
 [rebirthFactory.js](../../src/utils/rebirthFactory.js) — a prestige-style reset available only once
 **every** base shop tier (all 4: work/passive/bank/starch) AND **every** regrade track (all 3) is
