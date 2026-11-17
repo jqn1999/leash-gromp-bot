@@ -117,7 +117,10 @@ async function computeRobChance(userDetails, targetUserDetails) {
     const targetWardPercent = dynamoHandler.isPotionLive(targetUserDetails.activePotion, "antiRob") ? targetUserDetails.activePotion.value : 0;
     robChance = Math.max(0, robChance - targetWardPercent);
 
-    return robChance;
+    // Final clamp, AFTER every bonus and the Ward — see Rob.MAXIMUM_SUCCESS_RATE's own comment. Every
+    // caller (the preview embed and both roll paths) goes through this function, so the displayed
+    // percentage and the actual roll can't disagree about the ceiling.
+    return Math.min(Rob.MAXIMUM_SUCCESS_RATE, robChance);
 }
 
 // The actual roll + resolution, shared by the confirm-button path and the skip-confirm

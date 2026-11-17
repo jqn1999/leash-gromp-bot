@@ -1116,7 +1116,11 @@ Bank's convention, not the hardcoded dev ID `/work`'s skim uses).
 
 [rob.js](../../src/commands/user/rob.js) — 1hr cooldown (`Rob.ROB_TIMER_SECONDS = 3600`). Success
 chance: `.05 + (.2 - userPotatoes/total*.2)` (poorer robber vs. richer target → higher chance),
-+10% flat with the guild `robChance` buff. Success steals 25–50% of the target's liquid balance.
++10% flat with the guild `robChance` buff. **Capped at `Rob.MAXIMUM_SUCCESS_RATE` (0.95, 2026-11-17)** as the final
+clamp in `computeRobChance`, after the guild buff, `robChanceFlat` companions (Barn Owl/Yukon/Yamimic), the Mercenary
+Buff and the target's anti-rob Ward (which is subtracted first, floored at 0). The wealth-ratio base alone never passes
+.25, so only stacked bonuses could ever reach the cap; the preview embed and both roll paths share that function, so the
+shown percentage is always the capped one. Success steals 25–50% of the target's liquid balance.
 Failure fines the robber 25–50% of their own total wealth (or a flat `Rob.BASE_ROB_PENALTY(5000)`
 if their computed wealth is negative), plus adds `Rob.WORK_TIMER_INCREASE_MS(6,900,000ms ≈ 1h55m)`
 onto their `/work` cooldown as a penalty.

@@ -843,6 +843,13 @@ const RaidLevel = {
 const Rob = {
     WORK_TIMER_INCREASE_MS: 3450000, // halved from 6900000 — failing already costs a wealth loss + the 1hr ROB_TIMER_SECONDS lockout, this was a third penalty stacked on top
     ROB_TIMER_SECONDS: 3600,
+    // Overall /rob success-chance ceiling (2026-11-17, player-reported: some robbers were rolling
+    // over 95%). Same 0.95 RobNpc.MAXIMUM_SUCCESS_RATE and every Raid/Bounty tier already use. Before
+    // this, calculateRobChance's own wealth-ratio formula topped out at .25, but the guild robChance
+    // buff, Barn Owl/Yukon/Yamimic's robChanceFlat and the Mercenary Buff were all added on top with no
+    // ceiling of their own, so a stack could reach (or pass) a guaranteed win. Applied as the final
+    // clamp in rob.js's computeRobChance, after the target's anti-rob Ward is subtracted.
+    MAXIMUM_SUCCESS_RATE: 0.95,
     BASE_ROB_PENALTY: 5000,
     // Anti-rob Ward retaliation tax (2026-10-01, direct instruction: "tax the robber on a
     // fail if the robee has potion on... sole[ly a] multiplier based on the other user's
