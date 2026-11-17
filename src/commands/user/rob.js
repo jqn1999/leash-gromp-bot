@@ -126,7 +126,7 @@ async function computeRobChance(userDetails, targetUserDetails) {
 // this, per this file's own "don't trust a stale preview snapshot" precedent; the
 // skip-confirm path has nothing to go stale, so it just passes its one and only fetch
 // straight through).
-async function resolveRobAttempt(interaction, userId, username, userDisplayName, userAvatar, targetUserId, targetUsername, targetUserDisplayName, userDetails, targetUserDetails) {
+async function executeRobAttempt(interaction, userId, username, userDisplayName, userAvatar, targetUserId, targetUsername, targetUserDisplayName, userDetails, targetUserDetails) {
     let userPotatoes = userDetails.potatoes;
     let userTotalEarnings = userDetails.totalEarnings;
     let userTotalLosses = userDetails.totalLosses;
@@ -218,6 +218,44 @@ async function resolveRobAttempt(interaction, userId, username, userDisplayName,
     }
 }
 
+// Seconds left on the robber's own /rob cooldown, 0 when ready. One definition for the command-time check
+// and the confirm-time re-check below, so the two can't drift.
+function getRobCooldownRemainingSeconds(userDetails) {
+    const timeSinceLastRobbedInSeconds = Math.floor((Date.now() - userDetails.robTimer) / 1000);
+    return timeSinceLastRobbedInSeconds < Rob.ROB_TIMER_SECONDS ? Rob.ROB_TIMER_SECONDS - timeSinceLastRobbedInSeconds : 0;
+}
+
+// A /rob preview embed (confirm-button path) checks the cooldown when the command is typed, but the roll
+// happens up to 30s later on a button click. Nothing stopped a player from typing /rob several times, leaving
+// every preview open, then clicking Rob on all of them: each one passed its own command-time check, so one
+// cooldown paid for N robberies (2026-11-17, player-reported). The authoritative check therefore lives here,
+// at roll time, against the state the caller just re-fetched; the caller passes fresh details on both the
+// confirm and skip-confirm paths.
+//
+// robsInFlight closes the remaining gap: several confirm clicks landing together would each read the same old
+// robTimer before any of them has written the new one (the write happens at the END of executeRobAttempt,
+// after the roll and a few awaits). The bot is one process, so a per-user in-memory claim is enough to make the
+// check-then-roll sequence atomic for a single player.
+const robsInFlight = new Set();
+
+async function resolveRobAttempt(interaction, userId, username, userDisplayName, userAvatar, targetUserId, targetUsername, targetUserDisplayName, userDetails, targetUserDetails) {
+    if (robsInFlight.has(userId)) {
+        await interaction.editReply({ content: `${userDisplayName}, your other robbery is still resolving — wait for it to finish.`, embeds: [], components: [] });
+        return;
+    }
+    robsInFlight.add(userId);
+    try {
+        const cooldownRemainingSeconds = getRobCooldownRemainingSeconds(userDetails);
+        if (cooldownRemainingSeconds > 0) {
+            await interaction.editReply({ content: `${userDisplayName}, you robbed recently and must wait ${convertSecondstoMinutes(cooldownRemainingSeconds)} before robbing again!`, embeds: [], components: [] });
+            return;
+        }
+        await executeRobAttempt(interaction, userId, username, userDisplayName, userAvatar, targetUserId, targetUsername, targetUserDisplayName, userDetails, targetUserDetails);
+    } finally {
+        robsInFlight.delete(userId);
+    }
+}
+
 module.exports = {
     name: "rob",
     description: "Allows member to rob their potatoes",
@@ -246,13 +284,13 @@ module.exports = {
         const userDetails = await requireUserDetails(interaction, userId, username, userDisplayName);
         if (!userDetails) return;
 
-        const timeSinceLastRobbedInSeconds = Math.floor((Date.now() - userDetails.robTimer)/1000);
-        const timeUntilRobAvailableInSeconds = Rob.ROB_TIMER_SECONDS - timeSinceLastRobbedInSeconds
-
-        if (timeSinceLastRobbedInSeconds < Rob.ROB_TIMER_SECONDS){
-            interaction.editReply(`${userDisplayName}, you robbed recently and must wait ${convertSecondstoMinutes(timeUntilRobAvailableInSeconds)} before robbing again!`);
+        // Early courtesy check so a player on cooldown isn't shown a preview at all; resolveRobAttempt
+        // repeats it at roll time, which is the one that actually enforces the cooldown.
+        const cooldownRemainingSeconds = getRobCooldownRemainingSeconds(userDetails);
+        if (cooldownRemainingSeconds > 0) {
+            interaction.editReply(`${userDisplayName}, you robbed recently and must wait ${convertSecondstoMinutes(cooldownRemainingSeconds)} before robbing again!`);
             return;
-        };
+        }
 
         let targetUserDisplayName, targetUsername;
         let targetUserId = interaction.options.get('recipient')?.value;

@@ -1126,6 +1126,18 @@ Elder Rootbeard's own copy was swapped for `starchCapacityPercent` 2026-09-28), 
 against `/work` and unconditional on win/loss — see
 [companions.md#leveling](companions.md#leveling).
 
+**Cooldown enforced at roll time, not just command time (2026-11-17, player-reported).** The confirm-button
+path used to check `robTimer` only when `/rob` was typed, but the roll happens up to 30s later on a button click, so
+a player could type `/rob` several times, leave every preview open, and click Rob on all of them: each passed its own
+command-time check and one cooldown paid for N robberies. `resolveRobAttempt` (shared by the confirm and
+`skip-confirm` paths) now re-checks the cooldown against the details its caller just re-fetched, and refuses with
+the usual "you robbed recently" message otherwise. The command-time check stays as a courtesy so a player on
+cooldown isn't shown a preview. Because the new `robTimer` is written at the END of the robbery (after the roll and
+several awaits), clicks landing together could still all read the old timer, so a per-player in-memory claim
+(`robsInFlight`) makes check-then-roll atomic; a second robbery while one is resolving gets "your other robbery is
+still resolving". The bot is a single process, so an in-memory set is sufficient. Tower entry already claims
+`canEnterTower` before its run, and `/regrade`'s confirm already re-validates against a fresh read.
+
 **No house cut on a failed rob (removed 2026-08-30, direct instruction).** A failed rob's fine used
 to skim 10% to the house account (`Math.floor(fineAmount*.10)`) on top of the robber's own loss —
 removed entirely, so the fine is now a pure loss with no admin share, unlike every tax below.
