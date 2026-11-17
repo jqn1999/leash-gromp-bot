@@ -30,8 +30,9 @@ cost (section 5).
 | Companions | **Persist** (they stay tradeable via the NPC sale and the market). |
 | Merc / guild membership | Kept. Merc rank, wins, notoriety, guild level and raid count are **not** reset. |
 | Climb length | **About 3 months per rebirth** for a top player (decided 2026-11-17). |
-| Cost multiplier | **Keyed to rebirth count** (decided 2026-11-17), applied to shop **and** regrade costs. |
+| Cost multiplier | **Multiplicative (exponential) in rebirth count** (decided 2026-11-17, replacing the earlier linear `1 + 0.10n`), applied to shop **and** regrade costs. Proposed base **1.05** (see 5.1); 1.10 is too steep. |
 | Merc/guild rebirthers | Stay in their guild / keep rank and level. They are kept "in the same boat" by **reward scaling**, not demotion (section 4). |
+| Mercenary safehouses | Purchased **slots and their capacity are kept** (no re-buying). Safehouse **balances are forfeited** at rebirth, and usable capacity is **clamped by the recovery factor** while recovering (section 6.1). |
 | Rebirth Vow scope | Blocks `/give`, being paid on companion market sales, guild bank withdrawals, and `/rob` as the robber. The NPC companion sale stays allowed. |
 
 ## 3. Rebirth Vow
@@ -189,8 +190,20 @@ boat as everyone else. Three coupled changes:
    which is about 20% of a top player's income, so a 5% step is worth almost nothing to them (payback in years). Proposal: first
    rebirth **+20%**, **+15 points per rebirth** after, cap raised (about +170% at rebirth #11, or a slow tail beyond). It also
    multiplies Bounty, Heist and guild raid potato payouts (the throttled share included).
-2. **Cost multiplier** `1 + 0.10 x rebirthCount` on every shop tier and regrade tier (x1.1 at #1, x2.1 at #11).
+2. **Cost multiplier** `1.05 ^ rebirthCount` on every shop tier and regrade tier (x1.05 at #1, x1.71 at #11, x4.3 at #30). Decided multiplicative on 2026-11-17.
 3. **Recovery factor** (section 4, `multi` definition, floor 0.25) on group payouts for guild and merc rebirthers.
+
+Cost-shape comparison at 10B/day (bonus +20% then +15/step, capped at +170% at #11; days per rebirth):
+
+| Shape | #1 | #5 | #11 | #15 | #20 | #30 |
+|---|---|---|---|---|---|---|
+| Linear 1 + 0.10n (rejected) | 115 | 104 | 97 | 116 | 139 | 185 |
+| **Exponential 1.05^n (chosen)** | 109 | 89 | 79 | 96 | 123 | 200 |
+| Exponential 1.10^n | 115 | 112 | 132 | 193 | 311 | 807 |
+
+1.05 keeps climbs near 90-120 days through about #20 and becomes a soft ceiling around #30; 1.10 makes later rebirths impractical
+(311 d at #20). The bonus stops growing at the cap, so add the slow tail (or a second layer) or the post-#11 climbs lengthen.
+The per-income table below was computed with the earlier linear multiplier; re-run it for 1.05^n before freezing numbers.
 
 Why these three together: the bonus (more income) and the cost multiplier (more cost) roughly cancel, so the climb length stays
 flat across rebirths instead of falling from 115 d to 58 d; the factor keeps group players from re-climbing faster than their
@@ -230,6 +243,24 @@ needs a balance-auditor pass** before it ships.
   stats; and what is kept: companions, sweet buffs, rank/level, rebirth bonus.
 - Check other pools that should follow the same rule: safehouse storage (merc), `towerPendingPotatoes`, any festival token
   balance (probably kept), potions (kept).
+
+### 6.1 Mercenary safehouses
+
+Facts from the code: `computeRebirthState` writes only `potatoes`, `bankStored`, the three stat bases, `maxStarches`,
+`sweetPotatoBuffs`, `regrades` and `rebirthCount`, so `userDetails.safehouses` (slots **and their stored balances**) survives
+today. Slot capacity is a static table (`Safehouse.SLOTS`, up to 500M across six slots); "Main Safehouse" is just the personal
+bank, which already resets.
+
+Decisions and proposal:
+- **Keep the purchased slots and their capacity** (decided): a merc does not re-buy safehouses.
+- **Forfeit safehouse balances at rebirth** (proposed, same reasoning as `bankStored`: it is the same currency in another pool;
+  otherwise up to 500M potatoes can be stashed and carried through the reset).
+- **Storage clamp** (proposed reading of "a gain/storage clamp"): while the recovery factor is below 1, the **usable** capacity of
+  each safehouse is `slotCapacity x recovery` (floor 0.25), so kept space does not give a merc a protected stash a non-merc
+  rebirther does not have while their bank capacity regrows. Deposits above the clamped capacity are refused with a message;
+  existing balances above it (none after the forfeit) would stay withdrawable. Full capacity returns as recovery reaches 1.
+- Open question: confirm that this is the intended meaning of the clamp (storage scaled by recovery), versus clamping only the
+  *income* that can be deposited.
 
 ## 7. Ancient Potato and Work Chain (side question, 2026-11-17)
 
