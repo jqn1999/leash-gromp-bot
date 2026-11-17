@@ -32,7 +32,7 @@ cost (section 5).
 | Climb length | **About 3 months per rebirth** for a top player (decided 2026-11-17). |
 | Cost multiplier | **Multiplicative (exponential) in rebirth count** (decided 2026-11-17, replacing the earlier linear `1 + 0.10n`), applied to shop **and** regrade costs. Proposed base **1.05** (see 5.1); 1.10 is too steep. |
 | Merc/guild rebirthers | Stay in their guild / keep rank and level. They are kept "in the same boat" by **reward scaling**, not demotion (section 4). |
-| Mercenary safehouses | Purchased **slots and their capacity are kept** (no re-buying). Safehouse **balances are forfeited** at rebirth, and usable capacity is **clamped by the recovery factor** while recovering (section 6.1). |
+| Mercenary safehouses | Purchased **slots and their capacity are kept** (no re-buying). Safehouse **balances are forfeited** at rebirth, and usable capacity is **clamped while recovering** (by the multi recovery factor or by bank capacity: pending decision, section 6.1). |
 | Rebirth Vow scope | Blocks `/give`, being paid on companion market sales, guild bank withdrawals, and `/rob` as the robber. The NPC companion sale stays allowed. |
 
 ## 3. Rebirth Vow
@@ -255,12 +255,22 @@ Decisions and proposal:
 - **Keep the purchased slots and their capacity** (decided): a merc does not re-buy safehouses.
 - **Forfeit safehouse balances at rebirth** (proposed, same reasoning as `bankStored`: it is the same currency in another pool;
   otherwise up to 500M potatoes can be stashed and carried through the reset).
-- **Storage clamp** (proposed reading of "a gain/storage clamp"): while the recovery factor is below 1, the **usable** capacity of
-  each safehouse is `slotCapacity x recovery` (floor 0.25), so kept space does not give a merc a protected stash a non-merc
-  rebirther does not have while their bank capacity regrows. Deposits above the clamped capacity are refused with a message;
-  existing balances above it (none after the forfeit) would stay withdrawable. Full capacity returns as recovery reaches 1.
-- Open question: confirm that this is the intended meaning of the clamp (storage scaled by recovery), versus clamping only the
-  *income* that can be deposited.
+- **Storage clamp: two options (user, 2026-11-17), decision pending.** Gains are clamped by the multi-based recovery factor in
+  both. They differ only in what limits safehouse **storage** while recovering:
+  - **A. Everything off work multi.** Usable safehouse capacity is `slotCapacity x recovery` (the same factor as gains, floor 0.25).
+    One number, one display, one stored reference. Weakness: the multi ratio recovers early (work regrades are the cheapest tiers,
+    so it is near 1 after roughly the first third of the climb), so kept safehouse space opens up long before the player's bank
+    has regrown.
+  - **B. Gains off multi, storage off bank capacity (recommended).** Usable safehouse capacity is
+    `slotCapacity x clamp(currentBankCapacity / referenceBankCapacity, floor 0.25, 1)`, with the reference stored at rebirth and the
+    ratio treated as 1 once the bank-capacity regrade is maxed (the "Unlimited" case). This tracks the thing safehouses actually
+    supplement: a non-merc rebirther's protection regrows as their bank does, so the merc's kept space opens at the same pace.
+    Cost: a second stored reference (`referenceBankCapacity`) and a second ratio helper.
+  - Magnitude check: safehouses total at most 500M against bank capacities in the billions (sweet bank buffs persist, so a
+    rebirther's bank restarts at 50k plus their bank buffs, e.g. about 1.6B for a heavy player). The clamp mainly matters for
+    players with little bank buff, so A is acceptable if simplicity wins; B is the cleaner model.
+  - Deposits above the clamped capacity are refused with a message; the clamp never strands existing potatoes (balances are
+    forfeited at rebirth anyway).
 
 ## 7. Ancient Potato and Work Chain (side question, 2026-11-17)
 
