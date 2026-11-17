@@ -29,6 +29,9 @@ cost (section 5).
 | Pending pools | `spudKeepPendingPotatoes` and `towerPendingPotatoes` are **forfeited** at rebirth. The `/rebirth` confirm warns about the amounts before committing. |
 | Companions | **Persist** (they stay tradeable via the NPC sale and the market). |
 | Merc / guild membership | Kept. Merc rank, wins, notoriety, guild level and raid count are **not** reset. |
+| Climb length | **About 3 months per rebirth** for a top player (decided 2026-11-17). |
+| Cost multiplier | **Keyed to rebirth count** (decided 2026-11-17), applied to shop **and** regrade costs. |
+| Merc/guild rebirthers | Stay in their guild / keep rank and level. They are kept "in the same boat" by **reward scaling**, not demotion (section 4). |
 | Rebirth Vow scope | Blocks `/give`, being paid on companion market sales, guild bank withdrawals, and `/rob` as the robber. The NPC companion sale stays allowed. |
 
 ## 3. Rebirth Vow
@@ -79,11 +82,38 @@ recovery    = clamp(currentWorkMultiplierAmount / reference, FLOOR, 1)
 
 **Display:** "Rebirth Recovery: 38%" on `/bounty-board`, raid result embeds and `/profile`.
 
+### Why group income needs a throttle at all
+A guild raid's tier is chosen from **team** power and the reward is an equal split, so a rebirther's payout does not depend on their
+own power. Merc bounty and heist rewards are fixed per tier and multiplied by rank. Income from these sources therefore passes
+through a rebirth untouched, while income from `/work`, passive and Tower falls with power. Solo and non-guild rebirthers feel the
+reset; guild and merc rebirthers mostly do not. The throttle ties group payouts to the rebirther's own rebuilt power so everyone
+re-climbs at roughly the same pace.
+
+### Options considered
+| Option | Verdict |
+|---|---|
+| **A. Recovery factor on group potato payouts** (this section) | **Recommended.** Progress-based, ends on its own, no demotion, no timer to wait out. |
+| B. Flat "rebirth fatigue" reward penalty that decays over time | Rejected: a timer is waited out and ignores how fast the player re-climbs. |
+| C. Reset or reduce merc rank / guild level, or remove from the guild | Rejected by the user. |
+| D. Power-gate every payout for everyone (reward scales with own power vs team power) | Bigger redesign; would also stop fresh accounts riding strong guilds. Worth a later look, out of scope here. |
+| E. Make rebirthers unavailable for raids (no payout) | Too blunt; also punishes the guild. |
+
+### Factor definition (choose one)
+- **`multi` (proposed default):** `recovery = clamp(currentWorkMulti / referenceWorkMulti, floor, 1)`. Simple. It recovers early
+  because the work regrades are the cheapest tiers, so the throttle fades after roughly the first third of the climb.
+- **`progress` (stronger):** `recovery = floor + (1 - floor) x (share of the re-max bill already paid)`. Fades only as the player
+  nears max; needs a stored spend counter or a derivation from shop/regrade state.
+
+Measured effect on a 10B/day player (with the proposed bonus and cost settings in 5.1): no throttle 84 d, `multi` 115 d,
+`progress` (floor .25) 147 d. At 3B/day: 228 d, 295 d, 355 d. A floor of 0.25 vs 0.5 on `multi` changes little because the factor
+starts near 0.25 anyway for a 200-sweet account.
+
 ### Open questions
-- Raw `workMultiplierAmount` vs the developed multiplier (rebirth bonus, companion, buffs) as the ratio. Raw is simpler and is
-  the field shop/regrade writes move.
+- `multi` vs `progress` (the former lands a 10B/day rebirth near the 3-month goal; the latter overshoots to about 5 months).
+- Raw `workMultiplierAmount` vs the developed multiplier (rebirth bonus, companion, buffs) as the ratio; raw is simpler.
 - Should the floor be lower for guilds (equal-split raids are the worse leak) than for bounties?
-- Alt-guild trick: a vowed player leaves the guild and re-joins later. Guild switch has a cooldown already; check it covers this.
+- Alt-guild trick: a vowed player leaves and re-joins later. Guild switch already has a cooldown; confirm it covers this.
+- Apply the factor to Tower and Spud Keep? Proposed no (Tower is already power-gated; Spud Keep resolves on a fixed clock).
 
 ## 5. Cost and reward balance (numbers)
 
@@ -149,6 +179,41 @@ step (work + passive only, so it understates the benefit; the bonus also lifts b
    bonus. A shop-only multiplier does nothing for pace (shops are about 1% of the cost).
 4. **Get real data before fixing numbers.** The model's group-income term is one constant. Pull `totalEarnings` over time for
    the top ~20 accounts (or log daily deltas for a week) to see the real income distribution and growth.
+
+### 5.1 Proposed parameter set (v1, to be audited)
+
+Goal from the user: about 3 months per rebirth, cost multiplier keyed to rebirth count, guild and merc rebirthers kept in the same
+boat as everyone else. Three coupled changes:
+
+1. **Rebirth bonus raised and extended to group payouts.** Today the live bonus lifts only work multi, passive and bank capacity,
+   which is about 20% of a top player's income, so a 5% step is worth almost nothing to them (payback in years). Proposal: first
+   rebirth **+20%**, **+15 points per rebirth** after, cap raised (about +170% at rebirth #11, or a slow tail beyond). It also
+   multiplies Bounty, Heist and guild raid potato payouts (the throttled share included).
+2. **Cost multiplier** `1 + 0.10 x rebirthCount` on every shop tier and regrade tier (x1.1 at #1, x2.1 at #11).
+3. **Recovery factor** (section 4, `multi` definition, floor 0.25) on group payouts for guild and merc rebirthers.
+
+Why these three together: the bonus (more income) and the cost multiplier (more cost) roughly cancel, so the climb length stays
+flat across rebirths instead of falling from 115 d to 58 d; the factor keeps group players from re-climbing faster than their
+first climb.
+
+Days to a full re-max per rebirth (440 works/day, 200/250M sweet buffs):
+
+| Group income/day | #1 | #2 | #3 | #5 | #8 | #11 |
+|---|---|---|---|---|---|---|
+| 0 (solo, work + passive only) | 908 | 880 | 858 | 825 | 792 | 770 |
+| 1B | 536 | 520 | 507 | 487 | 468 | 455 |
+| 3B | 295 | 286 | 279 | 268 | 257 | 250 |
+| 6B | 176 | 171 | 166 | 160 | 154 | 149 |
+| **10B** | **115** | **111** | **108** | **104** | **100** | **97** |
+| 15B | 80 | 77 | 75 | 72 | 70 | 68 |
+
+The same settings **without** the factor: 10B/day 84 -> 71 d, 3B/day 228 -> 193 d. Without the bonus extension the cost multiplier
+alone makes later climbs longer and the payback hopeless, so do not ship the multiplier by itself.
+
+Caveats: income is modelled as a constant, whereas it grows with power and guild level in reality; "group income" lumps raids,
+Tower, bounties and Spud Keep (the factor would only touch raids and bounties/heists, so the real effect is a bit smaller);
+extending the bonus to group payouts raises top-player income by 20% at #1 up to +170% at #11 and is an **inflation lever that
+needs a balance-auditor pass** before it ships.
 
 ### Open questions
 - Target payback window (180 days is a placeholder) and target climb length (3 months today; 4-6 months with a cost multiplier?).

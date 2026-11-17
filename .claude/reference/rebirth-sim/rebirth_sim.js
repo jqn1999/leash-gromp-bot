@@ -83,3 +83,42 @@ if(require.main===module){
     }
   }
 }
+
+// Full model with a recovery factor on group income (plan section 4) and an optional "rebirth bonus also lifts group payouts".
+// factorFloor null = no throttle. Group income at time t = G * factor(t) * (1 + bonus when groupBonus).
+function climb({sweetWork,sweetPassive,rebirths,costMult=1,G=0,factorFloor=null,groupBonus=false,stepPct,factorMode='multi'}){
+  const rpOld=rebirthPct(rebirths-1), rp=stepPct!==undefined?stepPct:rebirthPct(rebirths);
+  const ref=100+500+sweetWork; // raw work multi of a maxed account, the factor's reference
+  let workBase=1,passiveBase=0,regW=0,regP=0,cash=0,days=0,forgone=0;
+  const st={w:0,p:0,b:0,s:0,rw:0,rp:0,rb:0};
+  const stat=()=>WORKS_PER_DAY*YIELD*(workBase+sweetWork+regW)*(1+rp)*.95+(passiveBase+sweetPassive+regP)*(1+rp);
+  let spentBase=0;
+  const totalBase=[...byId.workShop,...byId.passiveIncomeShop,...byId.bankShop,...byId.starchShop].reduce((a,t)=>a+t.cost,0)+[...R.work,...R.passive,...R.bank].reduce((a,t)=>a+t.cost,0);
+  // 'multi': own work multiplier / its pre-rebirth value. 'progress': share of the whole re-max bill already paid (fades much later).
+  const factor=()=>factorFloor===null?1:factorMode==='progress'
+    ?Math.min(1,factorFloor+(1-factorFloor)*(spentBase/totalBase))
+    :Math.min(1,Math.max(factorFloor,(workBase+sweetWork+regW)/ref));
+  const group=()=>G*factor()*(groupBonus?(1+rp):1);
+  const fullStat=WORKS_PER_DAY*YIELD*(100+500+sweetWork)*(1+rpOld)*.95+(60e6+600e6+sweetPassive)*(1+rpOld);
+  const fullGroup=G*(groupBonus?(1+rpOld):1);
+  const fullNew=WORKS_PER_DAY*YIELD*(100+500+sweetWork)*(1+rp)*.95+(60e6+600e6+sweetPassive)*(1+rp)+G*(groupBonus?(1+rp):1);
+  const uplift=fullNew-(fullStat+fullGroup);
+  for(let g=0;g<500;g++){
+    const sw=byId.workShop[st.w],sp=byId.passiveIncomeShop[st.p],sb=byId.bankShop[st.b],ss=byId.starchShop[st.s];
+    const o=[];
+    if(sw)o.push({cost:sw.cost*costMult,go:()=>{workBase=sw.amount;st.w++}});
+    if(sp)o.push({cost:sp.cost*costMult,go:()=>{passiveBase=sp.amount;st.p++}});
+    if(sb)o.push({cost:sb.cost*costMult,go:()=>{st.b++}});
+    if(ss)o.push({cost:ss.cost*costMult,go:()=>{st.s++}});
+    if(!sw&&R.work[st.rw])o.push({cost:R.work[st.rw].cost*costMult,go:()=>{regW+=R.work[st.rw].inc;st.rw++}});
+    if(!sp&&R.passive[st.rp])o.push({cost:R.passive[st.rp].cost*costMult,go:()=>{regP+=R.passive[st.rp].inc;st.rp++}});
+    if(!sb&&R.bank[st.rb])o.push({cost:R.bank[st.rb].cost*costMult,go:()=>{st.rb++}});
+    if(!o.length)break;
+    o.sort((a,b)=>a.cost-b.cost);const x=o[0];
+    const total=stat()+group();
+    if(cash<x.cost){const dt=(x.cost-cash)/total;days+=dt;forgone+=((fullStat+fullGroup)-total)*dt;cash=x.cost;}
+    cash-=x.cost;spentBase+=x.cost/costMult;x.go();
+  }
+  return {days,forgone,uplift,payback:uplift>0?Math.max(0,forgone)/uplift:Infinity};
+}
+module.exports.climb=climb;
