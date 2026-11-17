@@ -32,7 +32,7 @@ cost (section 5).
 | Climb length | **About 3 months per rebirth** for a top player (decided 2026-11-17). |
 | Cost multiplier | **Multiplicative (exponential) in rebirth count** (decided 2026-11-17, replacing the earlier linear `1 + 0.10n`), applied to shop **and** regrade costs. Proposed base **1.05** (see 5.1); 1.10 is too steep. |
 | Merc/guild rebirthers | Stay in their guild / keep rank and level. They are kept "in the same boat" by **reward scaling**, not demotion (section 4). |
-| Mercenary safehouses | Purchased **slots and their capacity are kept** (no re-buying). Safehouse **balances are forfeited** at rebirth, and usable capacity is **clamped while recovering** (by the multi recovery factor or by bank capacity: pending decision, section 6.1). |
+| Mercenary safehouses | Purchased **slots and their capacity are kept** (no re-buying). Safehouse **balances are forfeited** at rebirth, and usable capacity is **clamped by bank capacity level** while recovering (decided 2026-11-17, section 6.1); gains are clamped by the multi factor. |
 | Rebirth Vow scope | Blocks `/give`, being paid on companion market sales, guild bank withdrawals, and `/rob` as the robber. The NPC companion sale stays allowed. |
 
 ## 3. Rebirth Vow
@@ -49,7 +49,7 @@ An automatic state after a rebirth (not opt-in, not a challenge mode). Anti-abus
   combined (30% + 30% compounding), so only the climb itself needs protecting.
 
 ### Data model
-- `rebirthVow: { active: boolean, referenceWorkMulti: number, startedAt: number }` written by `computeRebirthState`, or fold
+- `rebirthVow: { active: boolean, referenceWorkMulti: number, referenceBankCapacity: number, startedAt: number }` written by `computeRebirthState`, or fold
   `referenceWorkMulti` into one field and derive `active` from the recovery factor so there is nothing to clear.
 - Prefer deriving "vowed" as `recoveryFactor < 1` so it cannot get stuck on.
 
@@ -255,22 +255,20 @@ Decisions and proposal:
 - **Keep the purchased slots and their capacity** (decided): a merc does not re-buy safehouses.
 - **Forfeit safehouse balances at rebirth** (proposed, same reasoning as `bankStored`: it is the same currency in another pool;
   otherwise up to 500M potatoes can be stashed and carried through the reset).
-- **Storage clamp: two options (user, 2026-11-17), decision pending.** Gains are clamped by the multi-based recovery factor in
-  both. They differ only in what limits safehouse **storage** while recovering:
-  - **A. Everything off work multi.** Usable safehouse capacity is `slotCapacity x recovery` (the same factor as gains, floor 0.25).
-    One number, one display, one stored reference. Weakness: the multi ratio recovers early (work regrades are the cheapest tiers,
-    so it is near 1 after roughly the first third of the climb), so kept safehouse space opens up long before the player's bank
-    has regrown.
-  - **B. Gains off multi, storage off bank capacity (recommended).** Usable safehouse capacity is
-    `slotCapacity x clamp(currentBankCapacity / referenceBankCapacity, floor 0.25, 1)`, with the reference stored at rebirth and the
-    ratio treated as 1 once the bank-capacity regrade is maxed (the "Unlimited" case). This tracks the thing safehouses actually
-    supplement: a non-merc rebirther's protection regrows as their bank does, so the merc's kept space opens at the same pace.
-    Cost: a second stored reference (`referenceBankCapacity`) and a second ratio helper.
-  - Magnitude check: safehouses total at most 500M against bank capacities in the billions (sweet bank buffs persist, so a
-    rebirther's bank restarts at 50k plus their bank buffs, e.g. about 1.6B for a heavy player). The clamp mainly matters for
-    players with little bank buff, so A is acceptable if simplicity wins; B is the cleaner model.
+- **Storage clamp: decided 2026-11-17, option B.** Gains stay clamped by the multi-based recovery factor (section 4). Merc
+  **storage** is clamped by bank capacity level:
+  `usableSafehouseCapacity = slotCapacity x clamp(currentBankCapacity / referenceBankCapacity, floor 0.25, 1)`.
+  - `referenceBankCapacity` is stored at rebirth (`rebirthVow.referenceBankCapacity`, next to `referenceWorkMulti`).
+  - Once the bank-capacity regrade is maxed (the "Unlimited" case) the ratio counts as 1.
+  - It tracks what safehouses supplement: a non-merc rebirther's protection regrows as their bank does, so a merc's kept space
+    opens at the same pace. Option A (reuse the multi factor) was rejected because the multi ratio recovers after roughly the first
+    third of the climb, long before the bank has regrown.
+  - Magnitude: safehouses total at most 500M against bank capacities in the billions (sweet bank buffs persist), so the clamp mainly
+    bites for players with little bank buff.
   - Deposits above the clamped capacity are refused with a message; the clamp never strands existing potatoes (balances are
     forfeited at rebirth anyway).
+  - Touch points: `safehouseFactory.getSlotDefinition`/`getTotalCapacity`/`getTotalRemainingSpace`/`splitDepositRandomly` read
+    capacity, so the clamp lives in one helper those call; the web `gromp-mercenary` safehouse logic needs the same.
 
 ## 7. Ancient Potato and Work Chain (side question, 2026-11-17)
 
