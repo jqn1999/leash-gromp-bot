@@ -582,12 +582,18 @@ class WorkFactory {
         for (const track of REGRADE_TRACKS) {
             trackBaseValues[track.regradeKey] = rebirthFactory.getBaseValue(userDetails, track.statField);
         }
+        // isShopBaseMaxed, not a strict `>=` against the shop max: a base a hair under the max from float noise (see
+        // rebirthFactory.isShopBaseMaxed) used to read as "shop not finished", so a player one regrade from maxing a
+        // track got NO free step at all (2026-11-22).
         const regradeEligibleTracks = REGRADE_TRACKS.filter(track =>
-            trackBaseValues[track.regradeKey] >= rebirthFactory.getShopMax(track.shopId)
+            rebirthFactory.isShopBaseMaxed(trackBaseValues[track.regradeKey], track.shopId)
             && regrades[track.regradeKey].regradeAmount < REGRADE_CAPS[track.regradeKey]
+            // A regradeAmount that sits on no tier boundary has no step to grant (the lookup below would throw
+            // reading `.increase` of undefined and crash the whole /work chain), so it is not eligible.
+            && track.tiers.some(tier => tier.currentRegradeAmount === regrades[track.regradeKey].regradeAmount)
         );
         const shopEligibleTracks = REGRADE_TRACKS.filter(track =>
-            trackBaseValues[track.regradeKey] < rebirthFactory.getShopMax(track.shopId)
+            !rebirthFactory.isShopBaseMaxed(trackBaseValues[track.regradeKey], track.shopId)
         );
 
         let potatoesGained = 0;
@@ -654,9 +660,13 @@ class WorkFactory {
 
                 statAdds = { [track.statField]: shopUpgradeIncrease };
             }
-        } else {
-            // Reached only once every track is already maxed — nothing left to
-            // stat-bump, so this is the only branch left.
+        }
+
+        if (!regradedStatName && !shopUpgradedStatName) {
+            // Reached once every track is already maxed — nothing left to stat-bump — AND now also when the stat branches
+            // above could not grant anything (a base with no matching shop tier). The latter used to fall through to NO
+            // reward at all (no step, no tier, no potatoes) while still resetting the cooldowns, which is what a player
+            // with an unmatchable base saw; paying the potato fallback instead means an Ancient never lands empty.
             let guildMultiplier = await getGuildWorkMulti(userDetails, userDetails.workMultiplierAmount);
             const mercenaryMultiplier = getMercenaryWorkMulti(userDetails, userDetails.workMultiplierAmount);
             const companionMultiplier = getCompanionWorkMulti(userDetails, userDetails.workMultiplierAmount);

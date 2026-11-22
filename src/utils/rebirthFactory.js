@@ -36,6 +36,16 @@ const BASE_SHOP_INFO = {
 // of these three shops, so it can never mistake real, uncorrected progress for noise.
 const BASE_DRIFT_TOLERANCE = 1e-6;
 
+// Whether a stat's shop-purchased base has reached that shop's final amount, tolerant of float noise. The base is
+// reconstructed as raw - sweetPotatoBuffs - regradeAmount, and independent `+=` accumulations of fractional grants
+// leave it a hair off the true tier (e.g. 99.99999999999915 for a maxed 100). computeBaseDrifts deliberately treats
+// that as clean (its drift must exceed BASE_DRIFT_TOLERANCE to be healed), so every strict `>=` against the shop
+// max read such an account as "not maxed": Ancient Potatoes granted nothing, /regrade refused with "you need the
+// maximum grade from the shop", and rebirth eligibility failed (2026-11-22 player report). Compare through this.
+function isShopBaseMaxed(baseValue, shopId) {
+    return baseValue >= getShopMax(shopId) - BASE_DRIFT_TOLERANCE;
+}
+
 // Root cause (2026-09-23 Tower investigation, `.claude/roadmap.md`): a reward path that
 // credits a stat's raw total WITHOUT symmetrically crediting `sweetPotatoBuffs` by the same
 // amount (found once already, in `enter-tower.js`'s old six-separate-writes payout, since
@@ -97,9 +107,9 @@ function healBaseDrift(userDetails) {
 // bare "not eligible."
 function checkRebirthEligibility(userDetails) {
     const checks = [
-        { label: 'Work Multiplier shop', done: getBaseValue(userDetails, 'workMultiplierAmount') >= getShopMax('workShop') },
-        { label: 'Passive Income shop', done: getBaseValue(userDetails, 'passiveAmount') >= getShopMax('passiveIncomeShop') },
-        { label: 'Bank Capacity shop', done: getBaseValue(userDetails, 'bankCapacity') >= getShopMax('bankShop') },
+        { label: 'Work Multiplier shop', done: isShopBaseMaxed(getBaseValue(userDetails, 'workMultiplierAmount'), 'workShop') },
+        { label: 'Passive Income shop', done: isShopBaseMaxed(getBaseValue(userDetails, 'passiveAmount'), 'passiveIncomeShop') },
+        { label: 'Bank Capacity shop', done: isShopBaseMaxed(getBaseValue(userDetails, 'bankCapacity'), 'bankShop') },
         { label: 'Starch Capacity shop', done: userDetails.maxStarches >= getShopMax('starchShop') },
         { label: 'Work Multiplier regrade', done: userDetails.regrades.workMulti.regradeAmount >= REGRADE_CAPS.workMulti },
         { label: 'Passive Income regrade', done: userDetails.regrades.passiveAmount.regradeAmount >= REGRADE_CAPS.passiveAmount },
@@ -190,6 +200,7 @@ module.exports = {
     previewRebirthBonus,
     computeRebirthState,
     getShopMax,
+    isShopBaseMaxed,
     REGRADE_KEY,
     getBaseValue,
     computeBaseDrifts,

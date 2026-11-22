@@ -411,6 +411,23 @@ Ancient roll. **Removed 2026-10-04 (direct instruction)** — a stat-bump branch
 guaranteed outcome whenever a track is eligible for one; branch 3's potato payout only fires once
 every track is already maxed on both shop and regrade. The constant itself was deleted from
 `constants.js` along with the roll.
+**What an Ancient gives, in order (verified 2026-11-22).** (1) A free regrade step on a random track that is shop-maxed
+and below its `REGRADE_CAPS` entry (work multi, passive, bank; Work Chain is not a candidate); (2) if no track qualifies, the
+next free shop tier on a random track that is not shop-maxed; (3) if neither grants anything, a **potato payout**:
+`calculateGainAmount(workGain x 60, Work.MAX_ANCIENT_POTATO (300,000), ...)` times the player's effective multiplier (work multi
+plus guild/merc/companion/rebirth/world/potion bonuses and catch-up), after the 5% house tax. A player maxed on all three tracks
+therefore gets potatoes, about 300,000 x multi x 0.95 once server wealth lifts `workGain` past 5,000. The guild raid cooldown reset
+and, for mercenaries, the bounty cooldown reset apply in every case.
+
+**Float-noise fix (2026-11-22, player-reported).** "Shop-maxed" is `isShopBaseMaxed(base, shopId)` (tolerance 1e-6), not a strict
+`>=`. The base is reconstructed as raw - `sweetPotatoBuffs` - `regradeAmount`, and independent `+=` accumulations of fractional
+grants leave it a hair off the true tier (99.99999999999915 for a maxed 100). `computeBaseDrifts` only heals drift above 1e-6, so
+that noise persisted, and a strict comparison read a finished shop as unfinished: a player one regrade from maxing work multi got
+Ancients that found no eligible track, fell to the shop branch, matched no tier and granted **nothing** while still resetting
+cooldowns. The same comparison sat in `checkRebirthEligibility`. `/regrade` itself was never affected (its base is rounded). The
+shop branch now also falls through to the potato payout when it cannot match a tier, so an Ancient never lands empty, and a
+`regradeAmount` that sits on no tier boundary is not offered a free step (it used to throw reading `.increase` of undefined).
+
 1. **Free regrade step** on a random track that's shop-maxed but not yet at `REGRADE_CAPS`. Grants
    that track's current tier's real `increase` **in full**, for free, written straight into
    `regrades.X.regradeAmount` — the exact same write shape a successful `/regrade` purchase at that
