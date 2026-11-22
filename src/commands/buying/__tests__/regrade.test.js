@@ -314,3 +314,48 @@ describe('view-tiers option (direct instruction: add option to see all regrade t
         previewSpy.mockRestore();
     });
 });
+
+// 2026-11-22, player-reported: a player maxed on a stat track still got the normal regrade preview ("can regrade again").
+// checkEligibility's "already fully maxed" guard only covered Work Chain; for the three stat tracks
+// findCurrentRegradeTier falls back to the LAST tier once past the ladder, so the preview (and a paid attempt) stayed open.
+describe('a maxed regrade track is refused for every track, not just Work Chain', () => {
+    const { REGRADE_CAPS } = require('../../../utils/constants');
+
+    function maxedUser(regradeKey, statField) {
+        const user = baseUser({ owned: [], active: null });
+        user.regrades[regradeKey].regradeAmount = REGRADE_CAPS[regradeKey];
+        user[statField] = (user[statField] ?? 0) + REGRADE_CAPS[regradeKey]; // keep base = raw - sweet - regrade unchanged
+        return user;
+    }
+
+    async function run(trackOption, user) {
+        dynamoHandler.findUser.mockResolvedValue(user);
+        const previewSpy = jest.spyOn(EmbedFactory.prototype, 'createRegradePreviewEmbed').mockReturnValue({});
+        const interaction = fakeInteraction();
+        interaction.options.get = name => (name === 'regrade-select' ? { value: trackOption } : undefined);
+        try {
+            await callback({}, interaction);
+            return { previewShown: previewSpy.mock.calls.length > 0, replies: interaction.editReply.mock.calls.map(([a]) => (typeof a === 'string' ? a : '')) };
+        } finally {
+            previewSpy.mockRestore();
+        }
+    }
+
+    test.each([
+        ['work-multi', 'workMulti', 'workMultiplierAmount'],
+        ['passive-income', 'passiveAmount', 'passiveAmount'],
+        ['bank-capacity', 'bankCapacity', 'bankCapacity'],
+    ])('%s at its cap shows "already fully maxed out" and never the preview', async (option, key, field) => {
+        const { previewShown, replies } = await run(option, maxedUser(key, field));
+        expect(previewShown).toBe(false);
+        expect(replies.some(r => /fully maxed out/.test(r))).toBe(true);
+    });
+
+    test('a track one step short of the cap still shows the preview', async () => {
+        const user = baseUser({ owned: [], active: null });
+        user.regrades.workMulti.regradeAmount = REGRADE_CAPS.workMulti - 100; // the last tier
+        user.workMultiplierAmount += user.regrades.workMulti.regradeAmount;
+        const { previewShown } = await run('work-multi', user);
+        expect(previewShown).toBe(true);
+    });
+});

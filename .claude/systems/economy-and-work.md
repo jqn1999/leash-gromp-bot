@@ -955,6 +955,14 @@ chance rather than adding a flat amount (2026-09-04, direct instruction) —
 `currentTier.chance * (1 + boost) + failStack` — so Elder Rootbeard's 10% base value (nerfed from
 50% 2026-09-28 — see roadmap.md) turns a 50% tier into 55%, a 10% tier into 11%, etc.
 
+**Maxed tracks are refused for every track (2026-11-22, player-reported).** `checkEligibility` has an "already fully maxed out"
+guard (`regradeAmount >= REGRADE_CAPS[track]`). It used to run for Work Chain only, on the assumption that the three stat
+tracks "never needed it in practice". They did: `findCurrentRegradeTier` falls back to the **last** tier once a player is past
+the ladder, so a player maxed on work multi, passive or bank kept getting the normal preview ("you can regrade again") and could
+pay for an attempt that grants nothing more. The guard now covers all four tracks. Each stat ladder's last tier lands exactly on
+its cap (work 400+100=500, passive 480M+120M=600M, bank 3B+100B=103B), so `>=` is the right test. The preview and the
+Confirm-click re-check both go through `checkEligibility`, so a preview opened earlier cannot commit either.
+
 **Confirm-preview step** (2026-09-26, direct instruction: "show an embed with the regrade info
 and buttons for regrading or not") — `/regrade` no longer spends/rolls the instant it's called.
 It first shows `createRegradePreviewEmbed` (current stat amount, this tier's cost/success

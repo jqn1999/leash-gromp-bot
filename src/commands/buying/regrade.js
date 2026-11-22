@@ -109,10 +109,13 @@ function getRequiredBaseAmount(config) {
 // either gate fails, or { currentTier, chanceOfSuccess, failStack } if the player is
 // eligible to see (and, funds permitting, confirm) a regrade attempt.
 function checkEligibility(userDetails, config, interaction, userDisplayName) {
-    // Work Chain only: findCurrentRegradeTier falls back to the LAST tier once past the ladder,
-    // so without this a maxed player could keep paying 8B for increments the cap clamps away.
-    // (The three stat tracks never needed it in practice and are deliberately left unchanged.)
-    if (config.statField === null && userDetails.regrades[config.regradeKey].regradeAmount >= REGRADE_CAPS[config.regradeKey]) {
+    // Every track: findCurrentRegradeTier falls back to the LAST tier once past the ladder, so without this a maxed
+    // player kept getting the normal preview ("you can regrade again") and could keep paying for a tier that grants
+    // nothing more. This guard started as Work Chain only, with the three stat tracks "deliberately left unchanged" on
+    // the assumption it never mattered in practice; a player maxed on a stat track reported exactly that (2026-11-22).
+    // Each stat ladder's last tier lands exactly on its REGRADE_CAPS value (work 400+100, passive 480M+120M, bank
+    // 3B+100B), so `>=` is the right test. Both the preview and the Confirm-click re-check go through here.
+    if (userDetails.regrades[config.regradeKey].regradeAmount >= REGRADE_CAPS[config.regradeKey]) {
         interaction.editReply(`${userDisplayName} your ${config.label} regrade is already fully maxed out!`);
         return null;
     }
